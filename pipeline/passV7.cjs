@@ -65,26 +65,6 @@ function addEV(key, rel, fa) {
 function addHC(key, rel) { let c = HC.get(key); if (!c) { c = [0, 0, 0]; HC.set(key, c); } c[0]++; c[1] += rel; c[2] += rel * rel; }
 function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(169); map.set(key, a); } a[h]++; }
 
-// ---------- итог с поправкой на олл-ин ----------
-// inv_i = стек − конечный стек + выигрыш. Если в конце 2+ претендента, все вскрыты, вложили поровну
-// (неуравненное уже вернулось), а последняя ставка была до ривера — итог = эквити × весь банк − вложено.
-function netAdjusted(rp, fin, SD) {
-  const n = rp.n, inv = new Array(n), net = new Array(n);
-  for (let i = 0; i < n; i++) { inv[i] = rp.stacks[i] - fin.stacks[i] + fin.won[i]; net[i] = fin.stacks[i] - rp.stacks[i]; }
-  const live = []; for (let i = 0; i < n; i++) if (!fin.folded[i] && inv[i] > 0) live.push(i);
-  if (live.length < 2 || !live.every(i => SD[i]) || !live.some(i => fin.allin[i])) return { net, adj: false };
-  const m = inv[live[0]]; if (!live.every(i => Math.abs(inv[i] - m) <= Math.max(1, rp.bb * 0.01))) return { net, adj: false };
-  let lastSt = 0; for (const e of rp.ev) if ('rcb'.indexOf(e.t) >= 0 && e.st >= 0) lastSt = Math.max(lastSt, e.st);
-  if (lastSt >= 3) return { net, adj: false };
-  const nb = lastSt === 0 ? 0 : lastSt === 1 ? 3 : 4;
-  const board = (rp.bd || []).slice(0, nb).map(K.cid);
-  if (board.length !== nb || board.some(c => c < 0)) return { net, adj: false };
-  const eq = K.equity(live.map(i => SD[i].c), board, 500);
-  const P = inv.reduce((s, x) => s + x, 0);
-  const out = net.slice(); live.forEach((i, j) => { out[i] = eq[j] * P - inv[i]; });
-  return { net: out, adj: true };
-}
-
 // ---------- проход ----------
 (async () => {
   const t0 = Date.now();
@@ -115,7 +95,7 @@ function netAdjusted(rp, fin, SD) {
       const SD = {};
       for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c, h: K.h169(c[0], c[1]) }; }
       if (Object.keys(SD).length) stats.sd++;
-      const A = netAdjusted(rp, fin, SD); if (A.adj) stats.adj++;
+      const A = C.netAdjusted(rp, fin, SD); if (A.adj) stats.adj++;
       const decs = C.preflopDecisions(rp, grpOf);
       for (const d of decs) {
         const i = d.i, nick = rp.nm[i];
@@ -124,7 +104,7 @@ function netAdjusted(rp, fin, SD) {
         const fa = d.act !== 'fold' && d.act !== 'check' && C.foldedAround(rp, d.k, i);
         // ключ спота: TBL|страта|стол|баунти|поз|поз.опп|стек|лимперы|коллеры  (+ |действие|группа.опп)
         const S = [d.tbl, st, tb + kd, d.pos, d.oppPos, d.sB, d.L, d.C].join('|');
-        const Sb = [d.tbl, st, tb + kd, C.posBand(d.pos), d.oppPos ? C.posBand(d.oppPos) : '', d.sB, d.L, d.C].join('|');
+        const Sb = '~' + [d.tbl, st, tb + kd, C.posBand(d.pos), d.oppPos ? C.posBand(d.oppPos) : '', d.sB, d.L, d.C].join('|'); // «~» — обобщённый уровень (не путать с точным, если позиции совпали)
         for (const c of [coh, g]) {
           addEV(c + '|' + S + '|' + d.act + '|' + d.oppGrp, rel, fa);
           addEV(c + '|' + S + '|' + d.act + '|*', rel, fa);
@@ -147,8 +127,8 @@ function netAdjusted(rp, fin, SD) {
           addR(RS, ['*', ctxS, st, tb + kd, C.posBand(d.pos), d.sB].join('|'), s.h);
         }
         if (s && d.tbl === 'AI' && d.act === 'call') {
-          addR(RC, [g, st, tb + kd, d.pos, d.oppPos, d.sB].join('|'), s.h);
-          addR(RC, ['*', st, tb + kd, C.posBand(d.pos), C.posBand(d.oppPos), d.sB].join('|'), s.h);
+          addR(RC, [g, st, tb + kd, d.pos, d.oppPos, d.sB, d.L].join('|'), s.h);
+          addR(RC, ['*', st, tb + kd, C.posBand(d.pos), C.posBand(d.oppPos), d.sB, d.L].join('|'), s.h);
         }
       }
       stats.hands++;
@@ -157,11 +137,18 @@ function netAdjusted(rp, fin, SD) {
   }
   saveState();
   // ---------- сериализация ----------
+  // Порог — на СПОТ (сумма по действиям), а не на ячейку: иначе редкие действия выпадают и частоты
+  // смещаются к частым (в v6 колл пуша мог исчезнуть, и выходило «все фолдят»). Малые ячейки — только счётчик.
   const thrEV = (k) => (k[0] === 'T' ? 8 : k[0] === 'g' ? 25 : 30);
   const r3 = (v) => Math.round(v * 1000) / 1000;
+  const spotOf = (k) => { const a = k.lastIndexOf('|'), b = k.lastIndexOf('|', a - 1); return k.slice(0, b) + k.slice(a); };
+  const tot = new Map();
+  for (const [k, c] of EV) { const sk = spotOf(k); tot.set(sk, (tot.get(sk) || 0) + c[0]); }
   const EVo = {};
   for (const [k, c] of EV) {
-    if (c[0] < thrEV(k)) continue;
+    const T = tot.get(spotOf(k)) || 0;
+    if (T < thrEV(k)) continue;
+    if (c[0] < 3) { EVo[k] = [c[0]]; continue; }
     const m = c[1] / c[0], sd = Math.sqrt(Math.max(c[2] / c[0] - m * m, 0));
     EVo[k] = c[3] ? [c[0], r3(m), r3(sd), c[3], r3(c[4] / c[3])] : [c[0], r3(m), r3(sd)];
   }

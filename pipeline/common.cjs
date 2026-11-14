@@ -66,5 +66,28 @@ function* splitHands(txt, fp) {
 }
 
 const SP = require('../lib/spots.js');
+const K = require('../lib/cards.js');
 
-module.exports = Object.assign({ BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+// ---------- итог с поправкой на олл-ин ----------
+// inv_i = стек − конечный стек + выигрыш. Если в конце 2+ претендента, все вскрыты, вложили поровну
+// (неуравненное уже вернулось), а последняя ставка была до ривера — итог = эквити × весь банк − вложено.
+function netAdjusted(rp, fin, SD) {
+  const n = rp.n, inv = new Array(n), net = new Array(n);
+  for (let i = 0; i < n; i++) { inv[i] = rp.stacks[i] - fin.stacks[i] + fin.won[i]; net[i] = fin.stacks[i] - rp.stacks[i]; }
+  const live = []; for (let i = 0; i < n; i++) if (!fin.folded[i] && inv[i] > 0) live.push(i);
+  if (live.length < 2 || !live.every(i => SD[i]) || !live.some(i => fin.allin[i])) return { net, adj: false };
+  const m = inv[live[0]]; if (!live.every(i => Math.abs(inv[i] - m) <= Math.max(1, rp.bb * 0.01))) return { net, adj: false };
+  let lastSt = 0; for (const e of rp.ev) if ('rcb'.indexOf(e.t) >= 0 && e.st >= 0) lastSt = Math.max(lastSt, e.st);
+  if (lastSt >= 3) return { net, adj: false };
+  const nb = lastSt === 0 ? 0 : lastSt === 1 ? 3 : 4;
+  const board = (rp.bd || []).slice(0, nb).map(K.cid);
+  if (board.length !== nb || board.some(c => c < 0)) return { net, adj: false };
+  const eq = K.equity(live.map(i => SD[i].c), board, 500);
+  const P = inv.reduce((s, x) => s + x, 0);
+  const out = net.slice(); live.forEach((i, j) => { out[i] = eq[j] * P - inv[i]; });
+  return { net: out, adj: true };
+}
+
+
+
+module.exports = Object.assign({ netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);

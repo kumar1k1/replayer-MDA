@@ -1,0 +1,14 @@
+{
+  "name": "replayer-mda",
+  "version": "0.7.0",
+  "description": "Умный реплеер: модель подсказок v7 по базе раздач",
+  "private": true,
+  "scripts": {
+    "test": "node tests/test_cards.js",
+    "eq169": "node lib/build_eq169.js 20000",
+    "passA": "node pipeline/passA_v7.cjs",
+    "tops": "node pipeline/tops_v7.cjs",
+    "model": "node --max-old-space-size=12288 pipeline/passV7.cjs"
+  },
+  "optionalDependencies": { "node-unrar-js": "^2.0.2" }
+}
