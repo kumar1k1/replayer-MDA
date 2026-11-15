@@ -33,8 +33,8 @@ const LIMIT = +(process.env.LIMIT || 0);
 const readJ = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const topsFile = OOS ? path.join(C.OUT, 'tops_A.json') : (process.env.TOPS || path.join(C.backingOut(), 'tops.json'));
 const TOPS = new Set(Object.keys((fs.existsSync(topsFile) ? readJ(topsFile) : { tops: {} }).tops || {}));
-// группа игрока: players_cl.json (top/areg/preg/fish) или players_cl2.json (t3, f1…) — берётся первая буква
-const grpFile = process.env.GROUPS || ['players_cl2.json', 'players_cl.json'].map(f => path.join(C.backingOut(), f)).find(fs.existsSync);
+// PLAYER_GROUPS=<файл> (не GROUPS: в bash это встроенная переменная и молча не передаётся). Группа игрока: players_cl.json (top/areg/preg/fish) или players_cl2.json (t3, f1…) — берётся первая буква
+const grpFile = process.env.PLAYER_GROUPS || ['players_cl2.json', 'players_cl.json'].map(f => path.join(C.backingOut(), f)).find(fs.existsSync);
 const GRP = grpFile ? readJ(grpFile) : {};
 const G4 = { t: 'top', a: 'areg', p: 'preg', f: 'fish' };
 const grpOf = (nick) => { const g = GRP[nick]; return g ? (G4[g[0]] || g) : 'unk'; };

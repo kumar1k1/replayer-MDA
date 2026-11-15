@@ -19,7 +19,7 @@
 ```
 node tests/test_cards.js
 node <mda-lab>/tools/make-demo-hh.js /tmp/synth2 0,400000,0      # синтетика (пишется в /tmp, MDA Lab не меняется)
-OUT_DIR=/tmp/v7b RAW_DIRS=/tmp/synth2 GROUPS=- TOPS=- node pipeline/passV7.cjs
+OUT_DIR=/tmp/v7b RAW_DIRS=/tmp/synth2 PLAYER_GROUPS=- TOPS=- node pipeline/passV7.cjs
 node tests/validate_bias.cjs /tmp/synth2/PS
 node tests/validate_pushfold.cjs /tmp/synth2/PS /tmp/v7b/model_v7.json
 MODEL=/tmp/v7b/model_v7.json node tests/smoke_engine.js /tmp/synth2/PS
