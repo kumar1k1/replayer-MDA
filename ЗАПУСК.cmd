@@ -1,75 +1,75 @@
 @echo off
-rem ╨╛╨║╨╜╨╛ ╨╜╨╡ ╨╖╨░╨║╤А╤Л╨▓╨░╨╡╤В╤Б╤П ╨┤╨░╨╢╨╡ ╨┐╤А╨╕ ╨╛╤И╨╕╨▒╨║╨╡: ╤Б╨║╤А╨╕╨┐╤В ╨┐╨╡╤А╨╡╨╖╨░╨┐╤Г╤Б╨║╨░╨╡╤В ╤Б╨╡╨▒╤П ╨▓╨╜╤Г╤В╤А╨╕ ┬лcmd /k┬╗
+echo %date% %time% start %*>>"%~dp0run_log.txt"
+rem окно не закрывается даже при ошибке (перезапуск через cmd /k); файл в кодировке cp866
 if not "%~1"=="run" (
   cmd /k ""%~f0" run"
   exit /b
 )
-chcp 65001 >nul
 setlocal
 rem ============================================================================
-rem  ╨Ч╨Р╨Я╨г╨б╨Ъ.cmd тАФ ╨┐╨╛╨╗╨╜╤Л╨╣ ╨┐╤А╨╛╨│╨╛╨╜ replayer-MDA ╨╜╨░ ╨▓╤Б╨╡╨╣ ╨▒╨░╨╖╨╡, ╨з╨Р╨б╨в╨п╨Ь╨Ш.
-rem  ╨Ъ╨░╨╢╨┤╤Л╨╣ ╤В╤П╨╢╤С╨╗╤Л╨╣ ╤И╨░╨│ ╤Б╨╛╤Е╤А╨░╨╜╤П╨╡╤В ╨┐╤А╨╛╨│╤А╨╡╤Б╤Б ╨┐╨╛╤Б╨╗╨╡ ╨║╨░╨╢╨┤╨╛╨│╨╛ ╨░╤А╤Е╨╕╨▓╨░, ╨▓╤Б╨╡╨│╨╛ 34 ╨░╤А╤Е╨╕╨▓╨░.
-rem  ╨Ь╨╛╨╢╨╜╨╛ ╤Г╨║╨░╨╖╨░╤В╤М, ╤Б╨║╨╛╨╗╤М╨║╨╛ ╨░╤А╤Е╨╕╨▓╨╛╨▓ ╨┐╤А╨╛╨╣╤В╨╕ ╨╖╨░ ╨╖╨░╨┐╤Г╤Б╨║, ╨╕╨╗╨╕ ╨┐╤А╨╛╤Б╤В╨╛ ╨╖╨░╨║╤А╤Л╤В╤М ╨╛╨║╨╜╨╛ тАФ
-rem  ╨┐╨╛╤В╨╡╤А╤П╨╡╤В╤Б╤П ╤В╨╛╨╗╤М╨║╨╛ ╨░╤А╤Е╨╕╨▓, ╨║╨╛╤В╨╛╤А╤Л╨╣ ╨╛╨▒╤А╨░╨▒╨░╤В╤Л╨▓╨░╨╗╤Б╤П ╨▓ ╤Н╤В╨╛╤В ╨╝╨╛╨╝╨╡╨╜╤В.
-rem  ╨б╨╗╨╡╨┤╤Г╤О╤Й╨╕╨╣ ╨╖╨░╨┐╤Г╤Б╨║ ╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╕╤В ╤Б ╤В╨╛╨│╨╛ ╨╢╨╡ ╨╝╨╡╤Б╤В╨░. ╨Я╨╛╤Б╨╝╨╛╤В╤А╨╡╤В╤М ╨┐╤А╨╛╨│╤А╨╡╤Б╤Б: ╨б╨в╨Р╨в╨г╨б.cmd
-rem  ╨Я╨╡╤А╨╡╤Б╤З╨╕╤В╨░╤В╤М ╨▓╤Б╤С ╨╖╨░╨╜╨╛╨▓╨╛: ╤Г╨┤╨░╨╗╨╕╤В╤М ╨┐╨░╨┐╨║╤Г pipeline\out.
+rem  ЗАПУСК.cmd - полный прогон replayer-MDA на всей базе, ЧАСТЯМИ.
+rem  Каждый тяжёлый шаг сохраняет прогресс после каждого архива, всего 34 архива.
+rem  Можно указать, сколько архивов пройти за запуск, или просто закрыть окно -
+rem  потеряется только архив, который обрабатывался в этот момент.
+rem  Следующий запуск продолжит с того же места. Посмотреть прогресс: СТАТУС.cmd
+rem  Пересчитать всё заново: удалить папку pipeline\out.
 rem ============================================================================
 cd /d "%~dp0"
-if "%BACKING_DIR%"=="" set "BACKING_DIR=D:/╨╝╨░╨╕╨╜╨╕╨╜╨│/╤А╨╡╨┐╨╗╨╡╨╡╤А"
+if "%BACKING_DIR%"=="" set "BACKING_DIR=D:/маининг/реплеер"
 if "%MEM%"=="" set "MEM=12288"
 set "OUT=%~dp0pipeline\out"
 if not exist "%OUT%" mkdir "%OUT%"
 where node >nul 2>nul
 if errorlevel 1 goto :nonode
 if not exist "%BACKING_DIR%\pipeline\parser.cjs" goto :nobacking
-echo ╨Я╨░╨┐╨║╨░ Backing: %BACKING_DIR%
-echo ╨Я╨░╨╝╤П╤В╤М ╨┤╨╗╤П Node: %MEM% ╨Ь╨С
-echo ╨Ы╨╛╨│ ╨┐╤А╨╛╨│╨╛╨╜╨░: %OUT%\progress_v7.log
+echo Папка Backing: %BACKING_DIR%
+echo Память для Node: %MEM% МБ
+echo Лог прогона: %OUT%\progress_v7.log
 echo.
-echo ╨б╨║╨╛╨╗╤М╨║╨╛ ╨░╤А╤Е╨╕╨▓╨╛╨▓ ╨┐╤А╨╛╨╣╤В╨╕ ╨╖╨░ ╤Н╤В╨╛╤В ╨╖╨░╨┐╤Г╤Б╨║? ╨Т╤Б╨╡╨│╨╛ 34 ╨╜╨░ ╤И╨░╨│. Enter - ╨┤╨╛ ╨║╨╛╨╜╤Ж╨░ ╨▒╨╡╨╖ ╨╛╤Б╤В╨░╨╜╨╛╨▓╨║╨╕.
+echo Сколько архивов пройти за этот запуск? Всего 34 на шаг. Enter - до конца без остановки.
 set "MAX_SOURCES="
-set /p "MAX_SOURCES=╨Р╤А╤Е╨╕╨▓╨╛╨▓: "
+set /p "MAX_SOURCES=Архивов: "
 echo.
 set "RESUME=1"
 
-call :step 1  "╨б╤В╨░╤В╤Л ╨╕╨│╤А╨╛╨║╨╛╨▓ ╨╕ ╤Е╨╛╨┤ ╤В╤Г╤А╨╜╨╕╤А╨╛╨▓ - ╨▓╨╡╤Б╤М ╨┐╤А╨╛╤Е╨╛╨┤"   statsdone   "node --max-old-space-size=%MEM% pipeline\passStats.cjs"   "stats_state.ndjson stats_ids.bin"
+call :step 1  "Статы игроков и ход турниров - весь проход"   statsdone   "node --max-old-space-size=%MEM% pipeline\passStats.cjs"   "stats_state.ndjson stats_ids.bin"
 if errorlevel 1 goto :stop
-call :step 2s "╨в╨╛╤З╨╜╨╛╤Б╤В╤М ╨╛╤Ж╨╡╨╜╨║╨╕ ╤Б╤В╨░╨┤╨╕╨╕ ╨╕ ╨║╨░╨╗╨╕╨▒╤А╨╛╨▓╨║╨░"          stagedone   "node --max-old-space-size=%MEM% pipeline\stage_eval.cjs"  ""
+call :step 2s "Точность оценки стадии и калибровка"          stagedone   "node --max-old-space-size=%MEM% pipeline\stage_eval.cjs"  ""
 if errorlevel 1 goto :stop
-call :step 2  "╨Ъ╨╗╨░╤Б╤В╨╡╤А╤Л"                                     clusdone    "node --max-old-space-size=%MEM% pipeline\clusters.cjs"    ""
+call :step 2  "Кластеры"                                     clusdone    "node --max-old-space-size=%MEM% pipeline\clusters.cjs"    ""
 if errorlevel 1 goto :stop
-call :step 3  "╨в╨╛╨┐╤Л - ╨╛╤В 3000 ╤А╤Г╨║, ╨┐╨╛ ╤Д╨╛╤А╨╝╨░╤В╤Г"               topsdone    "node --max-old-space-size=%MEM% pipeline\tops.cjs"        ""
+call :step 3  "Топы - от 3000 рук, по формату"               topsdone    "node --max-old-space-size=%MEM% pipeline\tops.cjs"        ""
 if errorlevel 1 goto :stop
 set "SAMPLE=4"
 set "IDSET_BITS=26"
-call :step 4  "╨б╨░╨╣╨╖╨╕╨╜╨│╨╕ - ╨║╨░╨╢╨┤╨░╤П 4-╤П ╤А╨░╨╖╨┤╨░╤З╨░"                sizesdone   "node --max-old-space-size=%MEM% pipeline\sizes.cjs"       "sizes_state.json sizes_ids.bin"
+call :step 4  "Сайзинги - каждая 4-я раздача"                sizesdone   "node --max-old-space-size=%MEM% pipeline\sizes.cjs"       "sizes_state.json sizes_ids.bin"
 if errorlevel 1 goto :stop
 set "SAMPLE=20"
 set "IDSET_BITS=24"
-call :step 5  "╨Ы╨░╨╣╨╜╨░╨┐ - ╨║╨░╨╢╨┤╨░╤П 20-╤П ╤А╨░╨╖╨┤╨░╤З╨░"                 lineupdone  "node --max-old-space-size=%MEM% pipeline\lineup.cjs"      "lineup_ids.bin"
+call :step 5  "Лайнап - каждая 20-я раздача"                 lineupdone  "node --max-old-space-size=%MEM% pipeline\lineup.cjs"      "lineup_ids.bin"
 if errorlevel 1 goto :stop
 set "SAMPLE="
 set "IDSET_BITS="
-call :step 6  "╨Ь╨╛╨┤╨╡╨╗╤М v8 - ╨▓╨╡╤Б╤М ╨┐╤А╨╛╤Е╨╛╨┤"                      modeldone   "node --max-old-space-size=%MEM% pipeline\passV8.cjs"      "v8_state.ndjson v8_ids.bin"
+call :step 6  "Модель v8 - весь проход"                      modeldone   "node --max-old-space-size=%MEM% pipeline\passV8.cjs"      "v8_state.ndjson v8_ids.bin"
 if errorlevel 1 goto :stop
 set "MAX_SOURCES="
-call :step 7  "╨б╨▒╨╛╤А╨║╨░ ╤А╨╡╨┐╨╗╨╡╨╡╤А╨░ app\dist"                     appdone     "node --max-old-space-size=%MEM% app\build.cjs"            ""
+call :step 7  "Сборка реплеера app\dist"                     appdone     "node --max-old-space-size=%MEM% app\build.cjs"            ""
 if errorlevel 1 goto :stop
 echo.
-echo [8] ╨Я╤А╨╛╨▓╨╡╤А╨║╨░ ╨┤╨▓╨╕╨╢╨║╨░ ╨╜╨░ ╨┐╨╛╨╗╨╜╨╛╨╣ ╨╝╨╛╨┤╨╡╨╗╨╕
+echo [8] Проверка движка на полной модели
 node --max-old-space-size=%MEM% tests\test_engine_v8.cjs > "%OUT%\test_engine.txt" 2>&1
 node pipeline\report.cjs > nul
 echo.
-echo ╨У╨Ю╨в╨Ю╨Т╨Ю. ╨Ш╤В╨╛╨│: %OUT%\╨Ш╨в╨Ю╨У_╨Я╨а╨Ю╨У╨Ю╨Э╨Р.md
-echo ╨а╨╡╨┐╨╗╨╡╨╡╤А: %~dp0app\dist\index.html
-echo %date% %time% > "%OUT%\╨Т╨б╨Б_╨У╨Ю╨в╨Ю╨Т╨Ю.flag"
+echo ГОТОВО. Итог: %OUT%\ИТОГ_ПРОГОНА.md
+echo Реплеер: %~dp0app\dist\index.html
+echo %date% %time% > "%OUT%\ВСЁ_ГОТОВО.flag"
 goto :eof
 
-rem ---------- ╨╛╨┤╨╕╨╜ ╤И╨░╨│: ╨┐╤А╨╛╨┐╤Г╤Б╤В╨╕╤В╤М, ╨╡╤Б╨╗╨╕ ╤Г╨╢╨╡ ╤Б╨┤╨╡╨╗╨░╨╜; ╨║╨╛╨┤ 3 = ╤З╨░╤Б╤В╤М ╨│╨╛╤В╨╛╨▓╨░ ----------
+rem ---------- один шаг: пропустить, если уже сделан; код 3 = часть готова ----------
 :step
 if exist "%OUT%\%~3.flag" goto :stepskip
 echo.
-echo [%~1] %~2 - ╨╜╨░╤З╨░╨╗╨╛ %date% %time%
+echo [%~1] %~2 - начало %date% %time%
 %~4
 set "RC=%errorlevel%"
 if "%RC%"=="3" goto :steppart
@@ -77,31 +77,31 @@ if not "%RC%"=="0" goto :steperr
 echo %date% %time% > "%OUT%\%~3.flag"
 for %%F in (%~5) do if exist "%OUT%\%%F" del /q "%OUT%\%%F"
 if "%~3"=="lineupdone" if exist "%OUT%\lineup_ck" rmdir /s /q "%OUT%\lineup_ck"
-echo [%~1] %~2 - ╨│╨╛╤В╨╛╨▓╨╛ %date% %time%
+echo [%~1] %~2 - готово %date% %time%
 exit /b 0
 :stepskip
-echo [%~1] %~2 - ╤Г╨╢╨╡ ╤Б╨┤╨╡╨╗╨░╨╜╨╛
+echo [%~1] %~2 - уже сделано
 exit /b 0
 :steppart
 echo.
-echo [%~1] ╨з╨Р╨б╨в╨м ╨У╨Ю╨в╨Ю╨Т╨Р, ╨┐╤А╨╛╨│╤А╨╡╤Б╤Б ╤Б╨╛╤Е╤А╨░╨╜╤С╨╜ %date% %time%
-echo ╨Ь╨╛╨╢╨╜╨╛ ╨╖╨░╨║╤А╤Л╤В╤М ╨╛╨║╨╜╨╛ ╨╕ ╨▓╤Л╨║╨╗╤О╤З╨░╤В╤М ╨║╨╛╨╝╨┐╤М╤О╤В╨╡╤А. ╨б╨╗╨╡╨┤╤Г╤О╤Й╨╕╨╣ ╨╖╨░╨┐╤Г╤Б╨║ ╨Ч╨Р╨Я╨г╨б╨Ъ.cmd ╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╕╤В ╨╛╤В╤Б╤О╨┤╨░.
-echo %date% %time% > "%OUT%\╤З╨░╤Б╤В╤М_╨│╨╛╤В╨╛╨▓╨░.flag"
+echo [%~1] ЧАСТЬ ГОТОВА, прогресс сохранён %date% %time%
+echo Можно закрыть окно и выключать компьютер. Следующий запуск ЗАПУСК.cmd продолжит отсюда.
+echo %date% %time% > "%OUT%\часть_готова.flag"
 exit /b 3
 :steperr
-echo [%~1] ╨Ю╨и╨Ш╨С╨Ъ╨Р, ╨║╨╛╨┤ %RC%
+echo [%~1] ОШИБКА, код %RC%
 exit /b 1
 
 :stop
-if exist "%OUT%\╤З╨░╤Б╤В╤М_╨│╨╛╤В╨╛╨▓╨░.flag" del /q "%OUT%\╤З╨░╤Б╤В╤М_╨│╨╛╤В╨╛╨▓╨░.flag" & goto :eof
+if exist "%OUT%\часть_готова.flag" del /q "%OUT%\часть_готова.flag" & goto :eof
 echo.
-echo ╨Я╤А╨╛╨│╨╛╨╜ ╨╛╤Б╤В╨░╨╜╨╛╨▓╨╕╨╗╤Б╤П ╤Б ╨╛╤И╨╕╨▒╨║╨╛╨╣. ╨Я╤А╨╕╤И╨╗╨╕╤В╨╡ %OUT%\progress_v7.log - ╤А╨░╨╖╨▒╨╡╤А╤С╨╝╤Б╤П.
-echo ╨Ч╨░╨┐╤Г╤Б╨║ ╤Б╨╜╨╛╨▓╨░ ╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╕╤В ╤Б ╤Н╤В╨╛╨│╨╛ ╤И╨░╨│╨░.
+echo Прогон остановился с ошибкой. Пришлите %OUT%\progress_v7.log - разберёмся.
+echo Запуск снова продолжит с этого шага.
 goto :eof
 
 :nonode
-echo ╨Э╨╡ ╨╜╨░╨╣╨┤╨╡╨╜ Node.js. ╨г╤Б╤В╨░╨╜╨╛╨▓╨╕╤В╨╡ ╤Б https://nodejs.org ╨╕ ╨╖╨░╨┐╤Г╤Б╤В╨╕╤В╨╡ ╤Б╨╜╨╛╨▓╨░.
+echo Не найден Node.js. Установите с https://nodejs.org и запустите снова.
 goto :eof
 :nobacking
-echo ╨Э╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨░ ╨┐╨░╨┐╨║╨░ Backing: %BACKING_DIR%
+echo Не найдена папка Backing: %BACKING_DIR%
 goto :eof

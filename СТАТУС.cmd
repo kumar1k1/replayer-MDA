@@ -1,15 +1,14 @@
 @echo off
-chcp 65001 >nul
-rem Ð¡Ð¢ÐÐ¢Ð£Ð¡.cmd â€” Ñ‡Ñ‚Ð¾ ÑƒÐ¶Ðµ ÑÐ´ÐµÐ»Ð°Ð½Ð¾ Ð¸ Ð¿Ð¾ÑÐ»ÐµÐ´Ð½Ð¸Ðµ ÑÑ‚Ñ€Ð¾ÐºÐ¸ Ð»Ð¾Ð³Ð° Ð¿Ñ€Ð¾Ð³Ð¾Ð½Ð°
+rem ‘’€’“‘.cmd - çâ® ã¦¥ á¤¥« ­® ¨ ¯®á«¥¤­¨¥ áâà®ª¨ «®£  ¯à®£®­ 
 cd /d "%~dp0"
 set "OUT=%~dp0pipeline\out"
-echo ===== Ð¨Ð°Ð³Ð¸, ÐºÐ¾Ñ‚Ð¾Ñ€Ñ‹Ðµ ÑƒÐ¶Ðµ Ð·Ð°ÐºÐ¾Ð½Ñ‡ÐµÐ½Ñ‹ =====
-for %%F in (statsdone stagedone clusdone topsdone sizesdone lineupdone modeldone appdone) do if exist "%OUT%\%%F.flag" (echo   Ð³Ð¾Ñ‚Ð¾Ð²Ð¾: %%F) else (echo   ÐµÑ‰Ñ‘ Ð½ÐµÑ‚: %%F)
-if exist "%OUT%\Ð’Ð¡Ð_Ð“ÐžÐ¢ÐžÐ’Ðž.flag" echo   Ð’Ð•Ð¡Ð¬ ÐŸÐ ÐžÐ“ÐžÐ Ð—ÐÐšÐžÐÐ§Ð•Ð
+echo ===== ˜ £¨, ª®â®àë¥ ã¦¥ § ª®­ç¥­ë =====
+for %%F in (statsdone stagedone clusdone topsdone sizesdone lineupdone modeldone appdone) do if exist "%OUT%\%%F.flag" (echo   £®â®¢®: %%F) else (echo   ¥éñ ­¥â: %%F)
+if exist "%OUT%\‚‘ð_ƒŽ’Ž‚Ž.flag" echo   ‚…‘œ ŽƒŽ ‡€ŠŽ—…
 echo.
-echo ===== ÐŸÐ¾ÑÐ»ÐµÐ´Ð½Ð¸Ðµ 20 ÑÑ‚Ñ€Ð¾Ðº Ð»Ð¾Ð³Ð° =====
-if exist "%OUT%\progress_v7.log" (powershell -NoProfile -Command "Get-Content -Encoding UTF8 -Tail 20 '%OUT%\progress_v7.log'") else (echo   Ð»Ð¾Ð³Ð° ÐµÑ‰Ñ‘ Ð½ÐµÑ‚ - Ð¿Ñ€Ð¾Ð³Ð¾Ð½ Ð½Ðµ Ð½Ð°Ñ‡Ð¸Ð½Ð°Ð»ÑÑ)
+echo ===== ®á«¥¤­¨¥ 20 áâà®ª «®£  =====
+if exist "%OUT%\progress_v7.log" (powershell -NoProfile -Command "Get-Content -Encoding UTF8 -Tail 20 '%OUT%\progress_v7.log'") else (echo   «®£  ¥éñ ­¥â - ¯à®£®­ ­¥ ­ ç¨­ «áï)
 echo.
-tasklist /fi "imagename eq node.exe" | find /i "node.exe" >nul && echo Ð¡ÐµÐ¹Ñ‡Ð°Ñ Ð˜Ð”ÐÐ¢ Ð¾Ð±Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ° - node.exe Ñ€Ð°Ð±Ð¾Ñ‚Ð°ÐµÑ‚ || echo Ð¡ÐµÐ¹Ñ‡Ð°Ñ Ð½Ð¸Ñ‡ÐµÐ³Ð¾ Ð½Ðµ Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½Ð¾
+tasklist /fi "imagename eq node.exe" | find /i "node.exe" >nul && echo ‘¥©ç á ˆ„ð’ ®¡à ¡®âª  - node.exe à ¡®â ¥â || echo ‘¥©ç á ­¨ç¥£® ­¥ § ¯ãé¥­®
 echo.
 pause
