@@ -29,7 +29,9 @@
       ev.push([s, e.i, e.t, r4((e.a || 0) / bb), e.ai ? 1 : 0]);
     }
     const sh = {}; for (const k in rp.sh || {}) if (rp.sh[k]) sh[k] = String(rp.sh[k]).trim();
-    const hc = (rp.hero === hero && rp.hc) ? String(rp.hc).trim() : sh[hero] || null;
+    // карты героя: парсер Backing отдаёт «Dealt to» объектом {место: «6d 7c»} (раньше читалось как строка → «[undefined»)
+    const hcRaw = rp.hc && typeof rp.hc === 'object' ? rp.hc[hero] : (rp.hero === hero ? rp.hc : null);
+    const hc = hcRaw ? String(hcRaw).trim() : sh[hero] || null;
     const tm = String(rp.date || '').match(/(\d{4})\/(\d{2})\/(\d{2}) (\d{1,2}:\d{2})/);
     return { pl: rp.pl.map((p, j) => [p[0], r4(rp.stacks[j] / bb), j === hero ? 1 : 0]), h: hero, hc, ev, bd: rp.bd || [], sh, t: rp.title || '', d: tm ? tm[1] + '-' + tm[2] + '-' + tm[3] + ' ' + tm[4] : '', c: bb, bb: 1, nm: rp.nm.slice() };
   }
