@@ -1,3 +1,4 @@
 node_modules/
 pipeline/out/
 *.log
+app/dist/

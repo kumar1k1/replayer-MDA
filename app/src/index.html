@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Умный реплеер · replayer-MDA</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>
+/* replayer-MDA: только своё — панель «Сейчас ход», список и разбор героя; всё остальное — styles.css MDA Lab */
+.rm-top{display:flex;align-items:center;gap:16px;padding:10px 18px;background:var(--top);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.rm-top .grow{flex:1 1 auto}
+.rm-top select{min-height:40px;border-radius:10px;border:1px solid var(--line2);background:var(--card);color:var(--text);padding:0 10px;font-weight:700}
+.rm-wrap{padding:16px 18px;display:flex;flex-direction:column;gap:12px;overflow:auto;flex:1 1 auto}
+.rm-kpis{display:flex;gap:10px;flex-wrap:wrap}
+.rm-kpi{display:flex;flex-direction:column;gap:2px;padding:10px 14px;border-radius:12px;border:1px solid var(--line2);background:var(--panel);min-width:170px}
+.rm-kpi b{font-family:var(--mono);font-size:20px}.rm-kpi span{font-size:12px;color:var(--muted)}
+.rm-kpi.ok b{color:var(--good)}.rm-kpi.warn b{color:var(--amber)}.rm-kpi.bad b{color:var(--bad)}
+#list{display:flex;flex-direction:column;gap:4px}
+.rm-row{width:100%}
+.rm-empty{padding:40px;border:1px dashed var(--line2);border-radius:14px;text-align:center;color:var(--muted)}
+.rm-vchip{display:inline-flex;align-items:center;min-height:20px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid var(--line2);color:var(--muted);margin-right:4px}
+.rm-vchip.ok{color:var(--good);border-color:rgba(var(--good-rgb),.5)}.rm-vchip.near{color:var(--ice);border-color:rgba(var(--ice-rgb),.5)}
+.rm-vchip.warn{color:var(--amber);border-color:rgba(var(--amber-rgb),.5)}.rm-vchip.bad{color:var(--bad);border-color:rgba(var(--bad-rgb),.6);background:rgba(var(--bad-rgb),.08)}
+.rm-side{overflow-y:auto}
+.rm-body{width:100%;gap:8px}
+.rm-sec{gap:6px}
+.rm-who,.rm-li,.rm-last{display:flex;align-items:center;gap:8px;min-width:0}
+.rm-pos{font-weight:800;font-size:12.5px;min-width:44px}
+.rm-pos.p-ep{color:#EF7D6D}.rm-pos.p-mp{color:#F0A35E}.rm-pos.p-hj{color:#E9C46A}.rm-pos.p-co{color:#A8D672}.rm-pos.p-bt{color:#5FD39A}.rm-pos.p-sb{color:#5CC8E6}.rm-pos.p-bb{color:#A99BF5}
+.rm-nick{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.rm-cl{flex:0 0 auto;display:inline-flex;align-items:center;min-height:20px;padding:0 8px;border-radius:999px;font-family:var(--mono);font-size:10.5px;font-weight:700;border:1px solid var(--line2);color:var(--muted)}
+.rm-cl.reg{color:var(--ice);border-color:rgba(var(--ice-rgb),.55);background:rgba(var(--ice-rgb),.08)}
+.rm-cl.nit{color:#C3C9D6;border-color:#5F687B}
+.rm-cl.fish{color:var(--good);border-color:rgba(var(--good-rgb),.55);background:rgba(var(--good-rgb),.08)}
+.rm-cl.superfish{color:var(--bad);border-color:rgba(var(--bad-rgb),.6);background:rgba(var(--bad-rgb),.08)}
+.rm-cl.pre{border-style:dashed}
+.rm-pf{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--soft)}
+.rm-li.folded{opacity:.4}
+.rm-meta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px;color:var(--muted)}
+.rm-hand{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--muted)}.rm-hand b{font-family:var(--mono);font-size:15px;color:var(--text)}
+.rm-rec{display:flex;align-items:baseline;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(var(--amber-rgb),.12);border:1px solid rgba(var(--amber-rgb),.5)}
+.rm-rec span{font-size:11px;font-weight:800;color:var(--amber);text-transform:uppercase;letter-spacing:.05em}.rm-rec b{font-size:16px;color:var(--amber)}
+.rm-why,.rm-note{font-size:11.5px;color:var(--muted);line-height:1.4}.rm-note{color:var(--faint)}
+.rm-tab{width:100%;border-collapse:collapse;font-size:11.5px}
+.rm-tab th{font-size:10px;font-weight:700;color:var(--faint);text-align:left;padding:3px 4px;border-bottom:1px solid var(--line)}
+.rm-tab td{padding:4px;border-bottom:1px solid rgba(255,255,255,.04)}.rm-tab td.num{font-family:var(--mono);text-align:right;white-space:nowrap}
+.rm-tab td.src{color:var(--faint);font-size:10.5px}
+.rm-tab tr.on td{color:var(--amber);font-weight:800}.rm-tab tr.dim td{color:var(--muted)}
+.rm-tot{font-size:11.5px;color:var(--soft);font-family:var(--mono)}
+.rm-build{font-size:11px;color:var(--faint)}
+</style>
+</head>
+<body>
+<header class="rm-top">
+  <div class="brand"><img src="icon.png" alt="" width="28" height="28"><span>Умный реплеер</span></div>
+  <button class="btn-load" id="open" type="button">Открыть истории раздач</button>
+  <input type="file" id="file" multiple accept=".txt" hidden>
+  <label class="small muted">Герой <select id="hero" aria-label="Герой"></select></label>
+  <span class="small muted" id="msg">PokerStars и CoinPoker · файлы .txt или перетащите сюда</span>
+  <span class="grow"></span>
+  <span class="small muted" id="count"></span>
+  <span class="rm-build">сборка {{BUILD}}</span>
+</header>
+<main class="rm-wrap">
+  <div class="rm-kpis" id="review"></div>
+  <div id="list"><div class="rm-empty">Откройте файлы историй раздач — для каждого решения на префлопе будет совет по игре топов и EV базы.</div></div>
+</main>
+<script src="data/model.js"></script>
+<script src="data/eq169.js"></script>
+<script src="data/sizes.js"></script>
+<script src="data/lineup.js"></script>
+<script src="data/clusters.js"></script>
+<script src="data/players.js"></script>
+<script src="js/cards.js"></script>
+<script src="js/sizing.js"></script>
+<script src="js/spots.js"></script>
+<script src="js/lineup.js"></script>
+<script src="js/clusters.js"></script>
+<script src="js/engine_v8.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/shim.js"></script>
+<script src="js/replay.js"></script>
+<script src="js/replayer.js"></script>
+<script src="js/advisor.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

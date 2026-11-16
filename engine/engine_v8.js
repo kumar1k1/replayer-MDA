@@ -275,7 +275,13 @@
       const ra = cards ? rangeAct(sp, acts, FT.n >= 30 ? FT : FF, h) : null;
       const rowOf = (a) => rows.find(r => r.act === a);
       let rec;
-      if (best.act === 'shove' && sp.behind > 15 && ra && ra.act !== 'shove' && ra.act !== 'fold' && rowOf(ra.act) && !rowOf(ra.act).reliable && !rowOf(ra.act).asShove) {
+      const Fsrc = FT.n >= 30 ? FT : FF, who = FT.n >= 30 ? 'топов' : 'поля';
+      if (!cards && Fsrc.n >= 30) {
+        // карты неизвестны (чужая раздача без вскрытия): EV конкретной руки не посчитать — показываем, как играют топы
+        const q = Fsrc.f.reduce((m, v, k) => (v > Fsrc.f[m] ? k : m), 0);
+        best = rowOf(acts[q]) || rows[0];
+        rec = { act: acts[q], why: 'карты неизвестны — чаще всего ' + who + ' здесь: ' + (RU[acts[q]] || acts[q]) + ' ' + Math.round(Fsrc.f[q] * 100) + '%', byFreq: true, freq: Fsrc.f, freqActs: acts };
+      } else if (best.act === 'shove' && sp.behind > 15 && ra && ra.act !== 'shove' && ra.act !== 'fold' && rowOf(ra.act) && !rowOf(ra.act).reliable && !rowOf(ra.act).asShove) {
         best = rowOf(ra.act);
         rec = { act: ra.act, why: 'частоты ' + (FT.n >= 30 ? 'топов' : 'поля') + ': рука в лучших ' + pctS(ra.pct) + '%; пуш тоже +' + rowOf('shove').ev.toFixed(2) + ' bb' };
       } else if (best.act !== 'fold') rec = { act: best.act, why: 'максимальный EV (' + best.src + ')' };
@@ -302,6 +308,14 @@
       }
       const r = adv.rows.find(x => x.act === a);
       const b = adv.best;
+      if (adv.rec.byFreq) {
+        // без карт: оцениваем, насколько действие типично для топов в этом споте
+        const q = adv.rec.freqActs.indexOf(a), f = q >= 0 ? adv.rec.freq[q] : 0;
+        if (a === adv.rec.act) return { kind: 'лучшее', d: 0, text: 'самое частое действие топов здесь (' + Math.round(f * 100) + '%)' + sizeNote() };
+        if (f >= 0.15) return { kind: 'частое у топов', text: 'топы так играют в ' + Math.round(f * 100) + '% случаев; чаще — «' + adv.rec.ru + '»' };
+        return { kind: 'редкое у топов', text: 'топы так играют редко (' + Math.round(f * 100) + '%); обычно — «' + adv.rec.ru + '»' };
+      }
+      if (adv.rec.act === 'fold' && /^нет надёжных данных/.test(adv.rec.why)) return { kind: 'нет данных', text: 'по этому споту в базе мало данных — оценки нет' };
       if (a === adv.rec.act) return { kind: 'лучшее', d: 0, text: 'лучшее действие (' + adv.rec.why + ')' + sizeNote() };
       if (!r || r.ev === null) return { kind: 'нет данных', text: 'по вашему действию данных нет; по базе — «' + adv.rec.ru + '» (' + adv.rec.why + ')' };
       const d = b.ev - r.ev;

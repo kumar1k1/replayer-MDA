@@ -30,3 +30,9 @@ MODEL=/tmp/v7b/model_v7.json node tests/smoke_engine.js /tmp/synth2/PS
 2. Встроить движок в реплеер: панель «СЕЙЧАС ХОД» — варианты с EV от фолда, совет, вердикт.
 3. Слой «ваши руки» из базы MDA Lab: несмещённый EV по конкретной руке.
 4. Постфлоп по той же схеме. ICM / стадия турнира.
+
+## Реплеер (п.9)
+```
+node app/build.cjs        # MDA_LAB_DIR, BACKING_DIR, MODEL, PLAYERS, PLAYERS_CL — пути (по умолчанию соседние папки и pipeline/out)
+```
+Открыть `app/dist/index.html`. Проверка: `python3 tests/test_app.py app/dist`.
