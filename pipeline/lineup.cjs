@@ -103,7 +103,7 @@ function loadState() {
   if (process.env.RESUME === '1' && fs.existsSync(path.join(CK, 'meta')) && fs.existsSync(IDSF)) { loadState(); C.log('лайнап: продолжаю с чекпоинта, архивов', done.length, 'опенов', O.half.length); }
   const part = C.partLimiter();
   for await (const x of C.iterHands(C.sourceFiles(), new Set(done))) {
-    if (x.end) { done.push(x.end); saveState(); C.log('лайнап: пройден', x.end, '(чекпоинт)'); if (part.hit()) { C.log('лайнап: часть готова'); process.exit(C.PART_EXIT); } continue; }
+    if (x.end) { done.push(x.end); saveState(); C.progress('lineup', done.length); C.log('лайнап: пройден', x.end, '(чекпоинт)'); if (part.hit()) { C.log('лайнап: часть готова'); process.exit(C.PART_EXIT); } continue; }
     let rp; try { rp = parse(x.hand); } catch (e) { continue; }
     if (!rp || !rp.n || !rp.bb) continue;
     const room = C.roomOf(x.hand);

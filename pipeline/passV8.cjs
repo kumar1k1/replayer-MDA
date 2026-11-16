@@ -83,7 +83,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   const part = C.partLimiter();
   for await (const x of C.iterHands(C.sourceFiles(), done)) {
     if (x.end) {
-      stats.done.push(x.end); saveState();
+      stats.done.push(x.end); saveState(); C.progress('model', stats.done.length);
       C.log('v8: источник пройден', x.end, '— рук', stats.hands, 'ячеек EV', EV.size, 'HC', HC.size, '(чекпоинт)');
       if (part.hit()) { C.log('v8: часть готова — запустите снова'); process.exit(C.PART_EXIT); }
       continue;

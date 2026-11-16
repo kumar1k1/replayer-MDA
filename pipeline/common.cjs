@@ -78,6 +78,17 @@ function saveIds(ids, file) { const tmp = file + '.tmp'; const fd = fs.openSync(
 function loadIds(file) { const fd = fs.openSync(file, 'r'); const hdr = Buffer.alloc(16); fs.readSync(fd, hdr, 0, 16, 0); const cap = hdr.readDoubleLE(0), n = hdr.readDoubleLE(8); const ids = new IdSet(Math.round(Math.log2(cap))); const b = Buffer.from(ids.t.buffer); for (let o = 0; o < b.length; o += 1 << 28) fs.readSync(fd, b, o, Math.min(1 << 28, b.length - o), 16 + o); fs.closeSync(fd); ids.n = n; return ids; }
 const MAX_SOURCES = +(process.env.MAX_SOURCES || 0);
 const PART_EXIT = 3;
+// прогресс по шагам для ЗАПУСК.cmd / СТАТУС.cmd: out/progress.json = { шаг: { done, total, at } }
+let _srcN = null;
+function progress(step, done) {
+  try {
+    if (_srcN === null) _srcN = sourceFiles().length;
+    const f = path.join(OUT, 'progress.json'); let p = {};
+    try { p = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) {}
+    p[step] = { done, total: _srcN, at: new Date().toISOString() };
+    fs.writeFileSync(f + '.tmp', JSON.stringify(p)); fs.renameSync(f + '.tmp', f);
+  } catch (e) {}
+}
 function partLimiter() { let k = 0; return { hit() { k++; return MAX_SOURCES > 0 && k >= MAX_SOURCES; }, count: () => k }; }
 
 function loadParser() {
@@ -172,4 +183,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ progress, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);

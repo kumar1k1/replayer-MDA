@@ -64,7 +64,7 @@ function P(key) { let p = players.get(key); if (!p) { p = { u: new Uint32Array(N
   const part = C.partLimiter();
   for await (const x of C.iterHands(C.sourceFiles(), new Set(st.done))) {
     if (x.end) {
-      st.done.push(x.end); saveState();
+      st.done.push(x.end); saveState(); C.progress('stats', st.done.length);
       C.log('статы: пройден', x.end, '— рук', st.hands, 'игроков', players.size, ((Date.now() - t0) / 60000).toFixed(1) + ' мин (чекпоинт сохранён)');
       if (part.hit()) { C.log('статы: часть готова (' + part.count() + ' арх.) — запустите снова, продолжу со следующего'); process.exit(C.PART_EXIT); }
       continue;

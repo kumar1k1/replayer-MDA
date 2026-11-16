@@ -27,7 +27,7 @@ const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON
   if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { ({ H, commit, nDec, nAiEff, nRaise, done } = JSON.parse(fs.readFileSync(STATE, 'utf8'))); seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
   const part = C.partLimiter();
   for await (const x of C.iterHands(C.sourceFiles(), new Set(done))) {
-    if (x.end) { done.push(x.end); saveState(); C.log('sizes: пройден', x.end, '(чекпоинт)'); if (part.hit()) { C.log('sizes: часть готова'); process.exit(C.PART_EXIT); } continue; }
+    if (x.end) { done.push(x.end); saveState(); C.progress('sizes', done.length); C.log('sizes: пройден', x.end, '(чекпоинт)'); if (part.hit()) { C.log('sizes: часть готова'); process.exit(C.PART_EXIT); } continue; }
     let rp; try { rp = parse(x.hand); } catch (e) { continue; }
     if (!rp || !rp.n || !rp.bb) continue;
     const room = C.roomOf(x.hand);

@@ -26,7 +26,10 @@ echo Папка Backing: %BACKING_DIR%
 echo Память для Node: %MEM% МБ
 echo Лог прогона: %OUT%\progress_v7.log
 echo.
-echo Сколько архивов пройти за этот запуск? Всего 34 на шаг. Enter - до конца без остановки.
+node pipeline\status.cjs
+echo.
+echo Сколько архивов пройти ЗА ЭТОТ ЗАПУСК? Считать ничего не нужно: программа сама
+echo продолжит с того места, где остановилась. Enter - до конца без остановки.
 set "MAX_SOURCES="
 set /p "MAX_SOURCES=Архивов: "
 echo.
