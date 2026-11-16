@@ -28,11 +28,13 @@ function rec(nick, st) {
       const fr = frames(rp); if (!fr.length) continue;
       const fin = fr[fr.length - 1], st = C.stratumOf(x.fp, rp.title);
       if (!C.handIntact(rp, fin, x.hand)) { stats_broken++; continue; } // повреждённая история (банк не сходится)
-      rp.nm.forEach((nick, j) => {
+      const room = C.roomOf(x.hand), tf = C.tableFormat(x.hand).fmt;
+      rp.nm.forEach((nick0, j) => {
+        const nick = C.playerKey(room, nick0); // ключ «рум:ник»
         let inv = false, rz = false, fp = false;
         for (const e of rp.ev) if (e.i === j && e.st === 0) { if (e.t === 'c') inv = true; if (e.t === 'r') { inv = true; rz = true; } if (e.t === 'f') fp = true; }
         const net = (fin.stacks[j] - rp.stacks[j]) / rp.bb;
-        for (const a of rec(nick, st)) {
+        for (const a of rec(nick, st + '|' + tf)) { // страта и формат стола (short / full)
           a.n++; if (inv) a.vpip++; if (rz) a.pfr++; a.netBb += net;
           if (!fp) { if (rp.sh[j]) (fin.won[j] > 0 ? a.ws++ : a.ls++); else (fin.won[j] > 0 ? a.wn++ : a.ln++); }
         }

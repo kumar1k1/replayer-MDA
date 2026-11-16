@@ -22,6 +22,17 @@ function roomOf(t) { return /^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.
 const SHOWDOWN_TRUSTED = (room) => room !== 'coin';
 function makeParse(parser) { return (text) => parser.parseHand(normalizeHand(text) + '\n'); }
 
+// ---------- игрок и формат стола (п.2) ----------
+// Ключ игрока — «рум:ник»: одинаковый ник в разных румах — разные игроки (если владелец не объявит их одним, см. ALIASES).
+const playerKey = (room, nick) => room + ':' + nick;
+// Формат стола — по заголовку «Table '…' N-max» (а не по числу севших): 'short' — до 6 мест, 'full' — 7–9 мест.
+// Кластеры тренера рассчитаны на полных столах; статы со столов short переводятся на шкалу full (п.4).
+function tableFormat(text) {
+  const m = /^Table '.*?' (\d+)-max/m.exec(text);
+  const max = m ? +m[1] : 0;
+  return { max, fmt: max && max <= 6 ? 'short' : 'full' };
+}
+
 // ---------- целостность раздачи: вложено всеми = банк, выиграно = банк − рейк ----------
 // На реальных архивах ~0,002% историй повреждены в источнике (пропущены строки рейза, улицы) — такие отбрасываем.
 function handIntact(rp, fin, text) {
@@ -131,4 +142,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);

@@ -37,7 +37,9 @@ const TOPS = new Set(Object.keys((fs.existsSync(topsFile) ? readJ(topsFile) : { 
 const grpFile = process.env.PLAYER_GROUPS || ['players_cl2.json', 'players_cl.json'].map(f => path.join(C.backingOut(), f)).find(fs.existsSync);
 const GRP = grpFile ? readJ(grpFile) : {};
 const G4 = { t: 'top', a: 'areg', p: 'preg', f: 'fish' };
-const grpOf = (nick) => { const g = GRP[nick]; return g ? (G4[g[0]] || g) : 'unk'; };
+// ключ «рум:ник» (п.2); старые файлы Backing — по нику без рума (запасной вариант)
+const grpOfK = (room, nick) => { const g = GRP[C.playerKey(room, nick)] || GRP[nick]; return g ? (G4[g[0]] || g) : 'unk'; };
+const isTop = (room, nick) => TOPS.has(C.playerKey(room, nick)) || TOPS.has(nick);
 C.log('v7: топов', TOPS.size, '(' + path.basename(topsFile) + ')', 'групп', Object.keys(GRP).length, OOS ? 'OOS: мерим половину B' : 'вся база');
 
 // ---------- накопители ----------
@@ -100,10 +102,11 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       if (C.SHOWDOWN_TRUSTED(room)) for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c, h: K.h169(c[0], c[1]) }; }
       if (Object.keys(SD).length) stats.sd++;
       const A = C.netAdjusted(rp, fin, SD); if (A.adj) stats.adj++;
+      const grpOf = (nick) => grpOfK(room, nick);
       const decs = C.preflopDecisions(rp, grpOf);
       for (const d of decs) {
         const i = d.i, nick = rp.nm[i];
-        const coh = TOPS.has(nick) ? 'T' : 'F', g = 'g' + grpOf(nick);
+        const coh = isTop(room, nick) ? 'T' : 'F', g = 'g' + grpOf(nick);
         const rel = A.net[i] / bb + d.inv; // относительно фолда в этой точке
         const fa = d.act !== 'fold' && d.act !== 'check' && C.foldedAround(rp, d.k, i);
         // ключ спота: TBL|страта|стол|баунти|поз|поз.опп|стек|лимперы|коллеры  (+ |действие|группа.опп)
