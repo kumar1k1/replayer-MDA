@@ -69,6 +69,9 @@ s = stats(hand(['UTGp: raises 40 to 60', 'MPp: raises 2940 to 3000 and is all-in
 ok(has(s.by, 'MPp.3BetNAI', '0'), '3-бет олл-ином: возможность есть, 3Bet nAI не засчитан');
 ok(has(s.by, 'UTGp.F3Bet', '1'), 'фолд на 3-бет олл-ином — F3Bet');
 
+s = stats(hand(['UTGp: raises 2980 to 3000 and is all-in', 'MPp: folds', 'COp: folds', 'BTNp: folds', 'SBp: folds', 'BBp: folds',
+  'Uncalled bet (2980) returned to UTGp', 'UTGp collected 50 from pot', '*** SUMMARY ***', 'Total pot 50 | Rake 0']));
+ok(has(s.by, 'MPp.3BetNAI', '0') && has(s.by, 'BBp.3BetNAI', '0'), 'против опена олл-ином: возможность 3Bet nAI есть (как в Hand2Note), не засчитан');
 console.log('— 5. Мультивей на флопе — квадрат не считается; таблица префлоп-действий');
 s = stats(hand(['UTGp: raises 40 to 60', 'MPp: calls 60', 'COp: folds', 'BTNp: folds', 'SBp: folds', 'BBp: calls 40', '*** FLOP *** [2c 7d Kh]',
   'BBp: checks', 'UTGp: bets 100', 'MPp: folds', 'BBp: folds', 'Uncalled bet (100) returned to UTGp', 'UTGp collected 190 from pot',

@@ -12,6 +12,8 @@ const BACKING = process.env.BACKING_DIR || ['D:/маининг/реплеер', 
 //  • «posts big blind 27 and is all-in» (и анте/МБ олл-ином) парсер пропускал — вложение терялось, банк не сходился;
 //  • «folds [Ah Kc]» (фолд с показом карт) парсер пропускал — игрок оставался «в раздаче».
 function normalizeHand(t) {
+  // • суммы с разделителем тысяч («bets 1,335», «collected 5,205») — экспорт GG в формате PokerStars; парсер их терял
+  let p; do { p = t; t = t.replace(/(\d),(\d{3})(?!\d)/g, '$1$2'); } while (t !== p);
   return t.replace(/^(.+?: posts (?:the ante|small blind|big blind) [\d.]+) and is all-in[ \t]*$/gm, '$1')
           .replace(/^(.+?: folds) \[[^\]]*\][ \t]*$/gm, '$1');
 }
