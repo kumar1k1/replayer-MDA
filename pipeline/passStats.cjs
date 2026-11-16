@@ -14,7 +14,8 @@ const C = require('../pipeline/common.cjs'), K = require('../lib/cards.js'), ST 
 const P_ = C.loadParser(), { frames } = P_, parseHand = C.makeParse(P_);
 const MIN_HANDS = +(process.env.MIN_HANDS || 50), LIMIT = +(process.env.LIMIT || 0);
 const NCL = ST.CL.length, FMT = { short: 0, full: 1 };
-const O_CL = ST.PF_SLOTS, O_N = O_CL + 2 * NCL * 2, NU = O_N + 2; // [префлоп 315][кластер 2×11×2][рук short, full]
+// [префлоп 315][кластер: половина A/B × формат short/full × 11 статов × (возможность, попадание)][рук short, full]
+const O_CL = ST.PF_SLOTS, O_N = O_CL + 2 * 2 * NCL * 2, NU = O_N + 2;
 const players = new Map(); // ключ → { u: Uint32Array(NU), f: Float64Array(6) }
 const IDS = new C.IdSet();
 const st = { hands: 0, dups: 0, broken: 0, errs: 0 };
@@ -32,7 +33,7 @@ function P(key) { let p = players.get(key); if (!p) { p = { u: new Uint32Array(N
       if (!IDS.add(room, rp.handId)) { st.dups++; continue; }
       const fr = frames(rp), fin = fr[fr.length - 1];
       if (!C.handIntact(rp, fin, x.hand)) { st.broken++; continue; }
-      const fi = FMT[C.tableFormat(x.hand).fmt], half = C.halfOf(rp.handId) === 'A' ? 0 : 3;
+      const fi = FMT[C.tableFormat(x.hand).fmt], hA = C.halfOf(rp.handId) === 'A' ? 0 : 1, half = hA * 3;
       const SD = {};
       if (C.SHOWDOWN_TRUSTED(room)) for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c }; }
       const net = C.netAdjusted(rp, fin, SD).net;
@@ -42,7 +43,7 @@ function P(key) { let p = players.get(key); if (!p) { p = { u: new Uint32Array(N
         const p = pk[i]; p.u[O_N + fi]++;
         const b = net[i] / rp.bb; p.f[half]++; p.f[half + 1] += b; p.f[half + 2] += b * b;
       }
-      for (const [i, s, h] of r.cl) { const o = O_CL + (fi * NCL + ST.CL.indexOf(s)) * 2; pk[i].u[o]++; if (h) pk[i].u[o + 1]++; }
+      for (const [i, s, h] of r.cl) { const o = O_CL + ((hA * 2 + fi) * NCL + ST.CL.indexOf(s)) * 2; pk[i].u[o]++; if (h) pk[i].u[o + 1]++; }
       for (const [i, o, a] of r.slots) { pk[i].u[o]++; if (a >= 0) pk[i].u[a]++; }
       st.hands++;
       if (st.hands % 1000000 === 0) C.log('статы:', st.hands, 'рук, игроков', players.size, ((Date.now() - t0) / 60000).toFixed(1) + ' мин');
