@@ -47,20 +47,33 @@
       if (d.toCall > 0.001) meta.append(el('span', null, 'к коллу ' + fmt(d.toCall) + ' BB, банк ' + fmt(d.potBefore) + ' BB'));
       s.append(meta);
       if (next.cards) { const c = el('div', 'rm-hand'); c.append(el('span', null, 'рука'), el('b', null, a.hand)); s.append(c); }
-      else s.append(el('div', 'rm-note', 'Карты игрока неизвестны — оценка по диапазону и частотам топов.'));
       if (a.stNote) s.append(el('div', 'rm-note', a.stNote));
-      // совет
-      const r = el('div', 'rm-rec'); r.append(el('span', null, 'Совет'), el('b', null, a.rec.ru)); s.append(r);
-      s.append(el('div', 'rm-why', a.rec.why + (a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + (a.rec.size.share ? ', ' + fmt(a.rec.size.share, 0) + '%' : '') + ', ' + (a.rec.size.src.startsWith('tops') ? 'топы' : a.rec.size.src.startsWith('pool') ? 'пул' : 'по умолчанию') + ')' : '')));
-      // варианты
-      const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'все фолд', 'топы', 'источник'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
+      // совет — только когда рука известна: без карт нельзя знать, что лучше именно этому игроку (решение владельца)
+      const known = !!next.cards;
+      if (known) {
+        const r = el('div', 'rm-rec'); r.append(el('span', null, 'Совет'), el('b', null, a.rec.ru)); s.append(r);
+        s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));
+      } else s.append(el('div', 'rm-note', 'Карты игрока неизвестны — совета нет. Ниже — справка: как в этом споте играют топы и чего стоят действия в среднем по диапазону.'));
+      // варианты: «сброс соперника» — как часто сбрасывает тот, против кого действие (опен — все за спиной, 3-бет — открывший)
+      const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', 'топы', 'источник'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
+      const oppCell = (o, pf, act) => { const td = el('td', 'num', o ? pct(o.p) : (act === 'shove' || act === 'open') && pf != null ? pct(pf) : ''); if (o) td.title = o.who + ': ' + o.src; else if (pf != null && (act === 'shove' || act === 'open')) td.title = 'все, кто ещё в раздаче'; return td; };
       for (const row of a.rows) {
-        const tr = el('tr', row.act === a.rec.act ? 'on' : row.reliable ? '' : 'dim');
-        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '')), el('td', 'num', row.ev == null ? '—' : sgn(row.ev)), el('td', 'num', row.pFold != null && row.act !== 'fold' ? pct(row.pFold) : ''), el('td', 'num', pct(row.freqT)), el('td', 'src', row.src + (row.n ? ' · n=' + row.n : '')));
-        if (row.pFoldSrc && row.act !== 'fold') tr.title = 'P(все сфолдят): ' + row.pFoldSrc;
+        const on = known && row.act === a.rec.act;
+        const tr = el('tr', on ? 'on' : row.reliable ? '' : 'dim');
+        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '')), el('td', 'num', row.ev == null ? '—' : sgn(row.ev)), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), el('td', 'src', row.src + (row.n ? ' · n=' + row.n : '')));
         t.append(tr);
+        // размеры этого действия: EV каждого, сброс соперника, доля среди этих рейзов у топов
+        if (row.sizes && row.sizes.length > 1) for (const v of row.sizes) {
+          const ch = row.size && v.bucket === row.size.bucket;
+          const tv = el('tr', 'rm-sz' + (ch && on ? ' on' : '') + (v.reliable ? '' : ' dim'));
+          tv.append(el('td', null, '  ' + v.bucket + ' · до ' + fmt(v.to, 1) + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), el('td', 'src', v.src + (v.n ? ' · n=' + v.n : '')));
+          tv.title = 'топы: ' + v.nT + ' таких рейзов в этом споте, поле: ' + v.nF;
+          t.append(tv);
+        }
       }
       s.append(t);
+      if (a.compare) s.append(el('div', 'rm-why', 'Колл ' + sgn(a.compare.call) + ' (n=' + a.compare.callN + ') против «' + a.compare.raiseRu + '» ' + sgn(a.compare.raise) + ' (n=' + a.compare.raiseN + '): ' + (a.compare.diff >= 0 ? 'рейз лучше на ' : 'колл лучше на ') + fmt(Math.abs(a.compare.diff)) + ' BB' + (a.compare.reliable ? '' : ' — предварительно, мало вскрытий')));
+      if (a.classTops) s.append(el('div', 'rm-note', 'Топы с руками «' + a.classTops.cls + '» здесь (по вскрытиям, n=' + a.classTops.n + '): ' + Object.entries(a.classTops.share).filter(([, v]) => v > 0).map(([k, v]) => ({ call: 'колл', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин', open: 'опен', limp: 'лимп', iso: 'изо', check: 'чек' })[k] + ' ' + pct(v)).join(', ')));
       // лайнап за спиной — из варианта рейза (опен)
       const lr = a.rows.find(x => x.lineup && x.lineup.length);
       if (lr) {
@@ -81,7 +94,8 @@
       s.append(el('div', 'rm-note', 'Подсказки — для префлопа (этап 1). Постфлоп — следующий этап проекта.'));
     }
     // оценка только что сделанного действия
-    if (last && last.v) {
+    // оценка — только тем, чья рука известна (иначе «лучшее/ошибка» без оснований)
+    if (last && last.v && last.cards) {
       const s = sec('Последнее действие'), k2 = KIND[last.v.kind] || 'none';
       const w = el('div', 'rm-last'); const pp = el('span', posCls(last.d.pos), last.d.pos); pp.classList.add('rm-pos');
       w.append(pp, el('span', 'rm-nick', H.rp.nm[last.d.i]), el('span', 'rm-vchip ' + k2, last.v.kind + (last.v.kind === 'ошибка' ? ' −' + fmt(last.v.d) + ' BB' : '')));

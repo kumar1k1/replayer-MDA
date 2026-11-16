@@ -225,6 +225,60 @@
       return { act: 'fold', pct, band: 0 };
     }
 
+    // ---------- варианты размеров рейза: EV по каждому, как часто их делают топы, фолд соперника ----------
+    const SZACT = (act, sp) => (act === 'open' ? 'open' : act === 'iso' ? 'iso' : act === '3bet' ? (sp.C === 'C0' ? '3bet' : 'sqz') : act === '4bet' ? '4bet' : null);
+    const CL_RU = { pp_prem: 'старшие пары', pp_mid: 'средние пары', pp_sm: 'мелкие пары', AK: 'AK', ax_str: 'сильные Ax', axs: 'Ax одномастные', axo: 'Ax разномастные', br_conn: 'бродвей', su_conn: 'одномастные коннекторы', su_weak: 'слабые одномастные', off_conn: 'разномастные коннекторы', offsuit: 'слабые разномастные' };
+    // как часто сбрасывает тот, против кого действие: опен — все за спиной (лайнап); 3-бет — открывший
+    // (по базе для этого размера 3-бета, × его личная склонность сбрасывать на 3-бет)
+    function oppFoldFor(sp, act, bucket, m, info, sl) {
+      if (act === 'open') { const fa = foldAllFor(sp, 'open', sl, info, bucket); return fa ? { p: fa.p, who: 'все за спиной', src: fa.src } : null; }
+      if (act === '3bet' && sp.refI >= 0) {
+        const b3 = SZ.bucketOf('3bet', m), tk = sp.tb + sp.kd, bd = SP.bandOf(sp.eff);
+        const cnt = (pre) => { const r = {}; let n = 0; for (const a of ['fold', 'call', '4bet', 'shove']) { const c = cellEV(pre + '|' + a); r[a] = c ? c.n : 0; n += r[a]; } return { r, n }; };
+        let c = cnt('R|' + [sp.st, tk, SP.posBand(sp.oppPos), SP.posBand(sp.pos), bd, b3].join('|')), lvl = 'точно';
+        if (c.n < 30) { c = cnt('R|' + [sp.st, tk, '*', '*', bd, b3].join('|')); lvl = 'обобщённо'; }
+        if (c.n < 30) return null;
+        let p = (c.r.fold + 1) / (c.n + 2), src = 'база: открывший против 3-бета ' + b3 + ' (' + lvl + ', n=' + c.n + ')';
+        const o = (sp.others || []).find(x => x.j === sp.refI);
+        if (o) { const OR = personalOR('vs3', SP.bandOf(Math.min(o.behind, sp.behind)), o.pos, (info && info(o.j)) || {}, 'fold'); if (OR !== 1) { p = oddsMul(p, OR); src += ' × его фолд к 3-бету'; } }
+        return { p, who: 'открывший (' + sp.oppPos + ')', src, n: c.n };
+      }
+      return null;
+    }
+    function sizeVariants(sp, act, cards, h, info) {
+      const sa = SZACT(act, sp); if (!sa) return null;
+      const { S, Sb } = keys(sp);
+      const ctx = { room: sp.room || 'ps', refTo: sp.refTo, prevTo: sa === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff };
+      const out = []; let totT = 0, totF = 0;
+      for (const b of SZ.BUCKETS[sa].names) {
+        const A = act + '@' + b, nc = (coh) => ((cellEV(coh + '|' + S + '|' + A + '|*') || cellEV(coh + '|' + Sb + '|' + A + '|*') || { n: 0 }).n);
+        const nT = nc('T'), nF = nc('F'); if (nT + nF < 20) continue;
+        const m = SZ.repOf(sa, b), to = SZ.toFor(sa, m, ctx);
+        const v = { bucket: b, A, to, m, nT, nF, allin: sp.eff > 0 && to >= sp.eff * SZ.COMMIT, ev: null, n: 0, src: 'нет данных' };
+        const sl = spotLevel('T', sp, A);
+        const of = oppFoldFor(sp, act, b, m, info, sl); v.oppFold = of;
+        let pfa = sl.pfa, mfa = sl.mfa;
+        if (act === 'open' && of) { pfa = of.p; mfa = sp.potBefore; }
+        v.pFold = pfa;
+        if (cards) { const r = handEV(sp, A, h, sl, pfa, mfa); if (r) Object.assign(v, { ev: r.m, se: r.se, n: r.n, src: r.src }); }
+        else if (sl.ev) Object.assign(v, { ev: sl.ev.m, se: sl.ev.se, n: sl.ev.n, src: 'диапазон' });
+        v.reliable = v.ev !== null && v.n >= MIN_HAND_N && !v.allin;
+        out.push(v); totT += nT; totF += nF;
+      }
+      out.forEach(v => { v.shareT = totT ? v.nT / totT : null; v.shareF = totF ? v.nF / totF : null; });
+      return out;
+    }
+    // выбор размера: лучший EV среди надёжных; если надёжных нет — лучший EV среди оценок с n ≥ 50 (предварительно);
+    // если и таких нет — самый частый размер у топов (п.6)
+    function pickSize(sp, act, vars) {
+      const ok = (vars || []).filter(v => !v.allin && v.ev !== null);
+      const rel = ok.filter(v => v.reliable), pre = ok.filter(v => v.n >= 50);
+      const best = (L) => L.reduce((a, b) => (b.ev > a.ev ? b : a));
+      if (rel.length) { const v = best(rel); return { to: v.to, bucket: v.bucket, by: 'ev', why: 'размер с лучшим EV (' + v.bucket + ', n=' + v.n + ')', v }; }
+      if (pre.length >= 2) { const v = best(pre); return { to: v.to, bucket: v.bucket, by: 'ev-pre', why: 'размер с лучшим EV — предварительно, мало вскрытий (' + v.bucket + ', n=' + v.n + ')', v }; }
+      return null;
+    }
+
     // ---------- размер для рейза-класса ----------
     function sizeFor(sp, act) {
       const a = act === 'open' ? 'open' : act === 'iso' ? 'iso' : act === '3bet' ? (sp.C === 'C0' ? '3bet' : 'sqz') : act === '4bet' ? '4bet' : null;
@@ -246,13 +300,22 @@
     function advise(sp0, cards, info) {
       const acts0 = ACTS[sp0.tbl];
       const stUsed = pickStratum(sp0, acts0), sp = stUsed === sp0.st ? sp0 : Object.assign({}, sp0, { st: stUsed });
-      const acts = ACTS[sp.tbl].filter(a => !(a === 'check' && sp.toCall > 0.001) && !(a === 'shove' && sp.behind > 40) && !(a === 'fold' && sp.toCall <= 0.001 && sp.tbl === 'ISO'));
+      const acts = ACTS[sp.tbl].filter(a => !(a === 'check' && sp.toCall > 0.001) && !(a === 'shove' && sp.eff > 40) && !(a === 'fold' && sp.toCall <= 0.001 && sp.tbl === 'ISO'));
       const h = cards ? K.h169(cards[0], cards[1]) : null;
       const FT = freqs('T', sp, acts), FF = freqs('F', sp, acts);
       const rows = acts.map((act, q) => {
         const row = { act, ru: RU[act] || act, freqT: FT.f[q], freqF: FF.f[q] };
         if (act === 'fold') return Object.assign(row, { ev: 0, se: 0, src: 'точно', n: null });
-        const size = sizeFor(sp, act);
+        let size = sizeFor(sp, act);
+        const vars = sizeVariants(sp, act, cards, h, info);
+        if (vars && vars.length) {
+          row.sizes = vars;
+          const pk = pickSize(sp, act, vars);
+          if (pk) size = Object.assign({}, size, { to: pk.to, bucket: pk.bucket, by: pk.by, why: pk.why, share: pk.v.shareT != null ? Math.round(pk.v.shareT * 100) : null, src: 'ev', allin: pk.v.allin });
+          else if (size) size.why = 'размер — самый частый у топов (' + size.bucket + (size.share ? ', ' + Math.round(size.share) + '%' : '') + '); EV по размерам пока не оценить — мало вскрытий';
+          const ch = vars.find(v => v.bucket === (size && size.bucket));
+          if (ch && ch.oppFold) row.oppFold = ch.oppFold;
+        }
         if (size) { row.size = size; row.ru = RU[act] + ' до ' + size.to + ' bb'; if (size.allin) row.asShove = true; }
         if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold }); }
         if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq }); }
@@ -281,9 +344,9 @@
         const q = Fsrc.f.reduce((m, v, k) => (v > Fsrc.f[m] ? k : m), 0);
         best = rowOf(acts[q]) || rows[0];
         rec = { act: acts[q], why: 'карты неизвестны — чаще всего ' + who + ' здесь: ' + (RU[acts[q]] || acts[q]) + ' ' + Math.round(Fsrc.f[q] * 100) + '%', byFreq: true, freq: Fsrc.f, freqActs: acts };
-      } else if (best.act === 'shove' && sp.behind > 15 && ra && ra.act !== 'shove' && ra.act !== 'fold' && rowOf(ra.act) && !rowOf(ra.act).reliable && !rowOf(ra.act).asShove) {
+      } else if (best.act === 'shove' && sp.eff > 15 && ra && ra.act !== 'shove' && ra.act !== 'fold' && rowOf(ra.act) && !rowOf(ra.act).reliable && !rowOf(ra.act).asShove) {
         best = rowOf(ra.act);
-        rec = { act: ra.act, why: 'частоты ' + (FT.n >= 30 ? 'топов' : 'поля') + ': рука в лучших ' + pctS(ra.pct) + '%; пуш тоже +' + rowOf('shove').ev.toFixed(2) + ' bb' };
+        rec = { act: ra.act, why: 'частоты ' + (FT.n >= 30 ? 'топов' : 'поля') + ': рука в лучших ' + pctS(ra.pct) + '%' };
       } else if (best.act !== 'fold') rec = { act: best.act, why: 'максимальный EV (' + best.src + ')' };
       else {
         let rr = ra && ra.act !== 'fold' ? rowOf(ra.act) : null;
@@ -296,7 +359,20 @@
       if (recRow && recRow.asShove && rowOf('shove')) { rec = { act: 'shove', why: rec.why + '; ' + recRow.size.why }; best = rowOf('shove'); }
       rec.size = recRow && recRow.size && !recRow.asShove ? recRow.size : null;
       rec.ru = rec.size ? RU[rec.act] + ' до ' + rec.size.to + ' bb' : RU[rec.act] || rec.act;
-      return { tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : null, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
+      let compare = null;
+      const callR = rowOf('call'), raiseR = ['3bet', 'iso', '4bet', 'open'].map(rowOf).find(r => r && r.size);
+      if (callR && raiseR && callR.ev != null) {
+        const v = raiseR.sizes && raiseR.sizes.find(x => x.bucket === raiseR.size.bucket);
+        const rev = v && v.ev != null ? v.ev : raiseR.ev, rn = v && v.ev != null ? v.n : raiseR.n;
+        if (rev != null) compare = { call: callR.ev, callN: callR.n, raise: rev, raiseN: rn, raiseRu: raiseR.ru, diff: rev - callR.ev, reliable: callR.reliable && rn >= MIN_HAND_N };
+      }
+      let classTops = null;
+      if (h != null) {
+        const cl = K.C12OF[h], { Sb } = keys(sp); const c = {}; let n = 0;
+        for (const a of acts) if (a !== 'fold') { const x = cellHC('T|' + Sb + '|' + a + '|' + cl); c[a] = x ? x.n : 0; n += c[a]; }
+        if (n >= 10) classTops = { cls: CL_RU[cl] || cl, n, share: Object.fromEntries(Object.entries(c).map(([a, v]) => [a, v / n])) };
+      }
+      return { compare, classTops, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : null, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
     }
     // вердикт фактическому действию: act — метка из разметки (open:x2.2 / shove / …), sz — корзина сайза (d.sz)
     function verdict(adv, act, sz) {

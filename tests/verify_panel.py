@@ -29,7 +29,12 @@ CHECK = r"""([i, j]) => {
   const fold = a.rows.find(r => r.act === 'fold'); if (fold && fold.ev !== 0) errs.push('EV фолда ≠ 0');
   if (!acts.includes(a.rec.act)) errs.push('совет не из действий спота');
   // размер: свой поиск по таблице
-  if (a.rec.size) {
+  if (a.rec.size && a.rec.size.by) {   // размер выбран по EV: это максимум среди вариантов по правилу (надёжные, иначе n ≥ 50)
+    const row = a.rows.find(r => r.act === a.rec.act), ok = (row.sizes || []).filter(v => !v.allin && v.ev !== null);
+    const L = a.rec.size.by === 'ev' ? ok.filter(v => v.reliable) : ok.filter(v => v.n >= 50);
+    const best = L.reduce((p, q) => (q.ev > p.ev ? q : p), L[0]);
+    if (!best || best.bucket !== a.rec.size.bucket) errs.push('размер по EV не максимум');
+  } else if (a.rec.size) {
     const T = RM_SIZES, sa = a.rec.act === 'open' ? 'open' : a.rec.act === 'iso' ? 'iso' : a.rec.act === '3bet' ? (d.C === 'C0' ? '3bet' : 'sqz') : '4bet';
     const g = ({ '<12': '<20', '12-19': '<20', '20-35': '20-35', '36-59': '36-59', '60-99': '60+', '100-149': '60+', '150+': '60+' })[band];
     const side = sa === 'open' ? pb(d.pos) : sa === 'iso' ? 'L' + Math.min(Math.max(d.nLimp || 1, 1), 2) : sa === '4bet' ? '*' : (pb(d.pos) === 'SB' || pb(d.pos) === 'BB' ? 'blinds' : 'ip');

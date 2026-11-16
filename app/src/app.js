@@ -90,7 +90,7 @@
     const N = window.HANDS.length; $('#count').textContent = N ? N + ' раздач' : '';
     let tot = { n: 0, ok: 0, bad: 0, loss: 0, warn: 0 };
     window.HANDS.forEach((H, i) => {
-      const adv = analyse(H), mine = adv.filter(x => x.d.i === H.hero);
+      const adv = analyse(H), mine = adv.filter(x => x.d.i === H.hero && x.cards);
       const row = el('button', 'tv-h rm-row'); row.type = 'button';
       const top = el('div', 'tv-ht');
       top.append(el('span', 'tv-no', '#' + (i + 1)), cardsEl(H.rec.hc), el('span', 'tv-pos ' + ('p-' + ({ BTN: 'bt', SB: 'sb', BB: 'bb', CO: 'co', HJ: 'hj' })[H.rec.pl[H.hero][0]] || ''), H.rec.pl[H.hero][0]), el('span', 'tv-stk', fmt(H.rec.pl[H.hero][1]) + ' BB'), el('span', 'tv-lvl', ROOM_RU[H.room] + ' · ' + (H.rec.t || '')));

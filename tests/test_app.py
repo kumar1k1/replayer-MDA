@@ -52,10 +52,12 @@ async def main():
             n = await pg.evaluate('i => RMAPP.analyse(HANDS[i]).length', i)
             for k in range(n):
                 txt = await pg.evaluate("() => (document.querySelector('.rm-body') || {}).textContent || ''")
-                if 'Сейчас ход' not in txt or 'Совет' not in txt: bad += 1
+                kc = await pg.evaluate('([i, k]) => !!RMAPP.analyse(HANDS[i])[k].cards', [i, k])
+                # совет — только когда карты известны; без карт — пометка «совета нет»
+                if 'Сейчас ход' not in txt or (kc and 'Совет' not in txt) or (not kc and ('Совет' in txt or 'совета нет' not in txt)): bad += 1
                 steps += 1
                 await pg.keyboard.press('ArrowRight'); await pg.wait_for_timeout(30)
-        ok(bad == 0 and steps > 0, 'панель «Сейчас ход» с советом на всех %d шагах префлопа' % steps + ('' if not bad else ' (нет на %d)' % bad))
+        ok(bad == 0 and steps > 0, 'панель «Сейчас ход» на всех %d шагах: совет только при известных картах' % steps + ('' if not bad else ' (нет на %d)' % bad))
         ok(not errs, 'без ошибок JS при листании')
         await pg.evaluate('window.closeReplayer && window.closeReplayer()')
         await b.close()

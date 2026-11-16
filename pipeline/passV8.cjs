@@ -16,6 +16,7 @@ const fs = require('fs'), path = require('path');
 const C = require('./common.cjs');
 const K = require('../lib/cards.js');
 const CLU = require('../lib/clusters.js');
+const SZ = require('../lib/sizing.js');
 const P_ = C.loadParser(), { frames } = P_, parseHand = C.makeParse(P_);
 const LIMIT = +(process.env.LIMIT || 0);
 const readJ = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -104,6 +105,15 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
           addEV(c + '|' + S + '|' + act + '|*', rel, fa);
         }
         addEV(coh + '|' + Sb + '|' + act + '|*', rel, fa); // обобщённый уровень (семейство позиций)
+        // размеры (п.6 → п.8): EV и частоты по корзине сайза — «3bet@3x», чтобы выбирать размер по EV, а не только по частоте
+        const sizedA = d.sz && (act === 'open' || act === 'iso' || act === '3bet' || act === '4bet') ? act + '@' + d.sz : null;
+        if (sizedA) { addEV(coh + '|' + S + '|' + sizedA + '|*', rel, fa); addEV(coh + '|' + Sb + '|' + sizedA + '|*', rel, fa); }
+        // ответ открывшего на 3-бет по размеру 3-бета: как часто сбрасывает именно тот, в кого 3-бетят
+        if (d.tbl === 'VS3' && d.nR === 2 && d.i === d.openI && d.openTo > 0 && d.refTo > 0) {
+          const b3 = SZ.bucketOf('3bet', d.refTo / d.openTo);
+          addEV('R|' + [st, tb + kd, C.posBand(d.pos), C.posBand(d.oppPos), bnd, b3].join('|') + '|' + act, 0, false);
+          addEV('R|' + [st, tb + kd, '*', '*', bnd, b3].join('|') + '|' + act, 0, false);
+        }
         stats.dec++;
         // слой руки: рука видна → банк разыгран (FA всегда без вскрытия). Для топов и поля раздельно.
         const s = SD[i];
@@ -113,6 +123,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
           addHC(coh + '|' + S + '|' + act + '|' + cl, rel);
           addHC(coh + '|' + Sb + '|' + act + '|' + cl, rel);
           addHC(coh + '|' + Sb + '|' + act + '|*', rel); // среднее продолжения по вскрытым — для сдвига вскрытий
+          if (sizedA) { addHC(coh + '|' + Sb + '|' + sizedA + '|h' + s.h, rel); addHC(coh + '|' + S + '|' + sizedA + '|' + cl, rel); addHC(coh + '|' + Sb + '|' + sizedA + '|' + cl, rel); addHC(coh + '|' + Sb + '|' + sizedA + '|*', rel); }
         }
         // диапазоны олл-инов (по 169 рукам), по группе игрока
         if (s && act === 'shove') {
