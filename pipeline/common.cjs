@@ -61,6 +61,25 @@ class IdSet {
   }
 }
 
+// ---------- чекпоинты по архивам: прогон частями (П.10) ----------
+// Состояние пишется построчно (NDJSON) через временный файл и переименование — обрыв посреди записи не портит прошлый чекпоинт.
+// Читается потоково: на полной базе файл в сотни МБ, целиком строкой его не прочитать (предел длины строки V8).
+// MAX_SOURCES=N — пройти N новых архивов и выйти с кодом 3 («часть готова»); ЗАПУСК.cmd продолжит со следующего.
+function ndWriter(file) {
+  const tmp = file + '.tmp', fd = fs.openSync(tmp, 'w'); let buf = [], len = 0;
+  const flush = () => { if (buf.length) { fs.writeSync(fd, buf.join('\n') + '\n'); buf = []; len = 0; } };
+  return { put(row) { const s = JSON.stringify(row); buf.push(s); len += s.length; if (len > 8e6) flush(); }, close() { flush(); fs.closeSync(fd); fs.renameSync(tmp, file); } };
+}
+async function ndRead(file, onRow) {
+  const rl = require('readline').createInterface({ input: fs.createReadStream(file, { encoding: 'utf8', highWaterMark: 1 << 20 }), crlfDelay: Infinity });
+  for await (const ln of rl) if (ln) onRow(JSON.parse(ln));
+}
+function saveIds(ids, file) { const tmp = file + '.tmp'; const fd = fs.openSync(tmp, 'w'); const hdr = Buffer.alloc(16); hdr.writeDoubleLE(ids.cap, 0); hdr.writeDoubleLE(ids.n, 8); fs.writeSync(fd, hdr); const b = Buffer.from(ids.t.buffer, ids.t.byteOffset, ids.t.byteLength); for (let o = 0; o < b.length; o += 1 << 28) fs.writeSync(fd, b, o, Math.min(1 << 28, b.length - o)); fs.closeSync(fd); fs.renameSync(tmp, file); }
+function loadIds(file) { const fd = fs.openSync(file, 'r'); const hdr = Buffer.alloc(16); fs.readSync(fd, hdr, 0, 16, 0); const cap = hdr.readDoubleLE(0), n = hdr.readDoubleLE(8); const ids = new IdSet(Math.round(Math.log2(cap))); const b = Buffer.from(ids.t.buffer); for (let o = 0; o < b.length; o += 1 << 28) fs.readSync(fd, b, o, Math.min(1 << 28, b.length - o), 16 + o); fs.closeSync(fd); ids.n = n; return ids; }
+const MAX_SOURCES = +(process.env.MAX_SOURCES || 0);
+const PART_EXIT = 3;
+function partLimiter() { let k = 0; return { hit() { k++; return MAX_SOURCES > 0 && k >= MAX_SOURCES; }, count: () => k }; }
+
 function loadParser() {
   if (!BACKING) throw new Error('Не найден проект Backing (parser.cjs). Укажите BACKING_DIR=<папка реплеера>');
   return require(path.join(BACKING, 'pipeline', 'parser.cjs'));
@@ -153,4 +172,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);

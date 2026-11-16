@@ -37,14 +37,38 @@ function tourOf(room, text, rp, kd) {
   for (const e of text.matchAll(/finished the tournament in (\d+)(?:st|nd|rd|th) place( and received)?/g)) { const pl = +e[1]; T.ev.push([t, pl]); T.N = Math.max(T.N, pl); if (e[2]) T.Pb = Math.max(T.Pb, pl); }
   if (/wins the tournament/.test(text)) T.win = 1;
 }
-const IDS = new C.IdSet();
-const st = { hands: 0, dups: 0, broken: 0, errs: 0 };
+let IDS = new C.IdSet();
+let st = { hands: 0, dups: 0, broken: 0, errs: 0, done: [] };
+// чекпоинт после каждого архива: RESUME=1 — продолжить; MAX_SOURCES=N — пройти N архивов и выйти (часть готова)
+const STATE = path.join(C.OUT, 'stats_state.ndjson'), IDSF = path.join(C.OUT, 'stats_ids.bin');
+function saveState() {
+  const w = C.ndWriter(STATE);
+  w.put(['s', st]);
+  for (const [k, p] of players) { const sp = []; for (let i = 0; i < p.u.length; i++) if (p.u[i]) sp.push(i, p.u[i]); w.put(['p', k, sp, Array.from(p.f)]); }
+  for (const [k, T] of TOUR) w.put(['t', k, Object.assign({}, T, { bk: [...T.bk].map(([b, B]) => [b, B[0], B[1], [...B[2]]]) })]);
+  w.close(); C.saveIds(IDS, IDSF);
+}
+async function loadState() {
+  await C.ndRead(STATE, (r) => {
+    if (r[0] === 's') st = r[1];
+    else if (r[0] === 'p') { const p = { u: new Uint32Array(NU), f: Float64Array.from(r[3]) }; for (let i = 0; i < r[2].length; i += 2) p.u[r[2][i]] = r[2][i + 1]; players.set(r[1], p); }
+    else if (r[0] === 't') { const T = r[2]; T.bk = new Map(T.bk.map(([b, s0, n, tb]) => [b, [s0, n, new Set(tb)]])); TOUR.set(r[1], T); }
+  });
+  IDS = C.loadIds(IDSF);
+}
 function P(key) { let p = players.get(key); if (!p) { p = { u: new Uint32Array(NU), f: new Float64Array(24) }; players.set(key, p); } return p; }
 
 (async () => {
   const t0 = Date.now();
-  for await (const x of C.iterHands(C.sourceFiles())) {
-    if (x.end) { if (/\.rar$/i.test(x.end)) C.log('статы: пройден', x.end, '— рук', st.hands, 'игроков', players.size, ((Date.now() - t0) / 60000).toFixed(1) + ' мин'); continue; }
+  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { await loadState(); C.log('статы: продолжаю с чекпоинта — рук', st.hands, 'архивов пройдено', st.done.length); }
+  const part = C.partLimiter();
+  for await (const x of C.iterHands(C.sourceFiles(), new Set(st.done))) {
+    if (x.end) {
+      st.done.push(x.end); saveState();
+      C.log('статы: пройден', x.end, '— рук', st.hands, 'игроков', players.size, ((Date.now() - t0) / 60000).toFixed(1) + ' мин (чекпоинт сохранён)');
+      if (part.hit()) { C.log('статы: часть готова (' + part.count() + ' арх.) — запустите снова, продолжу со следующего'); process.exit(C.PART_EXIT); }
+      continue;
+    }
     if (LIMIT && st.hands >= LIMIT) break;
     try {
       const rp = parseHand(x.hand);

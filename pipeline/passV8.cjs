@@ -45,20 +45,9 @@ C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, '| по формату:
 // HC:  ключ → [n, Σrel, Σrel²]                 (рука известна, банк разыгран дальше)
 // RS/RC: ключ → Int32Array(169)               (диапазоны пуша / колла пуша по вскрытиям)
 let EV = new Map(), HC = new Map(), RS = new Map(), RC = new Map();
-const IDS = new C.IdSet(); let stats_broken = 0;
+let IDS = new C.IdSet(); let stats_broken = 0;
 let stats = { hands: 0, dec: 0, adj: 0, sd: 0, done: [] };
-const STATE = path.join(C.OUT, 'v8_state.ndjson');
-// чекпоинт — построчный файл (NDJSON): одна строка на ячейку, чтобы не упираться в предел длины строки V8
-if (process.env.RESUME === '1' && fs.existsSync(STATE)) {
-  const lines = fs.readFileSync(STATE, 'utf8').split('\n');
-  for (const ln of lines) {
-    if (!ln) continue;
-    const [t, k, v] = JSON.parse(ln);
-    if (t === 's') stats = v; else if (t === 'e') EV.set(k, v); else if (t === 'h') HC.set(k, v);
-    else if (t === 'rs') RS.set(k, Int32Array.from(v)); else if (t === 'rc') RC.set(k, Int32Array.from(v));
-  }
-  C.log('v8: продолжаю с чекпоинта, рук', stats.hands, 'источников', stats.done.length);
-}
+const STATE = path.join(C.OUT, 'v8_state.ndjson'), IDSF = path.join(C.OUT, 'v8_ids.bin');
 function addEV(key, rel, fa) {
   let c = EV.get(key); if (!c) { c = [0, 0, 0, 0, 0]; EV.set(key, c); }
   c[0]++; c[1] += rel; c[2] += rel * rel; if (fa) { c[3]++; c[4] += rel; }
@@ -69,22 +58,36 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
 // ---------- проход ----------
 (async () => {
   const t0 = Date.now();
+  // чекпоинт — построчный файл, читается потоково (на полной базе — сотни МБ); плюс список встреченных раздач (повторы)
+  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) {
+    await C.ndRead(STATE, ([t, k, v]) => {
+      if (t === 's') stats = v; else if (t === 'e') EV.set(k, v); else if (t === 'h') HC.set(k, v);
+      else if (t === 'rs') RS.set(k, Int32Array.from(v)); else if (t === 'rc') RC.set(k, Int32Array.from(v));
+    });
+    IDS = C.loadIds(IDSF); stats_broken = stats.broken || 0;
+    C.log('v8: продолжаю с чекпоинта, рук', stats.hands, 'источников', stats.done.length);
+  }
   const done = new Set(stats.done);
+  // сохранение — только на границе архива: иначе при продолжении архив прошёлся бы заново и часть раздач посчиталась бы дважды
   const saveState = () => {
-    const tmp = STATE + '.tmp', fd = fs.openSync(tmp, 'w');
-    let buf = [];
-    const put = (row) => { buf.push(JSON.stringify(row)); if (buf.length >= 20000) { fs.writeSync(fd, buf.join('\n') + '\n'); buf = []; } };
-    put(['s', '', stats]);
-    for (const [k, c] of EV) put(['e', k, c]);
-    for (const [k, c] of HC) put(['h', k, c]);
-    for (const [k, a] of RS) put(['rs', k, Array.from(a)]);
-    for (const [k, a] of RC) put(['rc', k, Array.from(a)]);
-    if (buf.length) fs.writeSync(fd, buf.join('\n') + '\n');
-    fs.closeSync(fd); fs.renameSync(tmp, STATE);
+    stats.broken = stats_broken;
+    const w = C.ndWriter(STATE);
+    w.put(['s', '', stats]);
+    for (const [k, c] of EV) w.put(['e', k, c]);
+    for (const [k, c] of HC) w.put(['h', k, c]);
+    for (const [k, a] of RS) w.put(['rs', k, Array.from(a)]);
+    for (const [k, a] of RC) w.put(['rc', k, Array.from(a)]);
+    w.close(); C.saveIds(IDS, IDSF);
   };
-  let errs = 0, lastSave = Date.now();
+  let errs = 0;
+  const part = C.partLimiter();
   for await (const x of C.iterHands(C.sourceFiles(), done)) {
-    if (x.end) { stats.done.push(x.end); if (/\.rar$/i.test(x.end) || Date.now() - lastSave > 600000) { saveState(); lastSave = Date.now(); } if (/\.rar$/i.test(x.end)) C.log('v8: источник пройден', x.end, '— рук', stats.hands, 'ячеек EV', EV.size, 'HC', HC.size); continue; }
+    if (x.end) {
+      stats.done.push(x.end); saveState();
+      C.log('v8: источник пройден', x.end, '— рук', stats.hands, 'ячеек EV', EV.size, 'HC', HC.size, '(чекпоинт)');
+      if (part.hit()) { C.log('v8: часть готова — запустите снова'); process.exit(C.PART_EXIT); }
+      continue;
+    }
     if (LIMIT && stats.hands >= LIMIT) break;
     try {
       const rp = parseHand(x.hand);
@@ -157,7 +160,6 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       if (stats.hands % 1000000 === 0) C.log('v8:', stats.hands, 'рук, решений', stats.dec, 'поправок на олл-ин', stats.adj, ((Date.now() - t0) / 60000).toFixed(1) + ' мин');
     } catch (e) { if (++errs <= 8) C.log('v8 ERR', e.message); }
   }
-  saveState();
   // ---------- сериализация ----------
   // Порог — на СПОТ (сумма по действиям), а не на ячейку: иначе редкие действия выпадают и частоты
   // смещаются к частым (в v6 колл пуша мог исчезнуть, и выходило «все фолдят»). Малые ячейки — только счётчик.

@@ -72,15 +72,38 @@ for (const fam of FAMS) {
 const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
 const model0 = LU.create({ pool: Array.from(pool), cl: Object.fromEntries(Object.entries(cl).map(([k, v]) => [k, Array.from(v)])), K });
 // записи: по ответчику — опен-id, ключ поправки, три прогноза (пул / кластер / игрок), факт (фолд 1/0, −1 — не дошёл)
-const R = { open: [], key: [], skey: [], pP: [], pC: [], pF: [], y: [] };
-const O = { half: [], fam: [], y: [], first: [] };
+let R = { open: [], key: [], skey: [], pP: [], pC: [], pF: [], y: [] };
+let O = { half: [], fam: [], y: [], first: [] };
 const keyId = new Map(), keys = [];
 const kid = (k) => { let v = keyId.get(k); if (v == null) { v = keys.length; keys.push(k); keyId.set(k, v); } return v; };
-const seen = new C.IdSet();
-let nHands = 0;
+let seen = new C.IdSet();
+let nHands = 0, done = [];
+// чекпоинт после каждого архива: массивы — в двоичных файлах (на полной базе десятки миллионов строк)
+const CK = path.join(OUT, 'lineup_ck'), IDSF = path.join(OUT, 'lineup_ids.bin');
+const TYPES = { open: Int32Array, key: Int32Array, skey: Int32Array, pP: Float64Array, pC: Float64Array, pF: Float64Array, y: Int8Array };
+const OTYPES = { half: Int8Array, fam: Int8Array, y: Int8Array };
+function saveState() {
+  fs.mkdirSync(CK, { recursive: true });
+  const wr = (name, T, a) => { const t = T.from(a); fs.writeFileSync(path.join(CK, name + '.tmp'), Buffer.from(t.buffer)); };
+  for (const [k, T] of Object.entries(TYPES)) wr('R_' + k, T, R[k]);
+  for (const [k, T] of Object.entries(OTYPES)) wr('O_' + k, T, k === 'fam' ? O.fam.map(f => (f === 'ai' ? 1 : 0)) : O[k]);
+  fs.writeFileSync(path.join(CK, 'meta.tmp'), JSON.stringify({ keys, nHands, done }));
+  for (const f of fs.readdirSync(CK)) if (f.endsWith('.tmp')) fs.renameSync(path.join(CK, f), path.join(CK, f.slice(0, -4)));
+  C.saveIds(seen, IDSF);
+}
+function loadState() {
+  const m = JSON.parse(fs.readFileSync(path.join(CK, 'meta'), 'utf8'));
+  m.keys.forEach((k, i) => { keys.push(k); keyId.set(k, i); }); nHands = m.nHands; done = m.done;
+  const rd = (name, T) => { const b = fs.readFileSync(path.join(CK, name)); return Array.from(new T(b.buffer, b.byteOffset, b.byteLength / T.BYTES_PER_ELEMENT)); };
+  for (const [k, T] of Object.entries(TYPES)) R[k] = rd('R_' + k, T);
+  for (const [k, T] of Object.entries(OTYPES)) O[k] = k === 'fam' ? rd('O_fam', T).map(f => (f ? 'ai' : 'vso')) : rd('O_' + k, T);
+  seen = C.loadIds(IDSF);
+}
 (async () => {
-  for await (const x of C.iterHands(C.sourceFiles())) {
-    if (x.end) continue;
+  if (process.env.RESUME === '1' && fs.existsSync(path.join(CK, 'meta')) && fs.existsSync(IDSF)) { loadState(); C.log('лайнап: продолжаю с чекпоинта, архивов', done.length, 'опенов', O.half.length); }
+  const part = C.partLimiter();
+  for await (const x of C.iterHands(C.sourceFiles(), new Set(done))) {
+    if (x.end) { done.push(x.end); saveState(); C.log('лайнап: пройден', x.end, '(чекпоинт)'); if (part.hit()) { C.log('лайнап: часть готова'); process.exit(C.PART_EXIT); } continue; }
     let rp; try { rp = parse(x.hand); } catch (e) { continue; }
     if (!rp || !rp.n || !rp.bb) continue;
     const room = C.roomOf(x.hand);
