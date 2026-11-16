@@ -115,8 +115,17 @@ async function* iterHands(files, done) {
     yield { end: base }; // конец источника — точка для чекпоинта
   }
 }
+// SAMPLE=N — взять каждую N-ю раздачу (по хэшу номера, а не подряд): для сайзингов и лайнапа четверти базы хватает
+// с запасом, а проход в разы быстрее. Отбор не зависит от половин A/B (другие биты хэша).
+const SAMPLE = +(process.env.SAMPLE || 1);
+function sampled(h) {
+  if (SAMPLE <= 1) return true;
+  const m = /Hand #(\d+)/.exec(h); if (!m) return true;
+  let x = 2166136261; const s = m[1]; for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0; }
+  return ((x >>> 11) % SAMPLE) === 0;
+}
 function* splitHands(txt, fp) {
-  for (const h of txt.split(/\n(?=.*?Hand #)/)) if (/Hand #/.test(h)) yield { hand: h, fp };
+  for (const h of txt.split(/\n(?=.*?Hand #)/)) if (/Hand #/.test(h) && sampled(h)) yield { hand: h, fp };
 }
 
 const SP = require('../lib/spots.js');

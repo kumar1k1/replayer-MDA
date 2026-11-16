@@ -10,16 +10,18 @@
 // ============================================================================
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
-const MDA = process.env.MDA_LAB_DIR || ['D:/MDA Lab', path.join(ROOT, '..', 'kumar1k1', 'mda-lab'), path.join(ROOT, '..', 'mda-lab')].find(d => fs.existsSync(path.join(d, 'app', 'renderer', 'replayer.js')));
+const MDA0 = [process.env.MDA_LAB_DIR || '', path.join(ROOT, '..', 'kumar1k1', 'mda-lab'), path.join(ROOT, '..', 'mda-lab')].find(d => fs.existsSync(path.join(d, 'app', 'renderer', 'replayer.js')));
+// нет исходников MDA Lab рядом — берём копию из app/vendor/mda-lab (коммит указан в ОТКУДА.md)
+const MDA = MDA0 || path.join(__dirname, 'vendor', 'mda-lab-root');
 const BK = process.env.BACKING_DIR || ['D:/маининг/реплеер', path.join(ROOT, '..', 'backing')].find(d => fs.existsSync(path.join(d, 'replayer.html')));
-if (!MDA) throw new Error('Не найден MDA Lab (MDA_LAB_DIR)'); if (!BK) throw new Error('Не найден Backing (BACKING_DIR)');
+if (!BK) throw new Error('Не найден Backing (BACKING_DIR)');
 const OUT = path.join(__dirname, 'dist'); fs.mkdirSync(path.join(OUT, 'js'), { recursive: true }); fs.mkdirSync(path.join(OUT, 'data'), { recursive: true });
 const R = (p) => fs.readFileSync(p, 'utf8');
 const W = (p, s) => fs.writeFileSync(path.join(OUT, p), s);
 const OUTD = process.env.OUT_DIR || path.join(ROOT, 'pipeline', 'out');
 
 // 1. реплеер MDA Lab
-const rv = path.join(MDA, 'app', 'renderer');
+const rv = MDA0 ? path.join(MDA, 'app', 'renderer') : path.join(__dirname, 'vendor', 'mda-lab');
 let rjs = R(path.join(rv, 'replayer.js'));
 const HOOK_AT = '      if (k >= fr.length - 1) stop();\n    }\n    function stop()';
 if (!rjs.includes(HOOK_AT)) throw new Error('replayer.js MDA Lab изменился: не найдено место для крючка RV_HOOK');
@@ -28,7 +30,7 @@ W('js/replay.js', R(path.join(rv, 'replay.js')));
 W('js/replayer.js', rjs);
 W('styles.css', R(path.join(rv, 'styles.css')));
 fs.copyFileSync(path.join(rv, 'icon.png'), path.join(OUT, 'icon.png'));
-let mdaCommit = ''; try { mdaCommit = require('child_process').execSync('git -C "' + MDA + '" log -1 --format=%h').toString().trim(); } catch (e) { /* не git */ }
+let mdaCommit = MDA0 ? '' : '4f88636 (копия)'; if (MDA0) try { mdaCommit = require('child_process').execSync('git -C "' + MDA + '" log -1 --format=%h').toString().trim(); } catch (e) { /* не git */ }
 
 // 2. парсер Backing — тот же фрагмент replayer.html, что в pipeline/parser.cjs; нормализация — как в pipeline/common.cjs
 const html = R(path.join(BK, 'replayer.html'));
@@ -48,15 +50,23 @@ for (const f of ['shim.js', 'advisor.js', 'app.js']) W('js/' + f, R(path.join(__
 // 4. данные (как скрипты: index.html открывается без сервера, fetch локальных файлов браузер запрещает)
 const asJs = (name, file, varName) => { const s = R(file); W('data/' + name, 'window.' + varName + '=' + s + ';\n'); return s.length; };
 const sz = {};
-sz.model = asJs('model.js', process.env.MODEL || path.join(OUTD, 'model_v8.json'), 'RM_MODEL');
+// модель: на полной базе — сотни МБ; для браузера отсекаются ячейки вскрытий с n < HC_MIN и пустые ячейки EV
+{
+  const M = JSON.parse(R(process.env.MODEL || path.join(OUTD, 'model_v8.json')));
+  const HC_MIN = +(process.env.HC_MIN || 5), EV_MIN = +(process.env.EV_MIN || 1); let cut = 0;
+  for (const k in M.HC) if (M.HC[k][0] < HC_MIN) { delete M.HC[k]; cut++; }
+  for (const k in M.EV) if (M.EV[k][0] < EV_MIN) { delete M.EV[k]; cut++; }
+  const s = JSON.stringify(M); W('data/model.js', 'window.RM_MODEL=' + s + ';\n'); sz.model = s.length; sz.modelCut = cut;
+}
 sz.eq = asJs('eq169.js', path.join(ROOT, 'data', 'eq169.json'), 'RM_EQ');
 sz.sizes = asJs('sizes.js', path.join(ROOT, 'data', 'sizes_v8.json'), 'RM_SIZES');
 sz.lineup = asJs('lineup.js', path.join(ROOT, 'data', 'lineup_v8.json'), 'RM_LINEUP');
 sz.clusters = asJs('clusters.js', path.join(ROOT, 'data', 'clusters_v2.json'), 'RM_CLMODEL');
 // игроки: «рум:ник» → [кластер, расстояние, второй кластер, рук, надёжен, префлоп-счётчики (разреженно «слот:число»)]
+const APP_MIN = +(process.env.APP_MIN_HANDS || 100); // в реплеер — игроки с ≥ 100 рук: у остальных кластер почти пуловый
 const pl = {}, CL = JSON.parse(R(process.env.PLAYERS_CL || path.join(OUTD, 'players_cl_v8.json')));
 for (const ln of R(process.env.PLAYERS || path.join(OUTD, 'players_v8.ndjson')).split('\n')) {
-  if (!ln) continue; const p = JSON.parse(ln), c = CL[p.k]; if (!c) continue;
+  if (!ln) continue; const p = JSON.parse(ln), c = CL[p.k]; if (!c || p.n < APP_MIN) continue;
   const sp = []; p.pf.forEach((v, o) => { if (v) sp.push(o + ':' + v); });
   pl[p.k] = [c[0], c[1], c[2], c[4], c[5], sp.join(',')];
 }
