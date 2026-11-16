@@ -20,6 +20,7 @@ echo Лог: %OUT%\progress_v7.log
 echo.
 
 call :step 1 "Статы игроков (весь проход, ~4-6 ч)"      statsdone   "node --max-old-space-size=%MEM% pipeline\passStats.cjs" || goto :fail
+call :step 2s "Точность оценки стадии и калибровка"     stagedone   "node --max-old-space-size=%MEM% pipeline\stage_eval.cjs" || goto :fail
 call :step 2 "Кластеры"                                  clusdone    "node --max-old-space-size=%MEM% pipeline\clusters.cjs" || goto :fail
 call :step 3 "Топы (3000+ рук)"                          topsdone    "node --max-old-space-size=%MEM% pipeline\tops.cjs" || goto :fail
 set "SAMPLE=4"

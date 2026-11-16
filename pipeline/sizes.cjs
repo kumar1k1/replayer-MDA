@@ -27,6 +27,7 @@ const seen = new C.IdSet();
     const room = C.roomOf(x.hand);
     if (!seen.add(room, rp.handId)) continue;
     const fr = frames(rp); if (!C.handIntact(rp, fr[fr.length - 1], x.hand)) continue;
+    const kd = C.kindOf(rp, x.hand, x.fp);
     for (const d of SP.preflopDecisions(rp, () => '')) {
       nDec++;
       if (d.act === 'shove' || (d.to && !d.aiAct && d.tbl !== 'AI')) {
@@ -45,7 +46,8 @@ const seen = new C.IdSet();
       const a = d.szAct; if (!a) continue;
       const v = SZ.measure(a, d.to, d.refTo, d.nLimp);
       const top = tops.has(C.playerKey(room, rp.nm[d.i]));
-      for (const k of SZ.keysFor(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp).slice(0, a === 'open' ? 2 : 1)) {
+      // ключи: с форматом турнира (фризаут / PKO) и общие
+      for (const k of SZ.keysFor(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd).slice(0, a === 'open' ? 3 : 2)) {
         add('pool', k, v); if (top) add('tops', k, v);
         const kk = '*' + k.slice(k.indexOf('|')); add('pool', kk, v); if (top) add('tops', kk, v);
       }

@@ -2,7 +2,7 @@
 // Реплеер replayer-MDA: загрузка историй, список раздач, разбор героя. Стол — реплеер MDA Lab (js/replayer.js),
 // подсказки — панель «Сейчас ход» (js/advisor.js).
 (function () {
-  const SP = window.RMSpots, E8 = window.RMEngine8, K = window.RMCards, CLU = window.RMClusters;
+  const SP = window.RMSpots, E8 = window.RMEngine8, K = window.RMCards, CLU = window.RMClusters, STG = window.STAGE;
   const ENG = E8.create(window.RM_MODEL, window.RM_EQ, { sizes: window.RM_SIZES, lineup: window.RM_LINEUP });
   const PLAYERS = window.RM_PLAYERS || {};
   const roomOf = (t) => (/^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other');
@@ -41,7 +41,8 @@
     if (H.adv) return H.adv;
     const rp = H.rp, room = H.room;
     const grpOf = (nick) => { const p = player(room, nick); return p ? p.grp : 'unk'; };
-    const ds = E8.decisionsBacking(rp, grpOf, '', room);
+    const ctx = tourCtx(H);
+    const ds = E8.decisionsBacking(rp, grpOf, '', room, ctx);
     const info = (j) => player(room, rp.nm[j]);
     H.adv = ds.map(d => {
       const cs = d.i === H.hero ? (H.rec.hc || null) : (H.rec.sh[d.i] || null);
@@ -53,6 +54,24 @@
     return H.adv;
   }
 
+  // ---------- турнир: стадия и данные для баунти (lib/stage.js) ----------
+  const TOURS = new Map();
+  function tourOf(tid) {
+    if (TOURS.has(tid)) return TOURS.get(tid);
+    const T = STG.collect(window.HANDS.filter(H => H.tid === tid));
+    const H0 = window.HANDS.find(H => H.tid === tid), parts = H0 ? (String(H0.rp.title).replace(/(\d),(\d{3})/g, '$1$2').match(/[$€£₮]([\d.]+)\s*\+\s*[$€£₮]([\d.]+)\s*\+\s*[$€£₮]([\d.]+)/) || null) : null;
+    T.P = parts ? +parts[1] : 0; T.B = parts ? +parts[2] : 0; // PokerStars PKO: призовая часть + баунти + рейк
+    TOURS.set(tid, T); return T;
+  }
+  function tourCtx(H) {
+    const T = tourOf(H.tid), t = STG.tsOf(H.rp.date), sa = STG.stageAt(T, t, H.rp.n, window.RM_STAGE_CALIB);
+    const R = sa && sa.exact ? sa.R : null;
+    // доля оставшихся: точно (в призовых — от числа призовых ≈ 15% поля) или оценка по среднему стеку
+    const r = sa ? (sa.exact ? (T.Pb ? Math.min(1, sa.R / (T.Pb / 0.15)) : sa.r) : sa.r) : 1;
+    H.stage = sa;
+    return { stage: sa ? sa.stage : null, tour: { S: T.S, P: T.P, B: T.B, r, R } };
+  }
+
   // ---------- загрузка ----------
   const SPLIT = /\r?\n(?=(?:PokerStars Hand #|CoinPoker Hand #|Poker Hand #))/;
   function load(text) {
@@ -60,6 +79,7 @@
     let bad = 0;
     for (const t of parts) {
       let rp = null; try { rp = window.BKP.parse(t); } catch (e) { rp = null; }
+      if (rp) rp.text = t; // нужен движку: баунти у мест, формат турнира
       if (!rp || !rp.n || !rp.bb || !rp.pl || rp.pl.length < 2) { bad++; continue; }
       const tm = t.match(/Tournament #(\d+)/), dt = String(rp.date || '');
       window.HANDS.push({ text: t, rp, room: roomOf(t), tid: tm ? tm[1] : '—', date: dt, hero: -1, rec: null, adv: null });
@@ -140,6 +160,7 @@
   // «Загрузить турнир» — заменяет загруженное; «Добавить файлы» — дописывает. Раздачи — по турниру и времени.
   async function readFiles(files, replace) {
     if (replace) { window.HANDS.length = 0; window.DB.cols = { net: [], nev: [], room: [] }; }
+    TOURS.clear();
     let add = 0, bad = 0;
     for (const f of files) { const r = load(await f.text()); add += r.added; bad += r.bad; }
     window.HANDS.sort((a, b) => (a.tid < b.tid ? -1 : a.tid > b.tid ? 1 : a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.rp.handId).localeCompare(String(b.rp.handId))));
@@ -158,5 +179,5 @@
     document.body.addEventListener('drop', (e) => { e.preventDefault(); readFiles(Array.from(e.dataTransfer.files || []), true); });
     if (window.RM_DEMO) { load(window.RM_DEMO); refreshTours(); refreshHero(); $('#msg').textContent = 'Пример: ' + window.HANDS.length + ' раздач из базы — загрузите свой турнир'; }
   });
-  window.RMAPP = { player, analyse, toRec, load, setHero, GRU, ROOM_RU, ENG, netOf };
+  window.RMAPP = { player, analyse, toRec, load, setHero, GRU, ROOM_RU, ENG, netOf, tourOf, STAGE_RU: STG.NAMES };
 })();

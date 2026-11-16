@@ -20,12 +20,14 @@ PICK = r"""(N) => {   // равномерно по раздачам: шаги п
 }"""
 CHECK = r"""([i, j]) => {
   const H = HANDS[i], x = RMAPP.analyse(H)[j], a = x.a, d = x.d, M = RM_MODEL.EV, errs = [];
-  const tk = d.tb + d.kd, band = RMSpots.bandOf(d.eff), pb = RMSpots.posBand;
+  const tk = d.tb + (a.kdData || d.kd), band = RMSpots.bandOf(d.eff), pb = RMSpots.posBand;
   const S = [d.tbl, a.st, tk, d.pos, d.oppPos, band, d.L, d.C].join('|'), Sb = '~' + [d.tbl, a.st, tk, pb(d.pos), d.oppPos ? pb(d.oppPos) : '', band, d.L, d.C].join('|');
   const acts = a.rows.map(r => r.act);
   const cnt = (coh, s) => acts.map(ac => (M[coh + '|' + s + '|' + ac + '|*'] || [0])[0]);
-  let v = cnt('T', S), tot = v.reduce((p, q) => p + q, 0); if (tot < 30) { v = cnt('T', Sb); tot = v.reduce((p, q) => p + q, 0); }
-  a.rows.forEach((r, q) => { const f = tot ? v[q] / tot : 0; if (Math.abs(f - r.freqT) > 1e-9) errs.push('частота ' + r.act + ': панель ' + r.freqT + ', модель ' + f); });
+  let pre = S, v = cnt('T', S), tot = v.reduce((p, q) => p + q, 0); if (tot < 30) { pre = Sb; v = cnt('T', Sb); tot = v.reduce((p, q) => p + q, 0); }
+  // стадия: ячейки Z|стадия|T|… стягиваются к общим с весом 200
+  const z = acts.map(ac => (d.stage ? (M['Z|' + d.stage + '|T|' + pre + '|' + ac + '|*'] || [0])[0] : 0)), zt = z.reduce((p, q) => p + q, 0);
+  a.rows.forEach((r, q) => { let f = tot ? v[q] / tot : 0; if (d.stage && tot && zt) f = (z[q] + 200 * f) / (zt + 200); if (Math.abs(f - r.freqT) > 1e-9) errs.push('частота ' + r.act + ': панель ' + r.freqT + ', модель ' + f); });
   const fold = a.rows.find(r => r.act === 'fold'); if (fold && fold.ev !== 0) errs.push('EV фолда ≠ 0');
   if (!acts.includes(a.rec.act)) errs.push('совет не из действий спота');
   // размер: свой поиск по таблице
@@ -38,7 +40,8 @@ CHECK = r"""([i, j]) => {
     const T = RM_SIZES, sa = a.rec.act === 'open' ? 'open' : a.rec.act === 'iso' ? 'iso' : a.rec.act === '3bet' ? (d.C === 'C0' ? '3bet' : 'sqz') : '4bet';
     const g = ({ '<12': '<20', '12-19': '<20', '20-35': '20-35', '36-59': '36-59', '60-99': '60+', '100-149': '60+', '150+': '60+' })[band];
     const side = sa === 'open' ? pb(d.pos) : sa === 'iso' ? 'L' + Math.min(Math.max(d.nLimp || 1, 1), 2) : sa === '4bet' ? '*' : (pb(d.pos) === 'SB' || pb(d.pos) === 'BB' ? 'blinds' : 'ip');
-    const keys = [d.room + '|' + sa + '|' + g + '|' + side]; if (sa === 'open') keys.push(d.room + '|open|' + g + '|*'); if (sa === 'iso' && side === 'L2') keys.push(d.room + '|iso|' + g + '|L1'); keys.push('*|' + sa + '|' + g + '|' + side);
+    const fk = d.kd === 'n' ? 'n' : 'k';
+    const keys = [d.room + '|' + sa + '|' + g + '|' + side + '|' + fk, d.room + '|' + sa + '|' + g + '|' + side]; if (sa === 'open') keys.push(d.room + '|open|' + g + '|*'); if (sa === 'iso' && side === 'L2') keys.push(d.room + '|iso|' + g + '|L1'); keys.push('*|' + sa + '|' + g + '|' + side);
     let row = null; for (const k of keys) { for (const L of ['tops', 'pool']) { const r = T[L][k]; if (r && r.n >= (L === 'tops' ? 100 : 200)) { row = r; break; } } if (row) break; }
     const m = row ? row.rec : { open: 2, iso: 2.5, '3bet': 3, sqz: 4, '4bet': 2.2 }[sa];
     let to = sa === 'open' ? m : sa === 'iso' ? m + (d.nLimp || 0) : m * d.refTo;

@@ -44,7 +44,7 @@ W('js/parser.js', "'use strict';\n// Парсер Backing (из replayer.html) +
   'return { parse: (t) => P.parseHand(normalizeHand(t) + "\\n") };\n})();\n');
 
 // 3. библиотеки и движок
-for (const f of ['lib/cards.js', 'lib/spots.js', 'lib/sizing.js', 'lib/lineup.js', 'lib/clusters.js', 'engine/engine_v8.js']) W('js/' + path.basename(f), R(path.join(ROOT, f)));
+for (const f of ['lib/cards.js', 'lib/spots.js', 'lib/sizing.js', 'lib/lineup.js', 'lib/stage.js', 'lib/clusters.js', 'engine/engine_v8.js']) W('js/' + path.basename(f), R(path.join(ROOT, f)));
 for (const f of ['shim.js', 'advisor.js', 'app.js']) W('js/' + f, R(path.join(__dirname, 'src', f)));
 
 // 4. данные (как скрипты: index.html открывается без сервера, fetch локальных файлов браузер запрещает)
@@ -62,6 +62,7 @@ sz.eq = asJs('eq169.js', path.join(ROOT, 'data', 'eq169.json'), 'RM_EQ');
 sz.sizes = asJs('sizes.js', path.join(ROOT, 'data', 'sizes_v8.json'), 'RM_SIZES');
 sz.lineup = asJs('lineup.js', path.join(ROOT, 'data', 'lineup_v8.json'), 'RM_LINEUP');
 sz.clusters = asJs('clusters.js', path.join(ROOT, 'data', 'clusters_v2.json'), 'RM_CLMODEL');
+if (fs.existsSync(path.join(ROOT, 'data', 'stage_calib.json'))) asJs('stage_calib.js', path.join(ROOT, 'data', 'stage_calib.json'), 'RM_STAGE_CALIB'); else W('data/stage_calib.js', '');
 // игроки: «рум:ник» → [кластер, расстояние, второй кластер, рук, надёжен, префлоп-счётчики (разреженно «слот:число»)]
 const APP_MIN = +(process.env.APP_MIN_HANDS || 100); // в реплеер — игроки с ≥ 100 рук: у остальных кластер почти пуловый
 const pl = {}, CL = JSON.parse(R(process.env.PLAYERS_CL || path.join(OUTD, 'players_cl_v8.json')));

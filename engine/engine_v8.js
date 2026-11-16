@@ -16,6 +16,7 @@
   if (typeof module !== 'undefined') module.exports = factory(require('../lib/cards.js'), require('../lib/spots.js'), require('../lib/sizing.js'), require('../lib/lineup.js'));
   else root.RMEngine8 = factory(root.RMCards, root.RMSpots, root.SIZING, root.LINEUP);
 })(typeof self !== 'undefined' ? self : this, function (K, SP, SZ, LU) {
+  const ERR_BB = 0.5; // «ошибка» — только от 0,5 bb (план D13; подбирается на раздачах владельца)
   const K_SPOT = 60, K_HAND = 40, K_CLASS = 80, ALPHA_R = 12, MIN_HAND_N = 400;
   let DEBUG = null;
   const ACTS = {
@@ -26,6 +27,7 @@
     AI: ['fold', 'call']
   };
   const RU = { fold: 'фолд', limp: 'лимп', check: 'чек', call: 'колл', shove: 'олл-ин', open: 'опен', iso: 'изо', '3bet': '3-бет', '4bet': '4-бет', raise: 'рейз' };
+  const KD_RU = { n: 'фризаут', k: 'PKO', m: 'Mystery Bounty' };
   const actClass = (a) => (a === 'raise' ? 'shove' : String(a).split(':')[0]);
   const clamp = (p) => Math.min(0.999, Math.max(0.001, p));
   const oddsMul = (p, r) => { const o = clamp(p) / (1 - clamp(p)) * r; return o / (1 + o); };
@@ -81,9 +83,18 @@
         Sb: '~' + [sp.tbl, sp.st, tk, SP.posBand(sp.pos), sp.oppPos ? SP.posBand(sp.oppPos) : '', b, sp.L, sp.C].join('|')
       };
     }
+    // стадия турнира — слой поверх (план C9): ячейка «Z|стадия|…» стягивается к общей с весом K_STAGE
+    const K_STAGE = 200;
+    function withStage(sp, coh, key, base) {
+      if (!sp.stage) return base;
+      const z = cellEV('Z|' + sp.stage + '|' + coh + '|' + key); if (!z || !z.n) return base;
+      if (!base || base.m === null || z.m === null) return base;
+      const w = z.n / (z.n + K_STAGE);
+      return Object.assign({}, base, { m: w * z.m + (1 - w) * base.m, nfa: base.nfa, stageN: z.n });
+    }
     function spotLevel(coh, sp, act) {
       const { S, Sb } = keys(sp);
-      const c = [cellEV(coh + '|' + S + '|' + act + '|' + sp.oppGrp), cellEV(coh + '|' + S + '|' + act + '|*'), cellEV(coh + '|' + Sb + '|' + act + '|*')].map(evOK);
+      const c = [cellEV(coh + '|' + S + '|' + act + '|' + sp.oppGrp), withStage(sp, coh, S + '|' + act + '|*', cellEV(coh + '|' + S + '|' + act + '|*')), withStage(sp, coh, Sb + '|' + act + '|*', cellEV(coh + '|' + Sb + '|' + act + '|*'))].map(evOK);
       if (coh === 'T') c.push(evOK(cellEV('F|' + S + '|' + act + '|*')), evOK(cellEV('F|' + Sb + '|' + act + '|*')));
       const ev = shrink(c, K_SPOT);
       const fa = c.find(x => x && x.n >= 20) || c.find(Boolean);
@@ -92,9 +103,12 @@
     function freqs(coh, sp, acts) {
       const { S, Sb } = keys(sp);
       const pick = (pref) => acts.map(a => { const c = cellEV(coh + '|' + pref + '|' + a + '|*'); return c ? c.n : 0; });
-      let v = pick(S); let tot = v.reduce((s, x) => s + x, 0), lvl = 'точно';
-      if (tot < 30) { v = pick(Sb); tot = v.reduce((s, x) => s + x, 0); lvl = 'обобщённо'; }
-      return { f: v.map(x => (tot ? x / tot : 0)), n: tot, lvl };
+      const pickZ = (pref) => acts.map(a => { const c = sp.stage ? cellEV('Z|' + sp.stage + '|' + coh + '|' + pref + '|' + a + '|*') : null; return c ? c.n : 0; });
+      let pref = S, v = pick(S); let tot = v.reduce((s, x) => s + x, 0), lvl = 'точно';
+      if (tot < 30) { pref = Sb; v = pick(Sb); tot = v.reduce((s, x) => s + x, 0); lvl = 'обобщённо'; }
+      let f = v.map(x => (tot ? x / tot : 0)), stageN = 0;
+      if (sp.stage && tot) { const z = pickZ(pref), zt = z.reduce((s, x) => s + x, 0); if (zt) { stageN = zt; f = f.map((x, q) => (z[q] + K_STAGE * x) / (zt + K_STAGE)); } }
+      return { f, n: tot, lvl, stageN };
     }
 
     // ---------- лайнап: кто за спиной ----------
@@ -117,7 +131,7 @@
       if (!LM) return null;
       if (act === 'open' && sp.tbl === 'RFI') {
         const B = behindOf(sp, info); if (!B.length) return null;
-        const r = LM.foldAll('vso', B, { aggPos: SP.posBand(sp.pos), size: sizeBucket || '*' });
+        const r = LM.foldAll('vso', B, { aggPos: SP.posBand(sp.pos), size: sizeBucket || '*', fmt: sp.kd0 || sp.kd, stage: sp.stage });
         return { p: r.p, src: 'лайнап (' + B.length + ' за спиной)', each: B.map((b, k) => ({ pos: b.pos, fold: r.each[k] ? r.each[k].fold : null, src: r.each[k] ? r.each[k].src : null })) };
       }
       if (act === '3bet' && sp.tbl === 'VSO' && sp.refI >= 0 && sl.pfa > 0) {
@@ -148,10 +162,26 @@
       return { m: ev, n: hc.n, se: (1 - pfa) * hc.se, src: hc.lvl === 0 || hc.lvl === 3 ? 'рука' : 'класс руки', shift };
     }
 
+    // ---------- баунти PKO (план B) ----------
+    // Общепринятое правило: учитывается только прямой баунти — половина баунти соперника, которую получаете сразу;
+    // пересчёт в фишки: фишки в игре / (оставшийся баунти-пул + призовой пул) ≈ S / (P + B − (1 − r)·0,59·B),
+    // S — стартовый стек, P и B — призовая и баунти-части бай-ина, r — доля оставшихся игроков (на старте 1/4 стека за стартовый баунти).
+    // Хедз-ап (осталось 2): последний нокаут — весь баунти соперника + свой. Учитывается, только если герой перекрывает соперника.
+    function bountyBB(sp, j) {
+      if ((sp.kd0 || sp.kd) !== 'k' || !sp.bounty || !sp.tour || !(sp.tour.S > 0) || !(sp.tour.P > 0) || !(sp.tour.B > 0)) return null;
+      const bo = sp.bounty[j]; if (!(bo > 0)) return null;
+      const o = (sp.others || []).find(x => x.j === j); if (!o) return null;
+      if (sp.stack + 1e-9 < o.stack) return { bb: 0, why: 'соперник перекрывает вас — его баунти не забрать' };
+      const T = sp.tour, r = T.r > 0 ? Math.min(1, T.r) : 1;
+      const perUsd = T.S / (T.P + T.B - (1 - r) * 0.59 * T.B);
+      const hu = T.R === 2, usd = hu ? bo + (sp.bounty[sp.i] || 0) : bo / 2;
+      const bb = usd * perUsd / (sp.bbChips || 1);
+      return { bb, usd, why: (hu ? 'хедз-ап: весь баунти соперника и ваш' : 'прямой баунти $' + (Math.round(usd * 100) / 100)) + ' ≈ ' + Math.round(bb * 10) / 10 + ' bb' };
+    }
     // ---------- точный пуш: сумма по первому коллеру ----------
     function shoveEV(sp, cards, info) {
       const h = K.h169(cards[0], cards[1]), tk = sp.tb + sp.kd;
-      let pAll = 1, ev = 0, nR = 0;
+      let pAll = 1, ev = 0, nR = 0; const bounties = [];
       const Rd = sp.tbl === 'VSO' ? 2 : sp.tbl === 'VS3' ? 3 : 1, Rn = 'R' + Rd;
       const pot = sp.potBefore;
       for (const b of behindOf(sp, info)) {
@@ -161,7 +191,7 @@
         let pc, pcSrc;
         if (LM && Rd === 1 && !(o.inv > 1.3)) {
           // пуш первым: частота колла конкретного игрока (его статы → кластер → пул + поправка на позицию пушера)
-          const r = LM.prob('ai', b.band, o.pos, b.pf, b.cl, { aggPos: SP.posBand(sp.pos), size: '*' });
+          const r = LM.prob('ai', b.band, o.pos, b.pf, b.cl, { aggPos: SP.posBand(sp.pos), size: '*', fmt: sp.kd0 || sp.kd, stage: sp.stage });
           pc = r ? r.call : 0.15; pcSrc = 'лайнап: ' + (r ? r.src : 'нет');
         } else {
           const S = ['AI', sp.st, tk, o.pos, sp.pos, SP.bandOf(Math.min(sp.behind, o.behind)), Rn, 'C0'].join('|');
@@ -179,12 +209,13 @@
         if (sR > 0) pc = Math.min(0.99, pc * (1326 / 1225) * sA / sR);
         const eq = K.eqVsRange(EQ, cards, R.r);
         const cH = eff - sp.inv, cO = eff - (o.inv || 0);
-        const win = eq * (pot + cH + cO) - cH;
-        if (DEBUG) DEBUG.push({ pos: o.pos, pc: +pc.toFixed(3), pcSrc, eq: +eq.toFixed(3), win: +win.toFixed(2), rsrc: R.src });
+        const bt = bountyBB(sp, o.j), bAdd = bt ? bt.bb : 0; if (bt && bt.bb > 0) bounties.push(o.pos + ': +' + (Math.round(bt.bb * 10) / 10) + ' bb (' + bt.why + ')');
+        const win = eq * (pot + cH + cO + bAdd) - cH;
+        if (DEBUG) DEBUG.push({ pos: o.pos, pc: +pc.toFixed(3), pcSrc, eq: +eq.toFixed(3), win: +win.toFixed(2), bounty: bAdd, rsrc: R.src });
         ev += pAll * pc * win; pAll *= 1 - pc;
       }
       ev += pAll * pot;
-      return { m: ev, n: nR, se: null, src: 'эквити', pFold: pAll, h };
+      return { m: ev, n: nR, se: null, src: 'эквити', pFold: pAll, h, bounty: bounties.length ? bounties.join('; ') : null };
     }
     function callAllinEV(sp, cards) {
       const tk = sp.tb + sp.kd, g = 'g' + (sp.oppGrp || 'unk');
@@ -197,7 +228,8 @@
       const callAmt = Math.min(sp.toCall, sp.stack - sp.inv);
       const excess = Math.max(0, sp.toCall - callAmt);
       const P = sp.potBefore - excess * (1 + nc) + callAmt;
-      return { m: eq * P - callAmt, n: R.n, se: null, src: nc ? 'эквити (мультивей, приближённо)' : 'эквити', eq, rangeSrc: R.src };
+      const bt = sp.refI >= 0 ? bountyBB(sp, sp.refI) : null, bAdd = bt ? bt.bb : 0;
+      return { bounty: bt ? bt.why : null, bountyBB: bAdd, m: eq * (P + bAdd) - callAmt, n: R.n, se: null, src: nc ? 'эквити (мультивей, приближённо)' : 'эквити', eq, rangeSrc: R.src };
     }
 
     // ---------- «что топы делают с этой рукой» ----------
@@ -248,7 +280,7 @@
     function sizeVariants(sp, act, cards, h, info) {
       const sa = SZACT(act, sp); if (!sa) return null;
       const { S, Sb } = keys(sp);
-      const ctx = { room: sp.room || 'ps', refTo: sp.refTo, prevTo: sa === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff };
+      const ctx = { room: sp.room || 'ps', refTo: sp.refTo, prevTo: sa === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff, fmt: sp.kd0 || sp.kd };
       const out = []; let totT = 0, totF = 0;
       for (const b of SZ.BUCKETS[sa].names) {
         const A = act + '@' + b, nc = (coh) => ((cellEV(coh + '|' + S + '|' + A + '|*') || cellEV(coh + '|' + Sb + '|' + A + '|*') || { n: 0 }).n);
@@ -283,7 +315,7 @@
     function sizeFor(sp, act) {
       const a = act === 'open' ? 'open' : act === 'iso' ? 'iso' : act === '3bet' ? (sp.C === 'C0' ? '3bet' : 'sqz') : act === '4bet' ? '4bet' : null;
       if (!a) return null;
-      return SZ.recommend({ room: sp.room || 'ps', action: a, band: SP.bandOf(sp.eff), pos: SP.posBand(sp.pos), refTo: sp.refTo, prevTo: a === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff }, SIZES);
+      return SZ.recommend({ room: sp.room || 'ps', action: a, band: SP.bandOf(sp.eff), pos: SP.posBand(sp.pos), refTo: sp.refTo, prevTo: a === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff, fmt: sp.kd0 || sp.kd }, SIZES);
     }
 
     // ---------- главное ----------
@@ -294,12 +326,16 @@
     function pickStratum(sp, acts) {
       const i0 = STRATA.indexOf(sp.st);
       const order = i0 < 0 ? ['mid', 'low', 'high', 'micro'] : STRATA.slice().sort((a, b) => Math.abs(STRATA.indexOf(a) - i0) - Math.abs(STRATA.indexOf(b) - i0) || STRATA.indexOf(a) - STRATA.indexOf(b));
-      for (const st of order) { const t = Object.assign({}, sp, { st }); if (freqs('T', t, acts).n >= 30 || freqs('F', t, acts).n >= 30) return st; }
-      return sp.st;
+      const kinds = sp.kd === 'm' ? ['m', 'k', 'n'] : sp.kd === 'k' ? ['k', 'n'] : ['n', 'k'];
+      for (const kd of kinds) for (const st of order) { const t = Object.assign({}, sp, { st, kd }); if (freqs('T', t, acts).n >= 30 || freqs('F', t, acts).n >= 30) return { st, kd }; }
+      return { st: sp.st, kd: sp.kd };
     }
     function advise(sp0, cards, info) {
       const acts0 = ACTS[sp0.tbl];
-      const stUsed = pickStratum(sp0, acts0), sp = stUsed === sp0.st ? sp0 : Object.assign({}, sp0, { st: stUsed });
+      const pk = pickStratum(sp0, acts0), stUsed = pk.st, kdData = pk.kd;
+      // формат в ключах модели — с данными; формат турнира для баунти и лайнапа — настоящий
+      const sp = stUsed === sp0.st && kdData === sp0.kd ? sp0 : Object.assign({}, sp0, { st: stUsed, kd: kdData, kdReal: sp0.kd });
+      if (sp.kdReal) sp.kd0 = sp.kdReal;
       const acts = ACTS[sp.tbl].filter(a => !(a === 'check' && sp.toCall > 0.001) && !(a === 'shove' && sp.eff > 40) && !(a === 'fold' && sp.toCall <= 0.001 && sp.tbl === 'ISO'));
       const h = cards ? K.h169(cards[0], cards[1]) : null;
       const FT = freqs('T', sp, acts), FF = freqs('F', sp, acts);
@@ -317,8 +353,8 @@
           if (ch && ch.oppFold) row.oppFold = ch.oppFold;
         }
         if (size) { row.size = size; row.ru = RU[act] + ' до ' + size.to + ' bb'; if (size.allin) row.asShove = true; }
-        if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold }); }
-        if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq }); }
+        if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold, bounty: r.bounty }); }
+        if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq, bounty: r.bounty }); }
         const sl = spotLevel('T', sp, act);
         let pfa = sl.pfa, mfa = sl.mfa, pfaSrc = 'спот';
         const fa = foldAllFor(sp, act, sl, info, size && size.bucket);
@@ -372,7 +408,7 @@
         for (const a of acts) if (a !== 'fold') { const x = cellHC('T|' + Sb + '|' + a + '|' + cl); c[a] = x ? x.n : 0; n += c[a]; }
         if (n >= 10) classTops = { cls: CL_RU[cl] || cl, n, share: Object.fromEntries(Object.entries(c).map(([a, v]) => [a, v / n])) };
       }
-      return { compare, classTops, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : null, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
+      return { compare, classTops, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
     }
     // вердикт фактическому действию: act — метка из разметки (open:x2.2 / shove / …), sz — корзина сайза (d.sz)
     function verdict(adv, act, sz) {
@@ -396,6 +432,7 @@
       if (!r || r.ev === null) return { kind: 'нет данных', text: 'по вашему действию данных нет; по базе — «' + adv.rec.ru + '» (' + adv.rec.why + ')' };
       const d = b.ev - r.ev;
       if (d <= 0.05) return { kind: 'лучшее', d: 0, text: 'не хуже лучшего варианта' };
+      if (d < ERR_BB) return { kind: 'близко', d, text: 'близко к лучшему («' + adv.rec.ru + '» +' + d.toFixed(2) + ' bb — меньше ' + ERR_BB + ' bb)' };
       if (!r.reliable) return { kind: 'вероятно хуже', d, text: '«' + adv.rec.ru + '» лучше на ~' + d.toFixed(2) + ' bb (оценка вашего действия неточная: ' + r.src + ', n=' + r.n + ')' };
       const noise = 1.96 * Math.sqrt((r.se || 0) ** 2 + (b.se || 0) ** 2) + 0.05;
       if (d <= noise) return { kind: 'близко', d, text: 'близко к лучшему («' + adv.rec.ru + '» +' + d.toFixed(2) + ' bb, в пределах шума)' };
@@ -403,9 +440,18 @@
     }
     return { debug: (on) => { DEBUG = on ? [] : null; return DEBUG; }, advise, verdict, shoveEV, callAllinEV, topRange, RANK, ACTS, RU, actClass };
   }
-  function decisionsBacking(rp, grpOf, fp, room) {
-    const st = SP.stratumOf(fp || '', rp.title), tb = SP.tableOf(rp.n), kd = SP.kindOf(rp);
-    return SP.preflopDecisions(rp, grpOf, true).map(d => Object.assign(d, { st, tb, kd, room: room || 'ps' }));
+  // ctx (необязательно): { stage, tour: { S, P, B, r, R } } — стадия и сведения о турнире (lib/stage.js, app.js)
+  function decisionsBacking(rp, grpOf, fp, room, ctx) {
+    const st = SP.stratumOf(fp || '', rp.title), tb = SP.tableOf(rp.n), kd = SP.kindOf(rp, rp.text || '', fp);
+    const bounty = bountiesOf(rp);
+    return SP.preflopDecisions(rp, grpOf, true).map(d => Object.assign(d, { st, tb, kd, room: room || 'ps', bounty, bbChips: rp.bb || 1, stage: ctx && ctx.stage || null, tour: ctx && ctx.tour || null }));
+  }
+  // баунти по местам из строк «Seat N: ник (стек in chips, $X bounty)»
+  function bountiesOf(rp) {
+    const t = String(rp.text || ''); if (!/bounty\)/.test(t)) return null;
+    const out = new Array(rp.n).fill(0);
+    for (const m of t.matchAll(/^Seat \d+: (.+?) \([\d.,]+ in chips, [$€£₮]?([\d.,]+) bounty\)/gm)) { const j = rp.nm.indexOf(m[1]); if (j >= 0) out[j] = parseFloat(m[2].replace(/,/g, '')); }
+    return out;
   }
   function fromMda(rp, names) {
     return {

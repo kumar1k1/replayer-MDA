@@ -13,6 +13,9 @@
 const fs = require('fs'), path = require('path');
 const C = require('./common.cjs'), SP = require('../lib/spots.js'), ST = require('../lib/stats.js'), SZ = require('../lib/sizing.js'), LU = require('../lib/lineup.js');
 const OUT = C.OUT;
+const STG = require('../lib/stage.js');
+const TOURN = fs.existsSync(path.join(OUT, 'tourn_v8.json')) ? JSON.parse(fs.readFileSync(path.join(OUT, 'tourn_v8.json'), 'utf8')) : {};
+const STAGE_EST = process.env.STAGE_EST === '1';
 const NS = ST.PF_SLOTS;
 const players = fs.readFileSync(path.join(OUT, 'players_v8.ndjson'), 'utf8').trim().split('\n').map(JSON.parse);
 const CLS = JSON.parse(fs.readFileSync(path.join(OUT, 'players_cl_v8.json'), 'utf8'));
@@ -69,7 +72,7 @@ for (const fam of FAMS) {
 const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
 const model0 = LU.create({ pool: Array.from(pool), cl: Object.fromEntries(Object.entries(cl).map(([k, v]) => [k, Array.from(v)])), K });
 // записи: по ответчику — опен-id, ключ поправки, три прогноза (пул / кластер / игрок), факт (фолд 1/0, −1 — не дошёл)
-const R = { open: [], key: [], pP: [], pC: [], pF: [], y: [] };
+const R = { open: [], key: [], skey: [], pP: [], pC: [], pF: [], y: [] };
 const O = { half: [], fam: [], y: [], first: [] };
 const keyId = new Map(), keys = [];
 const kid = (k) => { let v = keyId.get(k); if (v == null) { v = keys.length; keys.push(k); keyId.set(k, v); } return v; };
@@ -88,7 +91,9 @@ let nHands = 0;
     const d0 = ds.find(d => d.act !== 'fold' && d.act !== 'check');
     if (!d0 || d0.tbl !== 'RFI' || d0.pos === 'BB' || !(d0.act === 'shove' || /^open/.test(d0.act)) || d0.aiEff) continue;
     const fam = d0.act === 'shove' ? 'ai' : 'vso';
-    const ctx = { aggPos: SP.posBand(d0.pos), size: fam === 'ai' ? '*' : d0.sz || '*' };
+    const kd = C.kindOf(rp, x.hand, x.fp);
+    let stage = null; { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; const sa = T ? STG.stageAt(T, STG.tsOf(rp.date), rp.n) : null; if (sa && (sa.exact || STAGE_EST)) stage = sa.stage; }
+    const ctx = { aggPos: SP.posBand(d0.pos), size: fam === 'ai' ? '*' : d0.sz || '*', fmt: kd };
     const half = C.halfOf(rp.handId) === 'A' ? 0 : 1, id = O.half.length;
     let allFold = 1;
     for (const o of d0.others) {
@@ -103,7 +108,7 @@ let nHands = 0;
       if (!pP) continue;
       const y = faced ? (d.act === 'fold' ? 1 : 0) : -1;
       if (d && d.act !== 'fold') allFold = 0;
-      R.open.push(id); R.key.push(kid(LU.adjKey(fam, band, o.pos, ctx))); R.pP.push(pP.fold); R.pC.push(pC.fold); R.pF.push(pF.fold); R.y.push(y);
+      R.open.push(id); R.key.push(kid(LU.adjKey(fam, band, o.pos, ctx))); R.skey.push(stage ? kid('S:' + LU.stageKey(fam, o.pos, stage)) : -1); R.pP.push(pP.fold); R.pC.push(pC.fold); R.pF.push(pF.fold); R.y.push(y);
     }
     O.half.push(half); O.fam.push(fam); O.y.push(allFold);
   }
@@ -118,11 +123,21 @@ let nHands = 0;
     d *= rs.length / (rs.length + SHR);
     if (Math.abs(d) > 0.01) adj[keys[k]] = Math.round(d * 1000) / 1000;
   }
-  const pA = (r) => { const d = adj[keys[R.key[r]]] || 0, p = Math.min(0.999, Math.max(0.001, R.pF[r])); return d ? LU.sig(LU.logit(p) + d) : p; };
+  const pA0 = (r) => { const d = adj[keys[R.key[r]]] || 0, p = Math.min(0.999, Math.max(0.001, R.pF[r])); return d ? LU.sig(LU.logit(p) + d) : p; };
+  // поправка стадии — по остатку после поправки контекста, тоже на половине A
+  const adjS = {}, byS = new Map();
+  for (let r = 0; r < R.y.length; r++) if (R.y[r] >= 0 && R.skey[r] >= 0 && O.half[R.open[r]] === 0) { const k = R.skey[r]; if (!byS.has(k)) byS.set(k, []); byS.get(k).push(r); }
+  for (const [k, rs] of byS) {
+    let d = 0; const Y = rs.reduce((s, r) => s + R.y[r], 0);
+    for (let it = 0; it < 30; it++) { let f = 0, g = 0; for (const r of rs) { const p = LU.sig(LU.logit(pA0(r)) + d); f += p; g += p * (1 - p); } if (g < 1e-9) break; const st = (f - Y) / g; d -= st; if (Math.abs(st) < 1e-6) break; }
+    d *= rs.length / (rs.length + SHR);
+    if (Math.abs(d) > 0.01) adjS[keys[k].slice(2)] = Math.round(d * 1000) / 1000;
+  }
+  const pA = (r) => { const p = pA0(r), s = R.skey[r] >= 0 ? adjS[keys[R.skey[r]].slice(2)] || 0 : 0; return s ? LU.sig(LU.logit(p) + s) : p; };
 
   // проверка на половине B: P(все сфолдят) — четыре модели
-  const MODELS = { pool: (r) => R.pP[r], cluster: (r) => R.pC[r], player: (r) => R.pF[r], player_adj: pA };
-  const rep = { hands: nHands, opens: O.half.length, responders: R.y.length, fit, adjKeys: Object.keys(adj).length, test: {} };
+  const MODELS = { pool: (r) => R.pP[r], cluster: (r) => R.pC[r], player: (r) => R.pF[r], player_adj_ctx: pA0, player_adj: pA };
+  const rep = { hands: nHands, opens: O.half.length, responders: R.y.length, fit, adjKeys: Object.keys(adj).length, adjStage: adjS, test: {} };
   for (const fam of ['vso', 'ai']) {
     const pred = {}; for (const m in MODELS) pred[m] = new Float64Array(O.half.length).fill(1);
     for (let r = 0; r < R.y.length; r++) { const o = R.open[r]; if (O.fam[o] !== fam || O.half[o] !== 1) continue; for (const m in MODELS) pred[m][o] *= MODELS[m](r); }
@@ -143,7 +158,7 @@ let nHands = 0;
     for (let r = 0; r < R.y.length; r++) { const o = R.open[r]; if (O.fam[o] !== fam || O.half[o] !== 1 || R.y[r] < 0) continue; const p = pA(r), b = bins[Math.min(9, Math.floor(p * 10))]; b[0]++; b[1] += p; b[2] += R.y[r]; }
     rep.test[fam].responder_calib = bins.filter(b => b[0] >= 50).map(b => ({ pred: +(b[1] / b[0] * 100).toFixed(1), fact: +(b[2] / b[0] * 100).toFixed(1), n: b[0] }));
   }
-  const data = { built: new Date().toISOString().slice(0, 10), pool: Array.from(pool), cl: Object.fromEntries(Object.entries(cl).map(([k, v]) => [k, Array.from(v)])), K, adj };
+  const data = { built: new Date().toISOString().slice(0, 10), pool: Array.from(pool), cl: Object.fromEntries(Object.entries(cl).map(([k, v]) => [k, Array.from(v)])), K, adj, adjS };
   fs.writeFileSync(path.join(__dirname, '..', 'data', 'lineup_v8.json'), JSON.stringify(data));
   fs.writeFileSync(path.join(OUT, 'lineup_report.json'), JSON.stringify(rep, null, 1));
   for (const fam in rep.test) for (const m in rep.test[fam]) if (m !== 'responder_calib') C.log('лайнап B', fam, m, 'logloss', rep.test[fam][m].logloss, 'brier', rep.test[fam][m].brier);

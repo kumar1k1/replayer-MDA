@@ -46,6 +46,8 @@
       const meta = el('div', 'rm-meta');
       meta.append(el('span', null, TBL[a.tbl] || a.tbl), el('span', null, 'стек ' + fmt(d.stack, 1) + ' BB'), el('span', null, 'эфф. ' + fmt(d.eff, 1) + ' BB · банд ' + a.band));
       if (d.toCall > 0.001) meta.append(el('span', null, 'к коллу ' + fmt(d.toCall) + ' BB, банк ' + fmt(d.potBefore) + ' BB'));
+      { const KD = { n: 'фризаут', k: 'PKO', m: 'Mystery Bounty' }, sg = H.stage;
+        meta.append(el('span', null, KD[d.kd] || d.kd), el('span', null, 'стадия: ' + (sg ? A.STAGE_RU[sg.stage] + (sg.exact ? '' : ' (оценка)') : 'неизвестна') + (a.stageN ? ' · в базе ' + a.stageN : ''))); }
       s.append(meta);
       if (next.cards) { const c = el('div', 'rm-hand'); c.append(el('span', null, 'рука'), el('b', null, a.hand)); s.append(c); }
       if (a.stNote) s.append(el('div', 'rm-note', a.stNote));
@@ -62,7 +64,8 @@
       for (const row of a.rows) {
         const on = row.act === a.rec.act;
         const tr = el('tr', on ? 'on' : row.reliable ? '' : 'dim');
-        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '')), el('td', 'num', row.ev == null ? '—' : sgn(row.ev)), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), el('td', 'src', row.src + (row.n ? ' · n=' + row.n : '')));
+        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '')), el('td', 'num', row.ev == null ? '—' : sgn(row.ev)), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), el('td', 'src', row.src + (row.n ? ' · n=' + row.n : '')));
+        if (row.bounty) tr.title = 'баунти: ' + row.bounty;
         t.append(tr);
         // размеры этого действия: EV каждого, сброс соперника, доля среди этих рейзов у топов
         if (row.sizes && row.sizes.length > 1) for (const v of row.sizes) {
@@ -74,6 +77,7 @@
         }
       }
       s.append(t);
+      const bRows = a.rows.filter(r => r.bounty); if (bRows.length) s.append(el('div', 'rm-why', 'Баунти в расчёте: ' + bRows.map(r => r.ru + ' — ' + r.bounty).join('; ')));
       if (a.compare) s.append(el('div', 'rm-why', 'Колл ' + sgn(a.compare.call) + ' (n=' + a.compare.callN + ') против «' + a.compare.raiseRu + '» ' + sgn(a.compare.raise) + ' (n=' + a.compare.raiseN + '): ' + (a.compare.diff >= 0 ? 'рейз лучше на ' : 'колл лучше на ') + fmt(Math.abs(a.compare.diff)) + ' BB' + (a.compare.reliable ? '' : ' — предварительно, мало вскрытий')));
       if (a.classTops) s.append(el('div', 'rm-note', 'Топы с руками «' + a.classTops.cls + '» здесь (по вскрытиям, n=' + a.classTops.n + '): ' + Object.entries(a.classTops.share).filter(([, v]) => v > 0).map(([k, v]) => ({ call: 'колл', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин', open: 'опен', limp: 'лимп', iso: 'изо', check: 'чек' })[k] + ' ' + pct(v)).join(', ')));
       // лайнап за спиной — из варианта рейза (опен)
@@ -109,7 +113,8 @@
     H.rp.nm.forEach((nk, j) => {
       const li = el('div', 'rm-li' + (f.folded[j] ? ' folded' : '')); const pp = el('span', posCls(H.rec.pl[j][0]), H.rec.pl[j][0]); pp.classList.add('rm-pos');
       const pl = A.player(H.room, nk);
-      li.append(pp, el('span', 'rm-nick', nk + (j === H.hero ? ' (герой)' : '')), clChip(pl), el('span', 'rm-pf', pl ? pl.hands + ' рук' : ''));
+      const bo = adv[0] && adv[0].d.bounty ? adv[0].d.bounty[j] : 0;
+      li.append(pp, el('span', 'rm-nick', nk + (j === H.hero ? ' (герой)' : '')), clChip(pl), el('span', 'rm-pf', (bo ? '$' + fmt(bo) + ' · ' : '') + (pl ? pl.hands + ' рук' : '')));
       P.append(li);
     });
   };

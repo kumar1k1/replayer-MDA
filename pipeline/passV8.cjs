@@ -23,13 +23,22 @@ const readJ = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const topsFile = process.env.TOPS || path.join(C.OUT, 'tops_v8.json');
 const TJ = fs.existsSync(topsFile) ? readJ(topsFile) : { A: {}, B: {} };
 const TOPS = { A: new Set(Object.keys(TJ.A || {})), B: new Set(Object.keys(TJ.B || {})) };
+// топы по формату: свои, если их не меньше MIN_TOPS_FMT в обеих половинах; иначе — общие
+const MIN_TOPS_FMT = +(process.env.MIN_TOPS_FMT || 50);
+const TOPSF = {};
+for (const f of ['n', 'k', 'm']) { const t = (TJ.byFmt || {})[f]; if (t && Object.keys(t.A).length >= MIN_TOPS_FMT && Object.keys(t.B).length >= MIN_TOPS_FMT) TOPSF[f] = { A: new Set(Object.keys(t.A)), B: new Set(Object.keys(t.B)) }; }
+// ход турниров — для стадии (lib/stage.js); STAGE_EST=1 — оценивать стадию и там, где мест вылета нет (по решению владельца)
+const STG = require('../lib/stage.js');
+const tournFile = process.env.TOURN || path.join(C.OUT, 'tourn_v8.json');
+const TOURN = fs.existsSync(tournFile) ? readJ(tournFile) : {};
+const STAGE_EST = process.env.STAGE_EST === '1';
 const clFile = process.env.PLAYERS_CL || path.join(C.OUT, 'players_cl_v8.json');
 const CL = fs.existsSync(clFile) ? readJ(clFile) : {};
 const grpOfK = (room, nick) => { const c = CL[C.playerKey(room, nick)]; return c ? CLU.GROUP[c[0]] || 'unk' : 'unk'; };
 // топ для раздачи половины h — отобран по другой половине
-const isTop = (room, nick, h) => (h === 'A' ? TOPS.B : TOPS.A).has(C.playerKey(room, nick));
+const isTop = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; return (h === 'A' ? T.B : T.A).has(C.playerKey(room, nick)); };
 const actClass = (d) => (d.act === 'shove' || d.aiEff ? 'shove' : d.act.split(':')[0]);
-C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, 'игроков с кластером', Object.keys(CL).length);
+C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, '| по формату:', Object.keys(TOPSF).join(',') || 'нет (общие)', '| турниров', Object.keys(TOURN).length, '| игроков с кластером', Object.keys(CL).length);
 
 // ---------- накопители ----------
 // EV:  ключ → [n, Σrel, Σrel², nFA, ΣrelFA]   (FA — все сфолдили после действия)
@@ -85,16 +94,22 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       const fr = frames(rp); if (!fr.length) continue;
       const fin = fr[fr.length - 1], bb = rp.bb;
       if (!C.handIntact(rp, fin, x.hand)) { stats_broken++; continue; } // повреждённая история (банк не сходится)
-      const st = C.stratumOf(x.fp, rp.title), tb = C.tableOf(rp.n), kd = C.kindOf(rp), half = C.halfOf(rp.handId);
+      const st = C.stratumOf(x.fp, rp.title), tb = C.tableOf(rp.n), kd = C.kindOf(rp, x.hand, x.fp), half = C.halfOf(rp.handId);
       const SD = {};
       if (C.SHOWDOWN_TRUSTED(room)) for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c, h: K.h169(c[0], c[1]) }; }
       if (Object.keys(SD).length) stats.sd++;
       const A = C.netAdjusted(rp, fin, SD); if (A.adj) stats.adj++;
+      // стадия турнира: точная (места вылета) или оценка (если разрешено STAGE_EST)
+      let stage = null;
+      { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]];
+        const sa = T ? STG.stageAt(T, STG.tsOf(rp.date), rp.n) : null;
+        if (sa && (sa.exact || STAGE_EST)) stage = sa.stage;
+        stats.stages = stats.stages || {}; const sk = sa ? (sa.exact ? sa.stage : 'оценка:' + sa.stage) : 'нет'; stats.stages[sk] = (stats.stages[sk] || 0) + 1; }
       const grpOf = (nick) => grpOfK(room, nick);
       const decs = C.preflopDecisions(rp, grpOf);
       for (const d of decs) {
         const i = d.i, nick = rp.nm[i], act = actClass(d), bnd = C.bandOf(d.eff);
-        const coh = isTop(room, nick, half) ? 'T' : 'F', g = 'g' + grpOf(nick);
+        const coh = isTop(room, nick, half, kd) ? 'T' : 'F', g = 'g' + grpOf(nick);
         const rel = A.net[i] / bb + d.inv; // относительно фолда в этой точке
         const fa = act !== 'fold' && act !== 'check' && C.foldedAround(rp, d.k, i);
         // ключ спота: TBL|страта|стол|баунти|поз|поз.опп|стек|лимперы|коллеры  (+ |действие|группа.опп)
@@ -105,6 +120,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
           addEV(c + '|' + S + '|' + act + '|*', rel, fa);
         }
         addEV(coh + '|' + Sb + '|' + act + '|*', rel, fa); // обобщённый уровень (семейство позиций)
+        // стадия — слой поверх (план C9): отдельные ячейки «Z|стадия|…»; в движке стягиваются к общим, если данных мало
+        if (stage) { addEV('Z|' + stage + '|' + coh + '|' + S + '|' + act + '|*', rel, fa); addEV('Z|' + stage + '|' + coh + '|' + Sb + '|' + act + '|*', rel, fa); }
         // размеры (п.6 → п.8): EV и частоты по корзине сайза — «3bet@3x», чтобы выбирать размер по EV, а не только по частоте
         const sizedA = d.sz && (act === 'open' || act === 'iso' || act === '3bet' || act === '4bet') ? act + '@' + d.sz : null;
         if (sizedA) { addEV(coh + '|' + S + '|' + sizedA + '|*', rel, fa); addEV(coh + '|' + Sb + '|' + sizedA + '|*', rel, fa); }
@@ -144,7 +161,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   // ---------- сериализация ----------
   // Порог — на СПОТ (сумма по действиям), а не на ячейку: иначе редкие действия выпадают и частоты
   // смещаются к частым (в v6 колл пуша мог исчезнуть, и выходило «все фолдят»). Малые ячейки — только счётчик.
-  const thrEV = (k) => (k[0] === 'T' ? 8 : k[0] === 'g' ? 25 : 30);
+  const thrEV = (k) => (k[0] === 'T' ? 8 : k[0] === 'Z' ? 10 : k[0] === 'g' ? 25 : 30);
   const r3 = (v) => Math.round(v * 1000) / 1000;
   const spotOf = (k) => { const a = k.lastIndexOf('|'), b = k.lastIndexOf('|', a - 1); return k.slice(0, b) + k.slice(a); };
   const tot = new Map();

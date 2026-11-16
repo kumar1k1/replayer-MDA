@@ -31,6 +31,12 @@ if (lu) {
   for (const f in lu.fit) L.push('- ' + f + ': log-loss пул ' + lu.fit[f].logloss_pool + ' → кластер ' + lu.fit[f].logloss_cluster + ' → игрок ' + lu.fit[f].logloss_player + ' (Kc ' + lu.fit[f].Kc + ', Kp ' + lu.fit[f].Kp + ')');
   for (const f in lu.test) { const t = lu.test[f]; L.push('- P(все сфолдят) после ' + (f === 'vso' ? 'опена' : 'пуша') + ', половина B: log-loss ' + t.pool.logloss + ' → ' + t.player_adj.logloss + '; калибровка ' + t.player_adj.calib.map(c => c.pred + '→' + c.fact).join(', ')); }
 } else L.push('- НЕТ lineup_report.json');
+const se = J('stage_eval.json');
+L.push('', '## 5б. Стадия турнира');
+if (se) L.push('- турниров PokerStars с местами вылета: ' + se.psTournaments + '; оценка без мест (после калибровки, другая половина): стадия точно ' + se.calibrated_on_other_half.stageAccuracy + '%, ±1 стадия ' + se.calibrated_on_other_half.stageWithinOne + '%, ошибка доли оставшихся p50 ' + se.calibrated_on_other_half.remainingShareError_pp.p50 + ' п.п.', '- CoinPoker: турниров ' + se.coin.tournaments + ', со стартовым стеком ' + se.coin.withStartStack + ', с местами ' + se.coin.withPlaces);
+else L.push('- НЕТ stage_eval.json');
+if (pool && pool.stats && pool.stats.kinds) L.push('- форматы раздач: ' + JSON.stringify(pool.stats.kinds));
+if (tops && tops.byFmt) L.push('- топы по формату (A/B): ' + Object.entries(tops.byFmt).map(([f, v]) => f + ' ' + v.A + '/' + v.B).join(', '));
 L.push('', '## 6. Модель v8');
 if (meta) L.push('- ' + JSON.stringify(meta)); else L.push('- НЕТ model_v8.json');
 const out = path.join(OUT, 'ИТОГ_ПРОГОНА.md');
