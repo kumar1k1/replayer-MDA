@@ -1,0 +1,54 @@
+PokerStars Hand #259165712010: Tournament #3960814516, $37.50+$112.50+$12.00 USD Hold'em No Limit - Level XIX (400/800) - 2026/01/03 23:11:35 ET
+Table '3960814516 3' 9-max Seat #7 is the button
+Seat 1: patrick19111 (18052 in chips, $421.87 bounty) 
+Seat 2: Rhino951 (52653 in chips, $583.58 bounty) 
+Seat 3: FL_RAP (45450 in chips, $112.50 bounty) 
+Seat 4: DanFee (9022 in chips, $112.50 bounty) 
+Seat 5: cJIoH1991 (24552 in chips, $646.87 bounty) 
+Seat 6: Frankinshtain55 (5268 in chips, $168.75 bounty) 
+Seat 7: Unideal (18080 in chips, $168.75 bounty) 
+Seat 8: 1111AA1111 (31923 in chips, $112.50 bounty) 
+patrick19111: posts the ante 120
+Rhino951: posts the ante 120
+FL_RAP: posts the ante 120
+DanFee: posts the ante 120
+cJIoH1991: posts the ante 120
+Frankinshtain55: posts the ante 120
+Unideal: posts the ante 120
+1111AA1111: posts the ante 120
+1111AA1111: posts small blind 400
+patrick19111: posts big blind 800
+*** HOLE CARDS ***
+Rhino951: raises 800 to 1600
+FL_RAP: calls 1600
+DanFee: folds 
+cJIoH1991: folds 
+Frankinshtain55: folds 
+Unideal: folds 
+1111AA1111: calls 1200
+patrick19111: folds 
+*** FLOP *** [2s Ts Tc]
+1111AA1111: checks 
+Rhino951: checks 
+FL_RAP: bets 2400
+1111AA1111: folds 
+Rhino951: calls 2400
+*** TURN *** [2s Ts Tc] [8s]
+Rhino951: checks 
+FL_RAP: bets 6400
+Rhino951: folds [Ah Kc]
+Uncalled bet (6400) returned to FL_RAP
+FL_RAP collected 11360 from pot
+FL_RAP: doesn't show hand 
+*** SUMMARY ***
+Total pot 11360 | Rake 0 
+Board [2s Ts Tc 8s]
+Seat 1: patrick19111 (big blind) folded before Flop
+Seat 2: Rhino951 folded on the Turn
+Seat 3: FL_RAP collected (11360)
+Seat 4: DanFee folded before Flop (didn't bet)
+Seat 5: cJIoH1991 folded before Flop (didn't bet)
+Seat 6: Frankinshtain55 folded before Flop (didn't bet)
+Seat 7: Unideal (button) folded before Flop (didn't bet)
+Seat 8: 1111AA1111 (small blind) folded on the Flop
+

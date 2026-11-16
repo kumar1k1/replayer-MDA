@@ -5,7 +5,7 @@
 //   node tests/validate_pushfold.cjs /tmp/synth2/PS /tmp/v7b/model_v7.json
 const fs = require('fs'), path = require('path');
 const C = require('../pipeline/common.cjs'), K = require('../lib/cards.js'), E = require('../engine/engine_v7.js');
-const { parseHand, frames } = C.loadParser();
+const P_ = C.loadParser(), { frames } = P_, parseHand = C.makeParse(P_);
 const dir = process.argv[2] || '/tmp/synth2/PS', HERO = 'DemoStars';
 const eng = E.create(JSON.parse(fs.readFileSync(process.argv[3] || '/tmp/v7b/model_v7.json', 'utf8')), require('../data/eq169.json'));
 const G = {};
@@ -13,7 +13,7 @@ const add = (k, pred, truth) => { const g = G[k] || (G[k] = { n: 0, p: 0, t: 0, 
 const files = fs.readdirSync(dir), half = files.filter((_, i) => i % 2 === 1); // половина файлов — проверочная
 for (const f of half) for (const x of C.splitHands(fs.readFileSync(path.join(dir, f), 'utf8'), f)) {
   const m = /Dealt to (\S+) \[(\w\w \w\w)\]/.exec(x.hand); if (!m || m[1] !== HERO) continue;
-  const rp = parseHand(x.hand + '\n'); if (!rp || !rp.n) continue;
+  const rp = parseHand(x.hand); if (!rp || !rp.n) continue;
   const hi = rp.nm.indexOf(HERO), cards = K.parseCards(m[2]);
   const fr = frames(rp), fin = fr[fr.length - 1], SD = {};
   for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c }; }

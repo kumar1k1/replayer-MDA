@@ -26,7 +26,7 @@
 const fs = require('fs'), path = require('path');
 const C = require('./common.cjs');
 const K = require('../lib/cards.js');
-const { parseHand, frames } = C.loadParser();
+const P_ = C.loadParser(), { frames } = P_, parseHand = C.makeParse(P_);
 
 const OOS = process.env.OOS === '1';
 const LIMIT = +(process.env.LIMIT || 0);
@@ -45,6 +45,7 @@ C.log('v7: топов', TOPS.size, '(' + path.basename(topsFile) + ')', 'гру�
 // HC:  ключ → [n, Σrel, Σrel²]                 (рука известна, банк разыгран дальше)
 // RS/RC: ключ → Int32Array(169)               (диапазоны пуша / колла пуша по вскрытиям)
 let EV = new Map(), HC = new Map(), RS = new Map(), RC = new Map();
+const IDS = new C.IdSet(); let stats_broken = 0;
 let stats = { hands: 0, dec: 0, adj: 0, sd: 0, done: [] };
 const STATE = path.join(C.OUT, 'v7_state.ndjson');
 // чекпоинт — построчный файл (NDJSON): одна строка на ячейку, чтобы не упираться в предел длины строки V8
@@ -86,14 +87,17 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
     if (x.end) { stats.done.push(x.end); if (/\.rar$/i.test(x.end) || Date.now() - lastSave > 600000) { saveState(); lastSave = Date.now(); } if (/\.rar$/i.test(x.end)) C.log('v7: источник пройден', x.end, '— рук', stats.hands, 'ячеек EV', EV.size, 'HC', HC.size); continue; }
     if (LIMIT && stats.hands >= LIMIT) break;
     try {
-      const rp = parseHand(x.hand + '\n');
+      const rp = parseHand(x.hand);
       if (!rp || !rp.n || !rp.bb) continue;
       if (OOS && C.halfOf(rp.handId) !== 'B') continue;
+      const room = C.roomOf(x.hand);
+      if (!IDS.add(room, rp.handId)) { stats.dups = (stats.dups || 0) + 1; continue; } // повтор раздачи (h2n3/h2n4, пересечения архивов)
       const fr = frames(rp); if (!fr.length) continue;
       const fin = fr[fr.length - 1], bb = rp.bb;
+      if (!C.handIntact(rp, fin, x.hand)) { stats_broken++; continue; } // повреждённая история (банк не сходится)
       const st = C.stratumOf(x.fp, rp.title), tb = C.tableOf(rp.n), kd = C.kindOf(rp);
       const SD = {};
-      for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c, h: K.h169(c[0], c[1]) }; }
+      if (C.SHOWDOWN_TRUSTED(room)) for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c, h: K.h169(c[0], c[1]) }; }
       if (Object.keys(SD).length) stats.sd++;
       const A = C.netAdjusted(rp, fin, SD); if (A.adj) stats.adj++;
       const decs = C.preflopDecisions(rp, grpOf);
@@ -160,7 +164,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   }
   const sparse = (a) => { const o = []; for (let h = 0; h < 169; h++) if (a[h]) o.push(h + ':' + a[h]); return o.join(','); };
   const Ro = (M) => { const o = {}; for (const [k, a] of M) { let s = 0; for (const v of a) s += v; if (s >= 5) o[k] = sparse(a); } return o; };
-  const model = { v: 7, meta: { hands: stats.hands, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, oos: OOS, tops: TOPS.size, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
+  stats.broken = stats_broken;
+  const model = { v: 7, meta: { hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, oos: OOS, tops: TOPS.size, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
   const outF = process.env.MODEL_OUT || path.join(C.OUT, 'model_v7.json');
   fs.writeFileSync(outF, JSON.stringify(model));
   C.log('v7 ГОТОВО: рук', stats.hands, 'решений', stats.dec, 'олл-ин-поправок', stats.adj, '| ячеек EV', Object.keys(EVo).length, 'HC', Object.keys(HCo).length, 'RS', Object.keys(model.RS).length, 'RC', Object.keys(model.RC).length, '|', (fs.statSync(outF).size / 1048576).toFixed(1), 'МБ', ((Date.now() - t0) / 60000).toFixed(1), 'мин');

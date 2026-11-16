@@ -1,0 +1,50 @@
+PokerStars Hand #259165002509: Tournament #3960814516, $37.50+$112.50+$12.00 USD Hold'em No Limit - Level VIII (70/140) - 2026/01/03 21:33:46 ET
+Table '3960814516 6' 8-max Seat #5 is the button
+Seat 1: SchelckTim (6512 in chips, $112.50 bounty) 
+Seat 2: makedifferense (11067 in chips, $225 bounty) 
+Seat 3: Frankinshtain55 (14412 in chips, $168.75 bounty) 
+Seat 5: captain_f0z (17034 in chips, $168.75 bounty) 
+Seat 6: givemefivemore (5337 in chips, $112.50 bounty) 
+Seat 7: gazzu666 (48 in chips, $112.50 bounty) 
+Seat 8: 1111AA1111 (10779 in chips, $112.50 bounty) 
+SchelckTim: posts the ante 21
+makedifferense: posts the ante 21
+Frankinshtain55: posts the ante 21
+captain_f0z: posts the ante 21
+givemefivemore: posts the ante 21
+gazzu666: posts the ante 21
+1111AA1111: posts the ante 21
+givemefivemore: posts small blind 70
+gazzu666: posts big blind 27 and is all-in
+*** HOLE CARDS ***
+1111AA1111: folds 
+SchelckTim: raises 210 to 280
+makedifferense: folds 
+Frankinshtain55: calls 280
+captain_f0z: calls 280
+givemefivemore: folds 
+*** FLOP *** [5h 3d 3c]
+SchelckTim: bets 542
+Frankinshtain55: calls 542
+captain_f0z: raises 1662 to 2204
+SchelckTim: folds 
+Frankinshtain55: folds 
+Uncalled bet (1662) returned to captain_f0z
+*** TURN *** [5h 3d 3c] [5s]
+*** RIVER *** [5h 3d 3c 5s] [Qh]
+*** SHOW DOWN ***
+captain_f0z: shows [6s 4s] (two pair, Fives and Threes)
+captain_f0z collected 2428 from side pot
+gazzu666: shows [Ah Kc] (two pair, Fives and Threes - Ace kicker)
+gazzu666 collected 282 from main pot
+*** SUMMARY ***
+Total pot 2710 Main pot 282. Side pot 2428. | Rake 0 
+Board [5h 3d 3c 5s Qh]
+Seat 1: SchelckTim folded on the Flop
+Seat 2: makedifferense folded before Flop (didn't bet)
+Seat 3: Frankinshtain55 folded on the Flop
+Seat 5: captain_f0z (button) showed [6s 4s] and won (2428) with two pair, Fives and Threes
+Seat 6: givemefivemore (small blind) folded before Flop
+Seat 7: gazzu666 (big blind) showed [Ah Kc] and won (282) with two pair, Fives and Threes
+Seat 8: 1111AA1111 folded before Flop (didn't bet)
+

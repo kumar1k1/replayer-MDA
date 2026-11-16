@@ -5,10 +5,10 @@
 //   node pipeline/passA_v7.cjs            → out/players_A.json  (формат как players.json v6)
 const fs = require('fs'), path = require('path');
 const C = require('./common.cjs');
-const { parseHand, frames } = C.loadParser();
+const P_ = C.loadParser(), { frames } = P_, parseHand = C.makeParse(P_);
 const HALF = process.env.HALF || 'A';
 
-const players = new Map();
+const players = new Map(), IDS = new C.IdSet(); let stats_broken = 0;
 const mk = () => ({ n: 0, vpip: 0, pfr: 0, ws: 0, wn: 0, ls: 0, ln: 0, netBb: 0 });
 function rec(nick, st) {
   let r = players.get(nick);
@@ -21,11 +21,13 @@ function rec(nick, st) {
   for await (const x of C.iterHands(C.sourceFiles())) {
     if (x.end) { C.log('A: источник пройден', x.end, 'рук', n); continue; }
     try {
-      const rp = parseHand(x.hand + '\n');
+      const rp = parseHand(x.hand);
       if (!rp || !rp.n || !rp.bb) continue;
       if (C.halfOf(rp.handId) !== HALF) { skipped++; continue; }
+      if (!IDS.add(C.roomOf(x.hand), rp.handId)) continue; // повтор раздачи
       const fr = frames(rp); if (!fr.length) continue;
       const fin = fr[fr.length - 1], st = C.stratumOf(x.fp, rp.title);
+      if (!C.handIntact(rp, fin, x.hand)) { stats_broken++; continue; } // повреждённая история (банк не сходится)
       rp.nm.forEach((nick, j) => {
         let inv = false, rz = false, fp = false;
         for (const e of rp.ev) if (e.i === j && e.st === 0) { if (e.t === 'c') inv = true; if (e.t === 'r') { inv = true; rz = true; } if (e.t === 'f') fp = true; }

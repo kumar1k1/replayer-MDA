@@ -8,7 +8,7 @@
 //   node tests/validate_bias.cjs /tmp/synth2/PS [ник героя=DemoStars]
 const fs = require('fs'), path = require('path');
 const C = require('../pipeline/common.cjs'), K = require('../lib/cards.js');
-const { parseHand, frames } = C.loadParser();
+const P_ = C.loadParser(), { frames } = P_, parseHand = C.makeParse(P_);
 const dir = process.argv[2] || '/tmp/synth2/PS', HERO = process.argv[3] || 'DemoStars';
 
 // G[спот|действие] → накопители; классы — внутри
@@ -24,7 +24,7 @@ let hands = 0, dec = 0;
 for (const f of fs.readdirSync(dir)) {
   for (const x of C.splitHands(fs.readFileSync(path.join(dir, f), 'utf8'), f)) {
     const m = /Dealt to (\S+) \[(\w\w \w\w)\]/.exec(x.hand); if (!m || m[1] !== HERO) continue;
-    const rp = parseHand(x.hand + '\n'); if (!rp || !rp.n) continue;
+    const rp = parseHand(x.hand); if (!rp || !rp.n) continue;
     const hi = rp.nm.indexOf(HERO); if (hi < 0) continue;
     const fr = frames(rp), fin = fr[fr.length - 1];
     const SD = {};

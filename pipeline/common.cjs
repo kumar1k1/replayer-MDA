@@ -7,6 +7,47 @@ const path = require('path');
 
 // ---------- где лежит проект Backing (ветка Clever-Replay): парсер генерируется из его replayer.html ----------
 const BACKING = process.env.BACKING_DIR || ['D:/маининг/реплеер', path.join(__dirname, '..', '..', 'backing')].find(d => fs.existsSync(path.join(d, 'pipeline', 'parser.cjs'))) || '';
+// ---------- нормализация текста раздачи перед парсером Backing (сам парсер не меняем) ----------
+// Найдено проверкой tests/audit_parser.cjs на реальных архивах:
+//  • «posts big blind 27 and is all-in» (и анте/МБ олл-ином) парсер пропускал — вложение терялось, банк не сходился;
+//  • «folds [Ah Kc]» (фолд с показом карт) парсер пропускал — игрок оставался «в раздаче».
+function normalizeHand(t) {
+  return t.replace(/^(.+?: posts (?:the ante|small blind|big blind) [\d.]+) and is all-in[ \t]*$/gm, '$1')
+          .replace(/^(.+?: folds) \[[^\]]*\][ \t]*$/gm, '$1');
+}
+// рум по заголовку
+function roomOf(t) { return /^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other'; }
+// CoinPoker в экспорте показывает у ПОБЕДИТЕЛЯ только карты, которые играют (одна карта вместо двух) —
+// вскрытия CoinPoker смещены (12% вскрытий, все — победители). Их нельзя брать в диапазоны и поправку на олл-ин.
+const SHOWDOWN_TRUSTED = (room) => room !== 'coin';
+function makeParse(parser) { return (text) => parser.parseHand(normalizeHand(text) + '\n'); }
+
+// ---------- целостность раздачи: вложено всеми = банк, выиграно = банк − рейк ----------
+// На реальных архивах ~0,002% историй повреждены в источнике (пропущены строки рейза, улицы) — такие отбрасываем.
+function handIntact(rp, fin, text) {
+  const m = /Total pot ([\d.,]+)[^\n]*?(?:Rake|CC|Fee)\s*([\d.,]+)/i.exec(text);
+  if (!m) return false;
+  const num = (x) => parseFloat(String(x).replace(/,/g, '')), pot = num(m[1]), rake = num(m[2]);
+  const eps = Math.max(0.011, rp.bb * 0.0005) * rp.n;
+  let inv = 0, won = 0;
+  for (let i = 0; i < rp.n; i++) { inv += rp.stacks[i] - fin.stacks[i] + fin.won[i]; won += fin.won[i]; if (fin.stacks[i] < -eps) return false; }
+  return Math.abs(inv - pot) <= eps && Math.abs(won - (pot - rake)) <= eps;
+}
+
+// ---------- повторы раздач: множество номеров (рум + номер) в открытой адресации на Float64Array ----------
+// 100 млн номеров ≈ 1 ГБ при ёмкости 2^27. Номер раздачи у PS/CoinPoker — до ~3e11; рум кодируется сдвигом 1e12.
+class IdSet {
+  constructor(bits) { this.cap = 2 ** (bits || +(process.env.IDSET_BITS || 27)); this.mask = this.cap - 1; this.t = new Float64Array(this.cap); this.n = 0; }
+  key(room, id) { return ({ ps: 1, coin: 2, gg: 3 }[room] || 4) * 1e12 + (+id % 1e12) + 1; }
+  add(room, id) { // true — новый, false — повтор
+    const k = this.key(room, id); if (!isFinite(k)) return true;
+    let h = (Math.imul((k % 4294967296) >>> 0, 2654435761) ^ Math.floor(k / 4294967296)) >>> 0, i = h & this.mask;
+    while (this.t[i] !== 0) { if (this.t[i] === k) return false; i = (i + 1) & this.mask; }
+    if (this.n > this.cap * 0.85) throw new Error('IdSet переполнен: увеличьте IDSET_BITS');
+    this.t[i] = k; this.n++; return true;
+  }
+}
+
 function loadParser() {
   if (!BACKING) throw new Error('Не найден проект Backing (parser.cjs). Укажите BACKING_DIR=<папка реплеера>');
   return require(path.join(BACKING, 'pipeline', 'parser.cjs'));
@@ -36,7 +77,7 @@ function sourceFiles() {
     for (const f of fs.readdirSync(d)) {
       const p = path.join(d, f), st = fs.statSync(p);
       if (st.isDirectory()) walk(p);
-      else if ((/\.rar$/i.test(f) || /\.txt$/i.test(f)) && !/h2n[-_]?3/i.test(f) && !skip.has(f)) files.push(p);
+      else if ((/\.rar$/i.test(f) || /\.txt$/i.test(f)) && !(/h2n[-_]?3/i.test(f) && !/h2n[-_]?4/i.test(f)) && !skip.has(f)) files.push(p);
     }
   };
   dirs.forEach(walk);
@@ -90,4 +131,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
