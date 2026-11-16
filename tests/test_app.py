@@ -52,13 +52,35 @@ async def main():
             n = await pg.evaluate('i => RMAPP.analyse(HANDS[i]).length', i)
             for k in range(n):
                 txt = await pg.evaluate("() => (document.querySelector('.rm-body') || {}).textContent || ''")
-                kc = await pg.evaluate('([i, k]) => !!RMAPP.analyse(HANDS[i])[k].cards', [i, k])
-                # совет — только когда карты известны; без карт — пометка «совета нет»
-                if 'Сейчас ход' not in txt or (kc and 'Совет' not in txt) or (not kc and ('Совет' in txt or 'совета нет' not in txt)): bad += 1
+                kc = await pg.evaluate('([i, k]) => { const x = RMAPP.analyse(HANDS[i])[k]; return x.d.i === HANDS[i].hero || !/^(fold|check)$/.test(x.d.act); }', [i, k])
+                # совет — только активному действию; фолд и чек — пометка «не оцениваем»
+                if 'Сейчас ход' not in txt or (kc and 'Совет' not in txt) or (not kc and ('Совет' in txt or 'не оцениваем' not in txt)): bad += 1
                 steps += 1
                 await pg.keyboard.press('ArrowRight'); await pg.wait_for_timeout(30)
-        ok(bad == 0 and steps > 0, 'панель «Сейчас ход» на всех %d шагах: совет только при известных картах' % steps + ('' if not bad else ' (нет на %d)' % bad))
+        ok(bad == 0 and steps > 0, 'панель «Сейчас ход» на всех %d шагах: совет герою и активным действиям соперников' % steps + ('' if not bad else ' (нет на %d)' % bad))
         ok(not errs, 'без ошибок JS при листании')
+        # «Загрузить турнир»: свой турнир с «Dealt to» — заменяет пример, герой — тот, кому раздали карты, раздачи по порядку
+        demo = await pg.evaluate('window.RM_DEMO || ""')
+        import re
+        hands = [h for h in re.split(r'\n(?=PokerStars Hand #)', demo) if h.startswith('PokerStars Hand #')]
+        tid = re.search(r'Tournament #(\d+)', hands[0]).group(1)
+        mine = []
+        for h in hands:
+            if 'Tournament #' + tid not in h: continue
+            m = re.search(r'^(.+?): shows \[(\w\w \w\w)\]', h, re.M)
+            if not m: continue
+            nick, cards = m.group(1), m.group(2)
+            mine.append((nick, h.replace('*** HOLE CARDS ***', '*** HOLE CARDS ***\nDealt to ' + nick + ' [' + cards + ']', 1)))
+        hero = max(set(n for n, _ in mine), key=lambda n: sum(1 for x, _ in mine if x == n))
+        txt = '\n\n\n'.join(h for n, h in mine if n == hero)
+        await pg.evaluate('window.closeReplayer && window.closeReplayer()')
+        await pg.set_input_files('#file', files=[{'name': 'турнир.txt', 'mimeType': 'text/plain', 'buffer': txt.encode('utf8')}])
+        await pg.wait_for_timeout(1500)
+        t = await pg.evaluate("() => ({ tids: [...new Set(HANDS.map(H => H.tid))], n: HANDS.length, hero: document.querySelector('#hero').value, heroOk: HANDS.every(H => H.rp.nm[H.hero] === document.querySelector('#hero').value && !!H.rec.hc), tour: document.querySelector('#tour').value, rows: document.querySelectorAll('.rm-row').length, msg: document.querySelector('#msg').textContent })")
+        n_exp = sum(1 for n, _ in mine if n == hero)
+        ok(t['n'] == n_exp and t['heroOk'] and t['tour'] == tid and t['rows'] == n_exp, 'загрузка турнира: %d раздач, герой %s (карты известны во всех), турнир #%s выбран — %s' % (t['n'], t['hero'], t['tour'], t['msg'] + ' ' + str(t['tids']) + ' ожидалось ' + str(n_exp)))
+        await pg.screenshot(path=SHOTS + '/app_tournament.png')
+        ok(not errs, 'без ошибок JS после загрузки турнира')
         await pg.evaluate('window.closeReplayer && window.closeReplayer()')
         await b.close()
         print('\nВсе проверки реплеера пройдены' if not fails else '\nЕсть ошибки: %d' % fails)

@@ -5,8 +5,8 @@
   const SP = window.RMSpots, E8 = window.RMEngine8, K = window.RMCards, CLU = window.RMClusters;
   const ENG = E8.create(window.RM_MODEL, window.RM_EQ, { sizes: window.RM_SIZES, lineup: window.RM_LINEUP });
   const PLAYERS = window.RM_PLAYERS || {};
-  const roomOf = (t) => (/^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : 'other');
-  const ROOM_RU = { ps: 'PokerStars', coin: 'CoinPoker' };
+  const roomOf = (t) => (/^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other');
+  const ROOM_RU = { ps: 'PokerStars', coin: 'CoinPoker', gg: 'GGPoker' };
 
   // ---------- игроки базы: кластер, группа, счётчики для лайнапа ----------
   const pfCache = new Map();
@@ -52,14 +52,15 @@
   }
 
   // ---------- загрузка ----------
-  const SPLIT = /\r?\n(?=(?:PokerStars Hand #|CoinPoker Hand #))/;
+  const SPLIT = /\r?\n(?=(?:PokerStars Hand #|CoinPoker Hand #|Poker Hand #))/;
   function load(text) {
-    const parts = text.replace(/^﻿/, '').split(SPLIT).map(s => s.trim()).filter(s => /^(PokerStars|CoinPoker) Hand #/.test(s));
+    const parts = text.replace(/^﻿/, '').split(SPLIT).map(s => s.trim()).filter(s => /^(PokerStars |CoinPoker )?Hand #|^Poker Hand #/.test(s));
     let bad = 0;
     for (const t of parts) {
       let rp = null; try { rp = window.BKP.parse(t); } catch (e) { rp = null; }
       if (!rp || !rp.n || !rp.bb || !rp.pl || rp.pl.length < 2) { bad++; continue; }
-      window.HANDS.push({ text: t, rp, room: roomOf(t), hero: -1, rec: null, adv: null });
+      const tm = t.match(/Tournament #(\d+)/), dt = String(rp.date || '');
+      window.HANDS.push({ text: t, rp, room: roomOf(t), tid: tm ? tm[1] : '—', date: dt, hero: -1, rec: null, adv: null });
     }
     return { added: parts.length - bad, bad };
   }
@@ -87,13 +88,14 @@
   function cardsEl(cs) { const w = el('span', 'tv-cards'); if (!cs) { w.append(el('i', 'tv-c', '··')); return w; } for (const c of cs.split(/\s+/)) { const x = el('i', 'tv-c s-' + c[1], (c[0] === 'T' ? '10' : c[0]) + ({ s: '♠', h: '♥', d: '♦', c: '♣' })[c[1]]); w.append(x); } return w; }
   function render() {
     const list = $('#list'); list.replaceChildren();
-    const N = window.HANDS.length; $('#count').textContent = N ? N + ' раздач' : '';
+    const T = $('#tour').value, vis = window.HANDS.map((H, i) => i).filter(i => !T || window.HANDS[i].tid === T);
+    $('#count').textContent = vis.length ? vis.length + ' раздач' : '';
     let tot = { n: 0, ok: 0, bad: 0, loss: 0, warn: 0 };
-    window.HANDS.forEach((H, i) => {
-      const adv = analyse(H), mine = adv.filter(x => x.d.i === H.hero && x.cards);
+    vis.forEach((i, q) => { const H = window.HANDS[i];
+      const adv = analyse(H), mine = adv.filter(x => x.d.i === H.hero); // герой — все решения
       const row = el('button', 'tv-h rm-row'); row.type = 'button';
       const top = el('div', 'tv-ht');
-      top.append(el('span', 'tv-no', '#' + (i + 1)), cardsEl(H.rec.hc), el('span', 'tv-pos ' + ('p-' + ({ BTN: 'bt', SB: 'sb', BB: 'bb', CO: 'co', HJ: 'hj' })[H.rec.pl[H.hero][0]] || ''), H.rec.pl[H.hero][0]), el('span', 'tv-stk', fmt(H.rec.pl[H.hero][1]) + ' BB'), el('span', 'tv-lvl', ROOM_RU[H.room] + ' · ' + (H.rec.t || '')));
+      top.append(el('span', 'tv-no', '#' + (q + 1)), cardsEl(H.rec.hc), el('span', 'tv-pos ' + ('p-' + ({ BTN: 'bt', SB: 'sb', BB: 'bb', CO: 'co', HJ: 'hj' })[H.rec.pl[H.hero][0]] || ''), H.rec.pl[H.hero][0]), el('span', 'tv-stk', fmt(H.rec.pl[H.hero][1]) + ' BB'), el('span', 'tv-lvl', ROOM_RU[H.room] + ' · ' + (H.rec.t || '')));
       const net = H.rec ? netOf(H) : 0; const nt = el('span', 'tv-net', sgn(net) + ' BB'); top.append(nt);
       row.classList.add(net > 0.05 ? 'w1' : net < -0.05 ? 'l1' : 'x');
       const st = el('div', 'tv-st');
@@ -105,7 +107,7 @@
       }
       if (!mine.length) st.append(el('span', 'tv-st dim', 'без решений на префлопе'));
       row.append(top, st);
-      row.onclick = () => window.openReplayer(i, window.HANDS.map((_, q) => q), { side: window.RM_SIDE });
+      row.onclick = () => window.openReplayer(i, vis, { side: window.RM_SIDE });
       list.append(row);
     });
     const sum = $('#review'); sum.replaceChildren();
@@ -125,19 +127,34 @@
     sel.value = cur && L.some(x => x[0] === cur) ? cur : (L[0] ? L[0][0] : '');
     setHero(sel.value); render();
   }
-  async function readFiles(files) {
+  // турниры в загруженном: выбор в списке (раздачи по порядку)
+  function refreshTours() {
+    const sel = $('#tour'), cur = sel.value, cnt = new Map();
+    for (const H of window.HANDS) { const c = cnt.get(H.tid) || { n: 0, t: H.rp.title || '' }; c.n++; cnt.set(H.tid, c); }
+    sel.replaceChildren(); const all = el('option', null, 'все турниры · ' + window.HANDS.length); all.value = ''; sel.append(all);
+    for (const [tid, c] of cnt) { const o = el('option', null, '#' + tid + ' · ' + c.t.slice(0, 40) + ' · ' + c.n); o.value = tid; sel.append(o); }
+    sel.value = cnt.has(cur) ? cur : (cnt.size === 1 ? [...cnt.keys()][0] : '');
+  }
+  // «Загрузить турнир» — заменяет загруженное; «Добавить файлы» — дописывает. Раздачи — по турниру и времени.
+  async function readFiles(files, replace) {
+    if (replace) { window.HANDS.length = 0; window.DB.cols = { net: [], nev: [], room: [] }; }
     let add = 0, bad = 0;
     for (const f of files) { const r = load(await f.text()); add += r.added; bad += r.bad; }
-    $('#msg').textContent = 'Загружено раздач: ' + add + (bad ? ' · не разобрано: ' + bad : '');
-    refreshHero();
+    window.HANDS.sort((a, b) => (a.tid < b.tid ? -1 : a.tid > b.tid ? 1 : a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.rp.handId).localeCompare(String(b.rp.handId))));
+    $('#msg').textContent = (replace ? 'Турнир загружен: ' : 'Добавлено: ') + add + ' раздач' + (bad ? ' · не разобрано: ' + bad : '');
+    refreshTours(); refreshHero();
   }
   window.addEventListener('DOMContentLoaded', () => {
-    $('#file').onchange = (e) => readFiles(Array.from(e.target.files || []));
-    $('#open').onclick = () => $('#file').click();
+    let replace = true;
+    $('#file').onchange = (e) => { readFiles(Array.from(e.target.files || []), replace); e.target.value = ''; };
+    $('#open').onclick = () => { replace = true; $('#file').click(); };
+    $('#add').onclick = () => { replace = false; $('#file').click(); };
+    if ($('#open2')) $('#open2').onclick = () => { replace = true; $('#file').click(); };
+    $('#tour').onchange = () => render();
     $('#hero').onchange = () => { setHero($('#hero').value); render(); };
     document.body.addEventListener('dragover', (e) => e.preventDefault());
-    document.body.addEventListener('drop', (e) => { e.preventDefault(); readFiles(Array.from(e.dataTransfer.files || [])); });
-    if (window.RM_DEMO) { load(window.RM_DEMO); refreshHero(); $('#msg').textContent = 'Пример: ' + window.HANDS.length + ' раздач'; }
+    document.body.addEventListener('drop', (e) => { e.preventDefault(); readFiles(Array.from(e.dataTransfer.files || []), true); });
+    if (window.RM_DEMO) { load(window.RM_DEMO); refreshTours(); refreshHero(); $('#msg').textContent = 'Пример: ' + window.HANDS.length + ' раздач из базы — загрузите свой турнир'; }
   });
   window.RMAPP = { player, analyse, toRec, load, setHero, GRU, ROOM_RU, ENG, netOf };
 })();

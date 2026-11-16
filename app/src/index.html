@@ -9,7 +9,7 @@
 /* replayer-MDA: только своё — панель «Сейчас ход», список и разбор героя; всё остальное — styles.css MDA Lab */
 .rm-top{display:flex;align-items:center;gap:16px;padding:10px 18px;background:var(--top);border-bottom:1px solid var(--line);flex-wrap:wrap}
 .rm-top .grow{flex:1 1 auto}
-.rm-top select{min-height:40px;border-radius:10px;border:1px solid var(--line2);background:var(--card);color:var(--text);padding:0 10px;font-weight:700}
+.rm-top select{max-width:340px;min-height:40px;border-radius:10px;border:1px solid var(--line2);background:var(--card);color:var(--text);padding:0 10px;font-weight:700}
 .rm-wrap{padding:16px 18px;display:flex;flex-direction:column;gap:12px;overflow:auto;flex:1 1 auto}
 .rm-kpis{display:flex;gap:10px;flex-wrap:wrap}
 .rm-kpi{display:flex;flex-direction:column;gap:2px;padding:10px 14px;border-radius:12px;border:1px solid var(--line2);background:var(--panel);min-width:170px}
@@ -54,17 +54,19 @@
 <body>
 <header class="rm-top">
   <div class="brand"><img src="icon.png" alt="" width="28" height="28"><span>Умный реплеер</span></div>
-  <button class="btn-load" id="open" type="button">Открыть истории раздач</button>
+  <button class="btn-load" id="open" type="button" title="Файлы истории раздач турнира (.txt); заменяет загруженное">Загрузить турнир</button>
+  <button class="btn" id="add" type="button" title="Дописать ещё файлы к загруженному">Добавить файлы</button>
   <input type="file" id="file" multiple accept=".txt" hidden>
+  <label class="small muted">Турнир <select id="tour" aria-label="Турнир"></select></label>
   <label class="small muted">Герой <select id="hero" aria-label="Герой"></select></label>
-  <span class="small muted" id="msg">PokerStars и CoinPoker · файлы .txt или перетащите сюда</span>
+  <span class="small muted" id="msg">PokerStars, CoinPoker, GG (экспорт) · файлы .txt или перетащите сюда</span>
   <span class="grow"></span>
   <span class="small muted" id="count"></span>
   <span class="rm-build">сборка {{BUILD}}</span>
 </header>
 <main class="rm-wrap">
   <div class="rm-kpis" id="review"></div>
-  <div id="list"><div class="rm-empty">Откройте файлы историй раздач — для каждого решения на префлопе будет совет по игре топов и EV базы.</div></div>
+  <div id="list"><div class="rm-empty"><p>Загрузите свой турнир — файлы историй раздач (.txt) или перетащите их сюда.<br>По каждому вашему решению на префлопе будет совет по игре топов и EV базы.</p><button class="btn-load" id="open2" type="button">Загрузить турнир</button></div></div>
 </main>
 <script src="data/model.js"></script>
 <script src="data/eq169.js"></script>

@@ -18,6 +18,7 @@
     if (!pl.reliable) c.classList.add('pre');
     return c;
   }
+  const ACTIVE = (act) => !/^(fold|check)$/.test(String(act));
   let CTX = null; // { i, H, box, body }
   window.RM_SIDE = {
     mount(main, i) {
@@ -48,17 +49,18 @@
       s.append(meta);
       if (next.cards) { const c = el('div', 'rm-hand'); c.append(el('span', null, 'рука'), el('b', null, a.hand)); s.append(c); }
       if (a.stNote) s.append(el('div', 'rm-note', a.stNote));
-      // совет — только когда рука известна: без карт нельзя знать, что лучше именно этому игроку (решение владельца)
-      const known = !!next.cards;
-      if (known) {
+      // совет и оценка — только тем, кто делает активное действие (лимп, колл, опен, рейз, пуш); фолд и чек не оцениваем
+      const known = d.i === H.hero || ACTIVE(d.act); // герой (его турнир, карты известны) — всегда; остальные — только активные действия
+      if (!known) s.append(el('div', 'rm-note', 'Фолд или чек — не оцениваем (оцениваются ваши решения и активные действия соперников).'));
+      else {
+        if (!next.cards) s.append(el('div', 'rm-note', 'Карты неизвестны — варианты оценены по диапазону и частотам топов.'));
         const r = el('div', 'rm-rec'); r.append(el('span', null, 'Совет'), el('b', null, a.rec.ru)); s.append(r);
         s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));
-      } else s.append(el('div', 'rm-note', 'Карты игрока неизвестны — совета нет. Ниже — справка: как в этом споте играют топы и чего стоят действия в среднем по диапазону.'));
       // варианты: «сброс соперника» — как часто сбрасывает тот, против кого действие (опен — все за спиной, 3-бет — открывший)
       const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', 'топы', 'источник'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
       const oppCell = (o, pf, act) => { const td = el('td', 'num', o ? pct(o.p) : (act === 'shove' || act === 'open') && pf != null ? pct(pf) : ''); if (o) td.title = o.who + ': ' + o.src; else if (pf != null && (act === 'shove' || act === 'open')) td.title = 'все, кто ещё в раздаче'; return td; };
       for (const row of a.rows) {
-        const on = known && row.act === a.rec.act;
+        const on = row.act === a.rec.act;
         const tr = el('tr', on ? 'on' : row.reliable ? '' : 'dim');
         tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '')), el('td', 'num', row.ev == null ? '—' : sgn(row.ev)), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), el('td', 'src', row.src + (row.n ? ' · n=' + row.n : '')));
         t.append(tr);
@@ -87,6 +89,7 @@
         });
         L.append(el('div', 'rm-tot', 'P(все сфолдят) = ' + pct(lr.pFold) + ' · ' + lr.pFoldSrc));
       }
+      }
     } else if (pre && k === fr.length - 1) {
       sec('Префлоп закончен');
     } else if (!pre) {
@@ -94,8 +97,8 @@
       s.append(el('div', 'rm-note', 'Подсказки — для префлопа (этап 1). Постфлоп — следующий этап проекта.'));
     }
     // оценка только что сделанного действия
-    // оценка — только тем, чья рука известна (иначе «лучшее/ошибка» без оснований)
-    if (last && last.v && last.cards) {
+    // оценка — только активных действий (фолд и чек не оцениваем)
+    if (last && last.v && (last.d.i === H.hero || ACTIVE(last.d.act))) {
       const s = sec('Последнее действие'), k2 = KIND[last.v.kind] || 'none';
       const w = el('div', 'rm-last'); const pp = el('span', posCls(last.d.pos), last.d.pos); pp.classList.add('rm-pos');
       w.append(pp, el('span', 'rm-nick', H.rp.nm[last.d.i]), el('span', 'rm-vchip ' + k2, last.v.kind + (last.v.kind === 'ошибка' ? ' −' + fmt(last.v.d) + ' BB' : '')));
