@@ -34,6 +34,10 @@
 
   // opts: {sizes: data/sizes_v8.json, lineup: data/lineup_v8.json}
   function create(model, eqTable, opts) {
+    // EV неолл-ин действий по вскрытиям (src «рука» / «класс руки») смещён: рука попадает в оценку, только если дошла до вскрытия,
+    // а банки, выигранные без вскрытия, теряются (AKo-опен на полной базе: −1,4 bb при n = 3 426). Пока нет поправки (GTO-профиль),
+    // такой EV — только справка: «играть или нет» решают частоты топов, а точными остаются фолд, пуш и колл олл-ина (эквити).
+    const HC_TRUST = !!(opts && opts.hcTrust);
     opts = opts || {};
     const EQ = eqTable.eq ? Float32Array.from(eqTable.eq, v => v / 10000) : eqTable;
     const EV = model.EV, HC = model.HC;
@@ -368,7 +372,7 @@
         if (sl.ev) return Object.assign(row, { ev: sl.ev.m, se: sl.ev.se, src: 'диапазон', n: sl.ev.n });
         return Object.assign(row, { ev: null, se: null, src: 'нет данных', n: 0 });
       });
-      rows.forEach(r => { r.reliable = !r.asShove && (r.act === 'fold' || /^эквити/.test(r.src) || (r.ev !== null && (r.src === 'рука' || r.src === 'класс руки') && r.n >= MIN_HAND_N)); });
+      rows.forEach(r => { r.reliable = !r.asShove && (r.act === 'fold' || /^эквити/.test(r.src) || (HC_TRUST && r.ev !== null && (r.src === 'рука' || r.src === 'класс руки') && r.n >= MIN_HAND_N)); if (!HC_TRUST && (r.src === 'рука' || r.src === 'класс руки')) r.biased = true; });
       let best = rows[0];
       for (const r of rows) if (r.reliable && r.ev > best.ev) best = r;
       const ra = cards ? rangeAct(sp, acts, FT.n >= 30 ? FT : FF, h) : null;
