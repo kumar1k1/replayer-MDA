@@ -88,12 +88,7 @@
       const s = sec('Сейчас ход');
       const who = el('div', 'rm-who'); const p = el('span', posCls(d.pos), d.pos); p.classList.add('rm-pos');
       who.append(p, el('span', 'rm-nick', nick + (d.i === H.hero ? ' (герой)' : '')), clChip(pl)); s.append(who);
-      const meta = el('div', 'rm-meta');
-      meta.append(el('span', null, TBL[a.tbl] || a.tbl), el('span', null, 'стек ' + fmt(d.stack, 1) + ' BB'), el('span', null, 'эфф. ' + fmt(d.eff, 1) + ' BB · банд ' + a.band));
-      if (d.toCall > 0.001) meta.append(el('span', null, 'к коллу ' + fmt(d.toCall) + ' BB, банк ' + fmt(d.potBefore) + ' BB'));
-      { const KD = { n: 'фризаут', k: 'PKO', m: 'Mystery Bounty' }, sg = H.stage;
-        meta.append(el('span', null, KD[d.kd] || d.kd), el('span', null, 'стадия: ' + (sg ? A.STAGE_RU[sg.stage] + (sg.exact ? '' : ' (оценка)') : 'неизвестна') + (a.stageN ? ' · в базе ' + a.stageN : ''))); }
-      s.append(meta);
+      // шапка — только кто ходит, рука и совет (стек, банк, формат, стадия — не показываем)
       if (next.cards) { const c = el('div', 'rm-hand'); c.append(el('span', null, 'рука'), el('b', null, a.hand)); s.append(c); }
       if (a.stNote) s.append(el('div', 'rm-note', a.stNote));
       // совет и оценка — только тем, кто делает активное действие (лимп, колл, опен, рейз, пуш); фолд и чек не оцениваем

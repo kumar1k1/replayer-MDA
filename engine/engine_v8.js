@@ -336,7 +336,12 @@
         const P = key.split('|')[1], from = P8.indexOf(P);
         for (let q = from; q >= 0 && q < P8.length; q++) { const nd = GTO.nodes[d + '|RFI|' + P8[q]]; if (!nd) continue;
           for (const l in nd.hands) { const r = nd.hands[l], play = 1 - r[0][0]; const h = H_OF[l]; if (play >= 0.5 && score[h] === 1e9) score[h] = (q - from) * 1000 + (1 - play) * 100 + posR[h] / 10; } }
-      } else { const nd = GTO.nodes[ck]; for (const l in nd.hands) { const r = nd.hands[l], play = 1 - r[0][0], h = H_OF[l]; if (play > 0.005) score[h] = (1 - play) * 100 + posR[h] / 10; } }
+      } else {
+        // ответы: сначала руки, которые GTO рейзит (3-бет/4-бет/пуш), потом колл-руки, потом смешанные с фолдом —
+        // чтобы самые частые у топов агрессивные действия доставались тем же рукам, что и в GTO
+        const nd = GTO.nodes[ck];
+        for (const l in nd.hands) { const r = nd.hands[l], h = H_OF[l], ag = (r[2] ? r[2][0] : 0) + (r[3] ? r[3][0] : 0), cl = r[1] ? r[1][0] : 0; if (ag + cl > 0.005) score[h] = 300 - 200 * ag - 100 * cl + posR[h] / 1000; }
+      }
       for (let h = 0; h < 169; h++) if (score[h] === 1e9) score[h] = 1e6 + posR[h];
       const out = [...Array(169).keys()].sort((a, b) => score[a] - score[b]); gRankCache.set(ck, out); return out;
     }
