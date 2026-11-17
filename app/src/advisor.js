@@ -26,10 +26,22 @@
     const T = pick('T'), F = pick('F');
     return T && T.n >= 50 ? T : F && F.n >= 20 ? F : T;
   }
+  // нет вскрытий на этом стеке — ближайший стек (банд), с пометкой
+  const BANDS = ['<12', '12-19', '20-35', '36-59', '60-99', '100-149', '150+'];
+  function rangeNear(rk, act) {
+    const r0 = rangeOf(rk, act); if (r0) return r0;
+    const parts = rk.split('|'), bi = BANDS.indexOf(parts[5]); if (bi < 0) return null;
+    for (let d = 1; d < BANDS.length; d++) for (const j of [bi - d, bi + d]) {
+      if (j < 0 || j >= BANDS.length) continue;
+      const p2 = parts.slice(); p2[5] = BANDS[j]; const r = rangeOf(p2.join('|'), act);
+      if (r) return Object.assign(r, { band: BANDS[j] });
+    }
+    return null;
+  }
   let MX = null;
   function showMatrix(anchor, R, title) {
     hideMatrix(); const K = window.RMCards; const lab = {}; for (let h = 0; h < 169; h++) lab[K.H169[h].label] = h;
-    const box = el('div', 'rm-mx'); box.append(el('div', 'rm-mx-t', title + ' — ' + R.n + ' рук со вскрытием (' + (R.coh === 'T' ? 'топы' : 'игроки не из топов') + ')'));
+    const box = el('div', 'rm-mx'); box.append(el('div', 'rm-mx-t', title + ' — ' + R.n + ' рук со вскрытием (' + (R.coh === 'T' ? 'топы' : 'игроки не из топов') + ')' + (R.band ? ' · на этом стеке вскрытий мало — показан стек ' + R.band + ' BB' : '')));
     const g = el('div', 'rm-mx-g'); let mx = 0; const dens = {};
     for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) { const l = i === j ? RANKS[i] + RANKS[j] : i < j ? RANKS[i] + RANKS[j] + 's' : RANKS[j] + RANKS[i] + 'o'; const h = lab[l]; const c = h != null ? R.m[h] || 0 : 0; const d = c / (i === j ? 6 : i < j ? 4 : 12); dens[l] = [c, d]; if (d > mx) mx = d; }
     for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) { const l = i === j ? RANKS[i] + RANKS[j] : i < j ? RANKS[i] + RANKS[j] + 's' : RANKS[j] + RANKS[i] + 'o'; const [c, d] = dens[l]; const q = mx ? d / mx : 0; const cell = el('div', 'rm-mx-c', l); cell.style.background = c ? 'rgba(242,176,62,' + (0.15 + 0.85 * q).toFixed(2) + ')' : 'rgba(255,255,255,0.04)'; cell.style.color = q > 0.55 ? '#1b1b1b' : ''; cell.title = l + ': ' + c; g.append(cell); }
@@ -95,9 +107,9 @@
       const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', (a.freqWho === 'регов' ? 'реги' : a.freqWho === 'всех игроков' ? 'все' : 'топы') + ', %', 'диапазон'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
       const bucketRu = (act, b) => act === 'iso' ? ' · ' + b.replace('+', '+').replace('+4+', '+4 и больше') + ' BB сверх лимпов' : act === 'open' ? '' : ' · ' + b + ' от рейза';
       const rngCell = (rk, act, title) => {
-        const td = el('td', 'num rm-rng'); const R = act && rk ? rangeOf(rk, act) : null;
+        const td = el('td', 'num rm-rng'); const R = act && rk ? rangeNear(rk, act) : null;
         if (!R) { td.textContent = act ? '—' : ''; return td; }
-        td.textContent = R.n + ' рук ▦'; td.style.cursor = 'help';
+        td.textContent = R.n + ' рук ▦' + (R.band ? '*' : ''); td.style.cursor = 'help';
         td.onmouseenter = () => showMatrix(td, R, title); td.onmouseleave = hideMatrix;
         return td;
       };
