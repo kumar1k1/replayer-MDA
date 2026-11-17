@@ -15,16 +15,19 @@ C.log('sizes: топов', tops.size);
 // гистограммы значений с точностью 0,01 (а не все значения подряд): на полной базе — десятки миллионов рейзов
 let H = { pool: {}, tops: {} };
 const add = (L, k, v) => { const h = H[L][k] = H[L][k] || {}, q = Math.round(v * 100); h[q] = (h[q] || 0) + 1; };
+// реальные суммы 3-бета / сквиза / 4-бета в bb (шаг 0,1) при данном размере предыдущего рейза: «до сколько ставят на опен 2,8»
+let HA = { pool: {}, tops: {} };
+const addA = (L, k, ref, to) => { const h = HA[L][k] = HA[L][k] || {}, r = (Math.round(ref * 10) / 10).toFixed(1), g = h[r] = h[r] || {}, q = Math.round(to * 10); g[q] = (g[q] || 0) + 1; };
 // проверка порога COMMIT: x = (мода пула для спота) / eff, корзины по 0.1; [пуш, рейз]
 let commit = { pool: {}, tops: {} };
 let nDec = 0, nAiEff = 0, nRaise = 0, done = [];
 let seen = new C.IdSet();
 // чекпоинт после каждого архива (RESUME=1 — продолжить, MAX_SOURCES=N — часть)
 const STATE = path.join(C.OUT, 'sizes_state.json'), IDSF = path.join(C.OUT, 'sizes_ids.bin');
-const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ H, commit, nDec, nAiEff, nRaise, done })); fs.renameSync(tmp, STATE); C.saveIds(seen, IDSF); };
+const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ H, HA, commit, nDec, nAiEff, nRaise, done })); fs.renameSync(tmp, STATE); C.saveIds(seen, IDSF); };
 
 (async () => {
-  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { ({ H, commit, nDec, nAiEff, nRaise, done } = JSON.parse(fs.readFileSync(STATE, 'utf8'))); seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
+  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { ({ H, HA = { pool: {}, tops: {} }, commit, nDec, nAiEff, nRaise, done } = JSON.parse(fs.readFileSync(STATE, 'utf8'))); seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
   const part = C.partLimiter();
   for await (const x of C.iterHands(C.sourceFiles(), new Set(done))) {
     if (x.end) { done.push(x.end); saveState(); C.progress('sizes', done.length); C.log('sizes: пройден', x.end, '(чекпоинт)'); if (part.hit()) { C.log('sizes: часть готова'); process.exit(C.PART_EXIT); } continue; }
@@ -55,6 +58,7 @@ const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON
       // ключи: с форматом турнира (фризаут / PKO) и общие
       for (const k of SZ.keysFor(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd).slice(0, a === 'open' ? 3 : 2)) {
         add('pool', k, v); if (top) add('tops', k, v);
+        if (a !== 'open' && a !== 'iso' && d.refTo > 0) { addA('pool', k, d.refTo, d.to); if (top) addA('tops', k, d.refTo, d.to); }
         const kk = '*' + k.slice(k.indexOf('|')); add('pool', kk, v); if (top) add('tops', kk, v);
       }
     }
@@ -73,7 +77,11 @@ const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON
     const hb = {}; for (const [x, c] of v) if (SZ.bucketOf(act, x) === topB) { const b = (Math.round(x / step) * step).toFixed(2); hb[b] = (hb[b] || 0) + c; }
     const rec = +Object.entries(hb).sort((a, b) => b[1] - a[1])[0][0];
     for (const b in buckets) buckets[b] = Math.round(buckets[b] / N * 1000) / 10;
-    table[L][k] = { n: N, mode: +mb, share: Math.round(mc / N * 1000) / 10, rec, recBucket: topB, recShare: buckets[topB], p10: q(.1), p50: q(.5), p90: q(.9), buckets };
+    // мода внутри каждой корзины (типичный размер корзины) и для кратных — реальная сумма в bb при данном предыдущем рейзе
+    const bmode = {}; { const hh = {}; for (const [x, c] of v) { const b = SZ.bucketOf(act, x), t = (Math.round(x / step) * step).toFixed(2); (hh[b] = hh[b] || {})[t] = ((hh[b] || {})[t] || 0) + c; } for (const b in hh) bmode[b] = +Object.entries(hh[b]).sort((a, b2) => b2[1] - a[1])[0][0]; }
+    let babs = null;
+    if (HA[L][k]) { babs = {}; for (const [r, g] of Object.entries(HA[L][k])) { const byB = {}; for (const [q, c] of Object.entries(g)) { const to = +q / 10, b = SZ.bucketOf(act, to / +r); (byB[b] = byB[b] || {})[to.toFixed(1)] = ((byB[b] || {})[to.toFixed(1)] || 0) + c; } for (const b in byB) { const e = Object.entries(byB[b]), tot = e.reduce((s2, x) => s2 + x[1], 0); if (tot < 20) continue; (babs[b] = babs[b] || {})[r] = +e.sort((a, b2) => b2[1] - a[1])[0][0]; } } }
+    table[L][k] = { n: N, bmode, babs, mode: +mb, share: Math.round(mc / N * 1000) / 10, rec, recBucket: topB, recShare: buckets[topB], p10: q(.1), p50: q(.5), p90: q(.9), buckets };
   }
   const outT = path.join(__dirname, '..', 'data', 'sizes_v8.json');
   fs.writeFileSync(outT, JSON.stringify(table));

@@ -363,7 +363,7 @@
       for (const b of SZ.BUCKETS[sa].names) {
         const A = act + '@' + b, nc = (coh) => ((cellEV(coh + '|' + S + '|' + A + '|*') || cellEV(coh + '|' + Sb + '|' + A + '|*') || { n: 0 }).n);
         const nT = nc('T'), nF = nc('F'); if (nT + nF < 20) continue;
-        const m = SZ.repOf(sa, b), to = SZ.toFor(sa, m, ctx);
+        const m = SZ.repOf(sa, b), bt = SZ.bucketTo(sa, b, Object.assign({ band: SP.bandOf(sp.eff), pos: SP.posBand(sp.pos) }, ctx), SIZES), to = bt.to;
         const v = { bucket: b, A, to, m, nT, nF, allin: sp.eff > 0 && to >= sp.eff * SZ.COMMIT, ev: null, n: 0, src: 'нет данных' };
         const sl = spotLevel('T', sp, A);
         const of = oppFoldFor(sp, act, b, m, info, sl); v.oppFold = of;
