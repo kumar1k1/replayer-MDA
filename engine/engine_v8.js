@@ -440,9 +440,14 @@
       // если у топов мало раздач — сначала реги (кластеры-реги), и только потом все остальные (там и фиши)
       const F0 = { f: acts.map(() => 0), n: 0, lvl: 'нет' }; // игроков не из топов и не регов (там фиши) для советов не используем
       const FB = FT.n >= 30 ? FT : FR.n >= 30 ? FR : F0, whoB = FT.n >= 30 ? 'топов' : FR.n >= 30 ? 'регов' : 'топов';
+      // фиши (кластеры «фиш» и «суперфиш») — только для показа, как они играют этот спот; в советах не участвуют
+      const FI1 = freqs('gfish', sp, acts), FI2 = freqs('gsuperfish', sp, acts), nFi = FI1.n + FI2.n;
+      const FI = nFi >= 30 ? acts.map((a, q) => (FI1.f[q] * FI1.n + FI2.f[q] * FI2.n) / nFi) : null;
       const rows = acts.map((act, q) => {
-        const row = { act, ru: RU[act] || act, freqT: FB.f[q], freqTop: FT.f[q], freqReg: FR.n >= 30 ? FR.f[q] : null, freqF: FF.f[q] };
-        if (act === 'fold') return Object.assign(row, { ev: 0, se: 0, src: 'точно', n: null });
+        const row = { act, ru: RU[act] || act, freqT: FB.f[q], freqTop: FT.f[q], freqReg: FR.n >= 30 ? FR.f[q] : null, freqFish: FI ? FI[q] : null, freqF: FF.f[q] };
+        // EV действия по базе (все руки, топы → реги): сколько в среднем приносит этот колл / 3-бет в таком споте
+        if (act !== 'fold') { const slB = spotLevel('T', sp, act); if (slB.ev && slB.ev.m != null) { row.evBase = slB.ev.m; row.nBase = slB.ev.n; } }
+        if (act === 'fold') return Object.assign(row, { ev: 0, se: 0, src: 'точно', n: null, evBase: 0 });
         let size = sizeFor(sp, act);
         const vars = sizeVariants(sp, act, cards, h, info);
         if (vars && vars.length) {
