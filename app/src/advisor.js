@@ -38,7 +38,12 @@
     // кадр k показывает уже сделанное действие №(k−2); ходит следующий — решение №(k−1)
     const pre = f.street === 0;
     const next = pre ? adv[k - 1] : null, last = pre || (k >= 2 && adv[k - 2] && fr[k].street === 0) ? adv[k - 2] : null;
-    if (next && next.a) {
+    // герой уже сбросил — дальше раздачу не разбираем (подсказки только, пока вы в раздаче)
+    const heroOut = (n) => adv.slice(0, Math.max(0, n)).some(x => x.d.i === H.hero && x.d.act === 'fold');
+    if (next && next.a && heroOut(k - 1)) {
+      const s = sec('Вы сбросили');
+      s.append(el('div', 'rm-note', 'Дальше раздачу не оцениваем: подсказки — только пока вы в раздаче.'));
+    } else if (next && next.a) {
       const d = next.d, a = next.a, nick = H.rp.nm[d.i], pl = A.player(H.room, nick);
       const s = sec('Сейчас ход');
       const who = el('div', 'rm-who'); const p = el('span', posCls(d.pos), d.pos); p.classList.add('rm-pos');
@@ -72,7 +77,7 @@
         if (row.sizes && row.sizes.length > 1) for (const v of row.sizes) {
           const ch = row.size && v.bucket === row.size.bucket;
           const tv = el('tr', 'rm-sz' + (ch && on ? ' on' : '') + (v.reliable ? '' : ' dim'));
-          tv.append(el('td', null, '  размер до ' + fmt(v.to, 1) + ' BB' + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), el('td', 'src', v.src + (v.n ? ' · n=' + v.n : '')));
+          tv.append(el('td', null, '    ' + fmt(v.to, 1) + ' BB' + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), el('td', 'src', v.src + (v.n ? ' · n=' + v.n : '')));
           tv.title = 'размер ' + v.bucket + bucketRu(row.act, v.bucket) + ': у топов ' + v.nT + ' таких рейзов в этом споте (' + (v.shareT != null ? pct(v.shareT) : '—') + ' их рейзов), у поля ' + v.nF;
           t.append(tv);
         }
@@ -104,7 +109,7 @@
     }
     // оценка только что сделанного действия
     // оценка — только активных действий (фолд и чек не оцениваем)
-    if (last && last.v && (last.d.i === H.hero || ACTIVE(last.d.act))) {
+    if (last && last.v && (last.d.i === H.hero || ACTIVE(last.d.act)) && !heroOut(k - 2)) {
       const s = sec('Последнее действие'), k2 = KIND[last.v.kind] || 'none';
       const w = el('div', 'rm-last'); const pp = el('span', posCls(last.d.pos), last.d.pos); pp.classList.add('rm-pos');
       w.append(pp, el('span', 'rm-nick', H.rp.nm[last.d.i]), el('span', 'rm-vchip ' + k2, last.v.kind + (last.v.kind === 'ошибка' ? ' −' + fmt(last.v.d) + ' BB' : '')));
