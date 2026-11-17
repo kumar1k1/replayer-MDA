@@ -320,10 +320,30 @@
       const R = norm(topRange(p)); const v = K.H169.map((H, h) => { let e = 0; for (let r = 0; r < 169; r++) if (R[r]) e += R[r] * EQ[h * 169 + r]; return [h, e]; });
       v.sort((a, b) => b[1] - a[1]); const out = v.map(x => x[0]); rankCache.set(key, out); return out;
     }
+    // порядок рук по GTO (HRC) для глубокой игры: эквити олл-ина против случайной руки переоценивает разномастные тузы
+    // и недооценивает одномастные/связанные. Открытие — по тому, с какой самой ранней позиции GTO открывает руку
+    // (своя позиция, потом следующие к баттону); ответы — по частоте продолжения GTO в этом споте; дальше — по эквити.
+    const P8 = ['UTG', 'EP', 'MP', 'HJ', 'CO', 'BU', 'SB'];
+    const gRankCache = new Map();
+    function gtoRank(sp) {
+      if (!GTO || sp.tbl === 'AI' || (sp.eff || 0) < 15) return null;
+      const key = gtoNodeKey(sp); if (!key) return null;
+      const e = sp.eff || 0; let d = null; for (const x of G_DEPTHS) if (GTO.nodes[x + '|' + key] && (d == null || Math.abs(Math.log(e / x)) < Math.abs(Math.log(e / d)))) d = x;
+      if (d == null) return null; const ck = d + '|' + key; if (gRankCache.has(ck)) return gRankCache.get(ck);
+      const posR = RANK.map((h, i) => [h, i]).reduce((m, [h, i]) => (m[h] = i, m), {});
+      const score = new Float64Array(169).fill(1e9);
+      if (key.startsWith('RFI|')) {
+        const P = key.split('|')[1], from = P8.indexOf(P);
+        for (let q = from; q >= 0 && q < P8.length; q++) { const nd = GTO.nodes[d + '|RFI|' + P8[q]]; if (!nd) continue;
+          for (const l in nd.hands) { const r = nd.hands[l], play = 1 - r[0][0]; const h = H_OF[l]; if (play >= 0.5 && score[h] === 1e9) score[h] = (q - from) * 1000 + (1 - play) * 100 + posR[h] / 10; } }
+      } else { const nd = GTO.nodes[ck]; for (const l in nd.hands) { const r = nd.hands[l], play = 1 - r[0][0], h = H_OF[l]; if (play > 0.005) score[h] = (1 - play) * 100 + posR[h] / 10; } }
+      for (let h = 0; h < 169; h++) if (score[h] === 1e9) score[h] = 1e6 + posR[h];
+      const out = [...Array(169).keys()].sort((a, b) => score[a] - score[b]); gRankCache.set(ck, out); return out;
+    }
     function rangeAct(sp, acts, F, h) {
       if (F.n < 30) return null;
       const oppP = sp.tbl === 'VSO' ? 0.25 : sp.tbl === 'VS3' ? 0.1 : sp.tbl === 'AI' ? 0.3 : 0;
-      const rank = rankFor(oppP);
+      const rank = gtoRank(sp) || rankFor(oppP);
       let cum = 0, pct = 0; for (const r of rank) { cum += K.H169[r].combos; if (r === h) { pct = cum / 1326; break; } }
       // глубже 25 bb пуш — не самое сильное действие диапазона: премиум-руки топы разыгрывают рейзом (3-бет/изо/опен),
       // а пушат руками ниже (пары, Ax), которым неудобно играть против 4-бета. Поэтому на глубоких стеках пуш

@@ -110,6 +110,8 @@
       // варианты: «сброс соперника» — как часто сбрасывает тот, против кого действие (опен — все за спиной, 3-бет — открывший)
       const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', (a.freqWho === 'регов' ? 'реги' : a.freqWho === 'всех игроков' ? 'все' : 'топы') + ', %', 'диапазон'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
       const bucketRu = (act, b) => act === 'iso' ? ' · ' + b.replace('+', '+').replace('+4+', '+4 и больше') + ' BB сверх лимпов' : act === 'open' ? '' : ' · ' + b + ' от рейза';
+      // EV по вскрытиям смещён (рука попадает в оценку, только если дошла до вскрытия) — не показываем как цифру
+      const evCell = (r) => { const biased = r.src === 'рука' || r.src === 'класс руки'; const td = el('td', 'num', r.ev == null || biased ? '—' : sgn(r.ev)); if (biased && r.ev != null) td.title = 'по вскрытиям ' + sgn(r.ev) + ' BB — оценка смещена (выигрыши без вскрытия не видны), в расчёт не берём'; else if (r.src === 'GTO-поправка') td.title = 'реальный EV спота по всем раздачам + разница руки из GTO'; else if (/эквити/.test(r.src || '')) td.title = 'точный расчёт по эквити против диапазонов соперников'; return td; };
       const rngCell = (rk, act, title) => {
         const td = el('td', 'num rm-rng'); const R = act && rk ? rangeNear(rk, act) : null;
         if (!R) { td.textContent = act ? '—' : ''; return td; }
@@ -121,7 +123,7 @@
       for (const row of a.rows) {
         const on = row.act === a.rec.act;
         const tr = el('tr', on ? 'on' : row.reliable ? '' : 'dim');
-        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '')), el('td', 'num', row.ev == null ? '—' : sgn(row.ev)), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), rngCell(a.rk, row.act === 'open' || row.act === 'iso' || row.act === '3bet' || row.act === '4bet' || row.act === 'call' || row.act === 'limp' || row.act === 'shove' ? row.act : null, row.ru));
+        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '')), evCell(row), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), rngCell(a.rk, row.act === 'open' || row.act === 'iso' || row.act === '3bet' || row.act === '4bet' || row.act === 'call' || row.act === 'limp' || row.act === 'shove' ? row.act : null, row.ru));
         if (row.bounty) tr.title = 'баунти: ' + row.bounty;
         t.append(tr);
         // размеры этого действия: EV каждого, сброс соперника, доля среди этих рейзов у топов
@@ -129,7 +131,7 @@
           if (!(v.shareT > 0.005) && !(row.size && v.bucket === row.size.bucket)) continue; // только размеры, которые реально делают в базе
           const ch = row.size && v.bucket === row.size.bucket;
           const tv = el('tr', 'rm-sz' + (ch && on ? ' on' : '') + (v.reliable ? '' : ' dim'));
-          tv.append(el('td', null, '    ' + fmt(v.to, 1) + ' BB' + (row.act === '3bet' || row.act === '4bet' ? ' (' + v.bucket.replace(/x$/, row.act === '4bet' ? 'x 3-бета' : 'x открытия').replace('≤', 'до ') + ')' : '') + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), rngCell(a.rk, v.A, row.ru.replace(/ до .*$/, '') + ' ' + fmt(v.to, 1) + ' BB'));
+          tv.append(el('td', null, '    ' + fmt(v.to, 1) + ' BB' + (row.act === '3bet' || row.act === '4bet' ? ' (' + v.bucket.replace(/x$/, row.act === '4bet' ? 'x 3-бета' : 'x открытия').replace('≤', 'до ') + ')' : '') + (v.allin ? ' → пуш' : '')), evCell(v), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), rngCell(a.rk, v.A, row.ru.replace(/ до .*$/, '') + ' ' + fmt(v.to, 1) + ' BB'));
           tv.title = 'размер ' + v.bucket + bucketRu(row.act, v.bucket) + ': у топов ' + v.nT + ' таких рейзов в этом споте (' + (v.shareT != null ? pct(v.shareT) : '—') + ' их рейзов), у поля ' + v.nF;
           t.append(tv);
         }
