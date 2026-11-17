@@ -129,7 +129,7 @@
           if (!(v.shareT > 0.005) && !(row.size && v.bucket === row.size.bucket)) continue; // только размеры, которые реально делают в базе
           const ch = row.size && v.bucket === row.size.bucket;
           const tv = el('tr', 'rm-sz' + (ch && on ? ' on' : '') + (v.reliable ? '' : ' dim'));
-          tv.append(el('td', null, '    ' + fmt(v.to, 1) + ' BB' + (row.act === '3bet' || row.act === '4bet' ? ' (' + v.bucket.replace('x', 'x открытия').replace('≤', 'до ') + ')' : '') + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), rngCell(a.rk, v.A, row.ru.replace(/ до .*$/, '') + ' ' + fmt(v.to, 1) + ' BB'));
+          tv.append(el('td', null, '    ' + fmt(v.to, 1) + ' BB' + (row.act === '3bet' || row.act === '4bet' ? ' (' + v.bucket.replace(/x$/, row.act === '4bet' ? 'x 3-бета' : 'x открытия').replace('≤', 'до ') + ')' : '') + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), rngCell(a.rk, v.A, row.ru.replace(/ до .*$/, '') + ' ' + fmt(v.to, 1) + ' BB'));
           tv.title = 'размер ' + v.bucket + bucketRu(row.act, v.bucket) + ': у топов ' + v.nT + ' таких рейзов в этом споте (' + (v.shareT != null ? pct(v.shareT) : '—') + ' их рейзов), у поля ' + v.nF;
           t.append(tv);
         }
