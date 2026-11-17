@@ -23,8 +23,8 @@
   function rangeOf(rk, act) {
     const R = window.RM_RANGES; if (!R) return null;
     const pick = (coh) => { const s = R[coh] && R[coh][rk + '|' + act]; if (!s) return null; const m = {}; let n = 0; for (const x of s.split(',')) { const [h, c] = x.split(':'); m[+h] = +c; n += +c; } return { m, n, coh }; };
-    const T = pick('T'), F = pick('F');
-    return T && T.n >= 50 ? T : F && F.n >= 20 ? F : T;
+    const T = pick('T'); // только топы: руки игроков не из топов (там фиши) не показываем
+    return T && T.n >= 20 ? T : null;
   }
   // нет вскрытий на этом стеке — ближайший стек (банд), с пометкой
   const BANDS = ['<12', '12-19', '20-35', '36-59', '60-99', '100-149', '150+'];
@@ -41,7 +41,7 @@
   let MX = null;
   function showMatrix(anchor, R, title) {
     hideMatrix(); const K = window.RMCards; const lab = {}; for (let h = 0; h < 169; h++) lab[K.H169[h].label] = h;
-    const box = el('div', 'rm-mx'); box.append(el('div', 'rm-mx-t', title + ' — ' + R.n + ' рук со вскрытием (' + (R.coh === 'T' ? 'топы' : 'игроки не из топов') + ')' + (R.band ? ' · на этом стеке вскрытий мало — показан стек ' + R.band + ' BB' : '')));
+    const box = el('div', 'rm-mx'); box.append(el('div', 'rm-mx-t', title + ' — ' + R.n + ' рук топов со вскрытием' + (R.band ? ' · на этом стеке вскрытий мало — показан стек ' + R.band + ' BB' : '')));
     const g = el('div', 'rm-mx-g'); let mx = 0; const dens = {};
     for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) { const l = i === j ? RANKS[i] + RANKS[j] : i < j ? RANKS[i] + RANKS[j] + 's' : RANKS[j] + RANKS[i] + 'o'; const h = lab[l]; const c = h != null ? R.m[h] || 0 : 0; const d = c / (i === j ? 6 : i < j ? 4 : 12); dens[l] = [c, d]; if (d > mx) mx = d; }
     for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) { const l = i === j ? RANKS[i] + RANKS[j] : i < j ? RANKS[i] + RANKS[j] + 's' : RANKS[j] + RANKS[i] + 'o'; const [c, d] = dens[l]; const q = mx ? d / mx : 0; const cell = el('div', 'rm-mx-c', l); cell.style.background = c ? 'rgba(242,176,62,' + (0.15 + 0.85 * q).toFixed(2) + ')' : 'rgba(255,255,255,0.04)'; cell.style.color = q > 0.55 ? '#1b1b1b' : ''; cell.title = l + ': ' + c; g.append(cell); }

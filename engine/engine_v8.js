@@ -162,7 +162,7 @@
     function spotLevel(coh, sp, act) {
       const { S, Sb } = keys(sp);
       const c = [cellEV(coh + '|' + S + '|' + act + '|' + sp.oppGrp), withStage(sp, coh, S + '|' + act + '|*', cellEV(coh + '|' + S + '|' + act + '|*')), withStage(sp, coh, Sb + '|' + act + '|*', cellEV(coh + '|' + Sb + '|' + act + '|*'))].map(evOK);
-      if (coh === 'T') c.push(evOK(cellEV('greg|' + S + '|' + act + '|*')), evOK(cellEV('F|' + S + '|' + act + '|*')), evOK(cellEV('F|' + Sb + '|' + act + '|*')));
+      if (coh === 'T') c.push(evOK(cellEV('greg|' + S + '|' + act + '|*'))); // поле (с фишами) для уровня EV не берём
       const ev = shrink(c, K_SPOT);
       const fa = c.find(x => x && x.n >= 20) || c.find(Boolean);
       return { ev, pfa: fa ? fa.nfa / fa.n : 0, mfa: fa && fa.nfa ? fa.mfa : 0, raw: c, pfaSrc: 'спот' };
@@ -438,7 +438,8 @@
       const h = cards ? K.h169(cards[0], cards[1]) : null;
       const FT = freqs('T', sp, acts), FF = freqs('F', sp, acts), FR = freqs('greg', sp, acts);
       // если у топов мало раздач — сначала реги (кластеры-реги), и только потом все остальные (там и фиши)
-      const FB = FT.n >= 30 ? FT : FR.n >= 30 ? FR : FF, whoB = FT.n >= 30 ? 'топов' : FR.n >= 30 ? 'регов' : 'всех игроков';
+      const F0 = { f: acts.map(() => 0), n: 0, lvl: 'нет' }; // игроков не из топов и не регов (там фиши) для советов не используем
+      const FB = FT.n >= 30 ? FT : FR.n >= 30 ? FR : F0, whoB = FT.n >= 30 ? 'топов' : FR.n >= 30 ? 'регов' : 'топов';
       const rows = acts.map((act, q) => {
         const row = { act, ru: RU[act] || act, freqT: FB.f[q], freqTop: FT.f[q], freqReg: FR.n >= 30 ? FR.f[q] : null, freqF: FF.f[q] };
         if (act === 'fold') return Object.assign(row, { ev: 0, se: 0, src: 'точно', n: null });
@@ -477,7 +478,7 @@
       // частоты топов дробятся (холодный 4-бет, глубокие стеки): «топы всегда сбрасывают» на 50–200 раздачах — не повод
       // сбрасывать сильнейшие руки. Если по топам фолд, а рука в лучших 10% и у поля входит в продолжающий диапазон — берём поле;
       // руки из лучших 2,5% не сбрасываются, когда есть рейз — берём самый агрессивный рейз.
-      if (ra && ra.act === 'fold' && ra.pct <= 0.10 && FB === FT) { const F2 = FR.n >= 30 ? FR : FF.n >= 30 ? FF : null; const rf = F2 ? rangeAct(sp, acts, F2, h) : null; if (rf && rf.act !== 'fold') ra = Object.assign(rf, { field: F2 === FR ? 'регов' : 'всех игроков' }); }
+      if (ra && ra.act === 'fold' && ra.pct <= 0.10 && FB === FT) { const F2 = FR.n >= 30 ? FR : null; const rf = F2 ? rangeAct(sp, acts, F2, h) : null; if (rf && rf.act !== 'fold') ra = Object.assign(rf, { field: 'регов' }); }
       if (ra && ra.act === 'fold' && ra.pct <= 0.025 && sp.tbl !== 'AI') { const rz = ['4bet', '3bet', 'iso', 'open'].find(a => acts.indexOf(a) >= 0); if (rz) ra = { act: rz, pct: ra.pct, band: 0, floor: true }; }
       const rowOf = (a) => rows.find(r => r.act === a);
       let rec;
