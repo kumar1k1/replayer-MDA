@@ -32,16 +32,27 @@ function entries(src0) {
 }
 // поток распакованных байт одного файла архива
 function dataStart(ent) { const fd = fs.openSync(ent.file, 'r'), h = readAt(fd, ent.lho, 30); fs.closeSync(fd); if (h.readUInt32LE(0) !== 0x04034b50) throw new Error('битый локальный заголовок: ' + ent.name); return ent.lho + 30 + h.readUInt16LE(26) + h.readUInt16LE(28); }
-// все файлы, включая вложенные zip без сжатия (рекурсивно); у вложенных name = 'внешний.zip/внутренний'
+// все файлы, включая вложенные zip (рекурсивно); у вложенных name = 'внешний.zip/внутренний'.
+// Вложенный zip без сжатия читается на месте; сжатый — распаковывается во временный файл TMP (по одному, удаляется вызывающим через cleanup).
+const path = require('path');
+const TMP = process.env.GTO_TMP || path.join(__dirname, 'tmp');
+async function extractTo(ent, dest) { fs.mkdirSync(path.dirname(dest), { recursive: true }); await new Promise((res, rej) => { const w = fs.createWriteStream(dest); const r = openEntry(ent); r.on('error', rej); w.on('error', rej); w.on('finish', res); r.pipe(w); }); return dest; }
+// перечислить вложенные архивы верхнего уровня: [{ name, ent, nested: bool }]
 function walk(src, prefix = '', depth = 0) {
   const out = [];
   for (const e of entries(src)) {
     if (e.dir) continue;
     if (/\.zip$/i.test(e.name) && e.method === 0 && depth < 4) { try { for (const x of walk({ file: e.file, off: dataStart(e), len: e.csize }, prefix + e.name + '/', depth + 1)) out.push(x); continue; } catch (err) { e.err = err.message; } }
-    if (/\.zip$/i.test(e.name) && e.method !== 0) e.err = 'вложенный zip сжат — нужен временный файл';
-    e.name = prefix + e.name; out.push(e);
+    e.name = prefix + e.name; e.zipped = /\.zip$/i.test(e.name) && e.method !== 0; out.push(e);
   }
   return out;
+}
+// открыть сжатый вложенный zip: распаковать во временный файл, вернуть его файлы и функцию удаления
+async function openNested(e, i = 0) {
+  const dest = path.join(TMP, 'n' + process.pid + '_' + i + '.zip');
+  await extractTo(e, dest);
+  const inner = walk(dest, e.name + '/', 1);
+  return { files: inner, cleanup() { try { fs.unlinkSync(dest); } catch (x) {} } };
 }
 function openEntry(file, ent) {
   if (ent === undefined) { ent = file; } file = ent.file;
@@ -63,4 +74,4 @@ async function* handsOf(file, ent) {
   }
   if (buf.startsWith('PokerStars Hand #')) yield buf;
 }
-module.exports = { entries, walk, openEntry, handsOf };
+module.exports = { entries, walk, openEntry, handsOf, openNested, TMP };

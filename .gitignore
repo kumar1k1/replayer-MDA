@@ -3,3 +3,4 @@ pipeline/out/
 *.log
 app/dist/
 gto/out/
+gto/tmp/
