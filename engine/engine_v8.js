@@ -273,6 +273,14 @@
         if (DEBUG) DEBUG.push({ pos: o.pos, pc: +pc.toFixed(3), pcSrc, eq: +eq.toFixed(3), win: +win.toFixed(2), bounty: bAdd, rsrc: R.src });
         ev += pAll * pc * win; pAll *= 1 - pc;
       }
+      // калибровка P(все сбросят) на пуш первым по проверке лайнапа на отложенной половине (полный прогон 17.11.2026):
+      // до 74% модель точна, выше чуть завышает (83,4 → 81,5; 91,1 → 88,6). Части «колл» масштабируются пропорционально.
+      if (Rd === 1 && LM && pAll > 0.741 && pAll < 1) {
+        const P = [[0.741, 0.741], [0.834, 0.815], [0.911, 0.886], [1, 0.975]];
+        let k = 0; while (k < P.length - 2 && pAll > P[k + 1][0]) k++;
+        const [x0, y0] = P[k], [x1, y1] = P[k + 1], pc2 = y0 + (y1 - y0) * (pAll - x0) / (x1 - x0);
+        ev *= (1 - pc2) / (1 - pAll); pAll = pc2;
+      }
       ev += pAll * pot;
       return { m: ev, n: nR, se: null, src: 'эквити', pFold: pAll, h, bounty: bounties.length ? bounties.join('; ') : null };
     }
