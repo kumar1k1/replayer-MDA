@@ -59,24 +59,26 @@
         const r = el('div', 'rm-rec'); r.append(el('span', null, 'Совет'), el('b', null, a.rec.ru)); s.append(r);
         s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));
       // варианты: «сброс соперника» — как часто сбрасывает тот, против кого действие (опен — все за спиной, 3-бет — открывший)
-      const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', 'топы', 'источник'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
+      const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', 'топы, %', 'источник'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
+      const bucketRu = (act, b) => act === 'iso' ? ' · ' + b.replace('+', '+').replace('+4+', '+4 и больше') + ' BB сверх лимпов' : act === 'open' ? '' : ' · ' + b + ' от рейза';
       const oppCell = (o, pf, act) => { const td = el('td', 'num', o ? pct(o.p) : (act === 'shove' || act === 'open') && pf != null ? pct(pf) : ''); if (o) td.title = o.who + ': ' + o.src; else if (pf != null && (act === 'shove' || act === 'open')) td.title = 'все, кто ещё в раздаче'; return td; };
       for (const row of a.rows) {
         const on = row.act === a.rec.act;
         const tr = el('tr', on ? 'on' : row.reliable ? '' : 'dim');
-        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '')), el('td', 'num', row.ev == null ? '—' : sgn(row.ev)), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), el('td', 'src', row.src + (row.n ? ' · n=' + row.n : '')));
+        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '')), el('td', 'num', row.ev == null ? '—' : sgn(row.ev)), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), el('td', 'src', (row.act === 'fold' && row.src === 'точно' ? 'отсчёт: 0' : row.src) + (row.n ? ' · n=' + row.n : '')));
         if (row.bounty) tr.title = 'баунти: ' + row.bounty;
         t.append(tr);
         // размеры этого действия: EV каждого, сброс соперника, доля среди этих рейзов у топов
         if (row.sizes && row.sizes.length > 1) for (const v of row.sizes) {
           const ch = row.size && v.bucket === row.size.bucket;
           const tv = el('tr', 'rm-sz' + (ch && on ? ' on' : '') + (v.reliable ? '' : ' dim'));
-          tv.append(el('td', null, '  ' + v.bucket + ' · до ' + fmt(v.to, 1) + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), el('td', 'src', v.src + (v.n ? ' · n=' + v.n : '')));
-          tv.title = 'топы: ' + v.nT + ' таких рейзов в этом споте, поле: ' + v.nF;
+          tv.append(el('td', null, '  размер до ' + fmt(v.to, 1) + ' BB' + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), el('td', 'src', v.src + (v.n ? ' · n=' + v.n : '')));
+          tv.title = 'размер ' + v.bucket + bucketRu(row.act, v.bucket) + ': у топов ' + v.nT + ' таких рейзов в этом споте (' + (v.shareT != null ? pct(v.shareT) : '—') + ' их рейзов), у поля ' + v.nF;
           t.append(tv);
         }
       }
       s.append(t);
+      s.append(el('div', 'rm-note', 'EV — сколько BB в среднем приносит действие по сравнению с фолдом (у фолда 0 — точка отсчёта). Топы, % — как часто топ-игроки делают это действие в таком споте; в строках размеров — какую долю их рейзов составляет этот размер. «Нет данных» — по этой руке и действию мало раздач, EV не считаем.'));
       const bRows = a.rows.filter(r => r.bounty); if (bRows.length) s.append(el('div', 'rm-why', 'Баунти в расчёте: ' + bRows.map(r => r.ru + ' — ' + r.bounty).join('; ')));
       if (a.compare) s.append(el('div', 'rm-why', 'Колл ' + sgn(a.compare.call) + ' (n=' + a.compare.callN + ') против «' + a.compare.raiseRu + '» ' + sgn(a.compare.raise) + ' (n=' + a.compare.raiseN + '): ' + (a.compare.diff >= 0 ? 'рейз лучше на ' : 'колл лучше на ') + fmt(Math.abs(a.compare.diff)) + ' BB' + (a.compare.reliable ? '' : ' — предварительно, мало вскрытий')));
       if (a.classTops) s.append(el('div', 'rm-note', 'Топы с руками «' + a.classTops.cls + '» здесь (по вскрытиям, n=' + a.classTops.n + '): ' + Object.entries(a.classTops.share).filter(([, v]) => v > 0).map(([k, v]) => ({ call: 'колл', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин', open: 'опен', limp: 'лимп', iso: 'изо', check: 'чек' })[k] + ' ' + pct(v)).join(', ')));
