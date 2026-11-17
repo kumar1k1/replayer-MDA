@@ -161,7 +161,10 @@
     }
     function freqs(coh, sp, acts) {
       const { S, Sb } = keys(sp);
-      const pick = (pref) => acts.map(a => { const c = cellEV(coh + '|' + pref + '|' + a + '|*'); return c ? c.n : 0; });
+      // пуш, отсечённый из вариантов на глубоких стеках (> 40 bb), по смыслу — рейз того же класса (4-бет/3-бет олл-ин):
+      // его частоту добавляем к самому агрессивному рейзу, иначе премиум-руки попадали в «фолд» (у топов пуши 4-бетов не видны)
+      const RZ = ['4bet', '3bet', 'iso', 'open'].find(a => acts.indexOf(a) >= 0), addSh = acts.indexOf('shove') < 0 && RZ;
+      const pick = (pref) => { const v = acts.map(a => { const c = cellEV(coh + '|' + pref + '|' + a + '|*'); return c ? c.n : 0; }); if (addSh) { const c = cellEV(coh + '|' + pref + '|shove|*'); if (c) v[acts.indexOf(RZ)] += c.n; } return v; };
       const pickZ = (pref) => acts.map(a => { const c = sp.stage ? cellEV('Z|' + sp.stage + '|' + coh + '|' + pref + '|' + a + '|*') : null; return c ? c.n : 0; });
       let pref = S, v = pick(S); let tot = v.reduce((s, x) => s + x, 0), lvl = 'точно';
       if (tot < 30) { pref = Sb; v = pick(Sb); tot = v.reduce((s, x) => s + x, 0); lvl = 'обобщённо'; }
@@ -440,7 +443,12 @@
       rows.forEach(r => { r.reliable = !r.asShove && (r.act === 'fold' || /^эквити/.test(r.src) || (HC_TRUST && r.ev !== null && (r.src === 'рука' || r.src === 'класс руки') && r.n >= MIN_HAND_N) || (r.src === 'GTO-поправка' && r.ev !== null && r.n >= MIN_HAND_N)); if (!HC_TRUST && (r.src === 'рука' || r.src === 'класс руки')) r.biased = true; });
       let best = rows[0];
       for (const r of rows) if (r.reliable && r.ev > best.ev) best = r;
-      const ra = cards ? rangeAct(sp, acts, FT.n >= 30 ? FT : FF, h) : null;
+      let ra = cards ? rangeAct(sp, acts, FT.n >= 30 ? FT : FF, h) : null;
+      // частоты топов дробятся (холодный 4-бет, глубокие стеки): «топы всегда сбрасывают» на 50–200 раздачах — не повод
+      // сбрасывать сильнейшие руки. Если по топам фолд, а рука в лучших 10% и у поля входит в продолжающий диапазон — берём поле;
+      // руки из лучших 2,5% не сбрасываются, когда есть рейз — берём самый агрессивный рейз.
+      if (ra && ra.act === 'fold' && ra.pct <= 0.10 && FT.n >= 30 && FF.n >= 30) { const rf = rangeAct(sp, acts, FF, h); if (rf && rf.act !== 'fold') ra = Object.assign(rf, { field: true }); }
+      if (ra && ra.act === 'fold' && ra.pct <= 0.025 && sp.tbl !== 'AI') { const rz = ['4bet', '3bet', 'iso', 'open'].find(a => acts.indexOf(a) >= 0); if (rz) ra = { act: rz, pct: ra.pct, band: 0, floor: true }; }
       const rowOf = (a) => rows.find(r => r.act === a);
       let rec;
       const Fsrc = FT.n >= 30 ? FT : FF, who = FT.n >= 30 ? 'топов' : 'поля';
@@ -456,7 +464,7 @@
       else {
         let rr = ra && ra.act !== 'fold' ? rowOf(ra.act) : null;
         if (rr && rr.asShove && rowOf('shove')) rr = rowOf('shove'); // рейз этого размера = пуш по смыслу
-        if (rr && !rr.reliable) { best = rr; rec = { act: rr.act, why: 'частоты ' + (FT.n >= 30 ? 'топов' : 'поля') + ': рука в лучших ' + pctS(ra.pct) + '%' }; }
+        if (rr && !rr.reliable) { best = rr; rec = { act: rr.act, why: ra.floor ? 'частоты: рука в лучших ' + pctS(ra.pct) + '% — сильнейшие руки не сбрасывают' : 'частоты ' + (FT.n >= 30 && !ra.field ? 'топов' : 'поля') + ': рука в лучших ' + pctS(ra.pct) + '%' }; }
         else if (rr && rr.reliable && rr.act === 'shove' && rr.ev < 0) rec = { act: 'fold', why: 'по частотам — рейз, но при таком стеке это пуш, а он хуже фолда' };
         else rec = { act: 'fold', why: rows.some(r => r.reliable && r.act !== 'fold') ? 'все надёжные варианты хуже фолда' : (ra ? 'по частотам базы — фолд (рука в лучших ' + pctS(ra.pct) + '%)' : 'нет надёжных данных') };
       }
