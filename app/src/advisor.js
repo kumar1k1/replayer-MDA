@@ -122,6 +122,7 @@
         t.append(tr);
         // размеры этого действия: EV каждого, сброс соперника, доля среди этих рейзов у топов
         if (row.sizes && row.sizes.length > 1) for (const v of row.sizes) {
+          if (!(v.shareT > 0.005) && !(row.size && v.bucket === row.size.bucket)) continue; // только размеры, которые реально делают в базе
           const ch = row.size && v.bucket === row.size.bucket;
           const tv = el('tr', 'rm-sz' + (ch && on ? ' on' : '') + (v.reliable ? '' : ' dim'));
           tv.append(el('td', null, '    ' + fmt(v.to, 1) + ' BB' + (v.allin ? ' → пуш' : '')), el('td', 'num', v.ev == null ? '—' : sgn(v.ev)), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), rngCell(a.rk, v.A, row.ru.replace(/ до .*$/, '') + ' ' + fmt(v.to, 1) + ' BB'));
