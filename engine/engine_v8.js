@@ -485,7 +485,7 @@
         for (const a of acts) if (a !== 'fold') { const x = cellHC('T|' + Sb + '|' + a + '|' + cl); c[a] = x ? x.n : 0; n += c[a]; }
         if (n >= 10) classTops = { cls: CL_RU[cl] || cl, n, share: Object.fromEntries(Object.entries(c).map(([a, v]) => [a, v / n])) };
       }
-      return { compare, classTops, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
+      return { compare, classTops, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
     }
     // вердикт фактическому действию: act — метка из разметки (open:x2.2 / shove / …), sz — корзина сайза (d.sz)
     function verdict(adv, act, sz) {
