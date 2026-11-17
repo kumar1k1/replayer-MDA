@@ -43,6 +43,13 @@
     if (next && next.a && heroOut(k - 1)) {
       const s = sec('Вы сбросили');
       s.append(el('div', 'rm-note', 'Дальше раздачу не оцениваем: подсказки — только пока вы в раздаче.'));
+    } else if (next && next.a && next.d.i !== H.hero) {
+      // совет — только герою; соперникам перед их ходом ничего не советуем
+      const d = next.d, nick = H.rp.nm[d.i], pl = A.player(H.room, nick);
+      const s = sec('Ходит соперник');
+      const who = el('div', 'rm-who'); const p = el('span', posCls(d.pos), d.pos); p.classList.add('rm-pos');
+      who.append(p, el('span', 'rm-nick', nick), clChip(pl)); s.append(who);
+      s.append(el('div', 'rm-note', 'Подсказки — только для ваших решений.'));
     } else if (next && next.a) {
       const d = next.d, a = next.a, nick = H.rp.nm[d.i], pl = A.player(H.room, nick);
       const s = sec('Сейчас ход');
