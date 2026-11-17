@@ -122,13 +122,13 @@
         const tr = el('tr', on ? 'on' : row.reliable ? '' : 'dim');
         const lab = row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '');
         const tdl = el('td', null, lab); if (row.pFold != null && row.act !== 'fold') tdl.title = 'сброс соперника: ' + pct(row.pFold);
-        const eb = el('td', 'num', row.evBase == null ? '—' : sgn(row.evBase)); if (row.nBase) eb.title = 'по ' + row.nBase + ' раздачам';
+        const eb = el('td', 'num', row.evBase == null ? '—' : sgn(row.evBase)); eb.title = row.evBase != null ? 'EV базы: ' + row.evBaseWho + ', ' + row.nBase + ' раздач с этим действием' : (row.act === 'fold' ? '' : 'топы и реги здесь так почти не играют (< 1%) или мало раздач — не оцениваем');
         tr.append(tdl, evCell(row), eb, el('td', 'num', pct(row.freqT)), el('td', 'num', row.freqReg == null ? '—' : pct(row.freqReg)), el('td', 'num', row.freqFish == null ? '—' : pct(row.freqFish)));
         if (row.bounty) tr.title = 'баунти: ' + row.bounty;
         t.append(tr);
       }
       s.append(t);
-      s.append(el('div', 'rm-note', 'EV руки — для вашей руки, EV базы — в среднем всеми руками в таком споте (BB по сравнению с фолдом). Топы / реги / фиши — как часто они делают это действие здесь. Фиши — только для сравнения, советы по ним не строятся. «—» — мало данных.'));
+      s.append(el('div', 'rm-note', 'EV руки — для вашей руки, EV базы — в среднем всеми руками у топов (если мало — у регов) в таком споте, BB к фолду; наведите — видно, чьё и по скольким раздачам. Топы / реги / фиши — как часто они делают это действие здесь. Фиши — только для сравнения, советы по ним не строятся. «—» — мало данных.'));
       const bRows = a.rows.filter(r => r.bounty); if (bRows.length) s.append(el('div', 'rm-why', 'Баунти в расчёте: ' + bRows.map(r => r.ru + ' — ' + r.bounty).join('; ')));
       if (a.compare) s.append(el('div', 'rm-why', 'Колл ' + sgn(a.compare.call) + ' (n=' + a.compare.callN + ') против «' + a.compare.raiseRu + '» ' + sgn(a.compare.raise) + ' (n=' + a.compare.raiseN + '): ' + (a.compare.diff >= 0 ? 'рейз лучше на ' : 'колл лучше на ') + fmt(Math.abs(a.compare.diff)) + ' BB' + (a.compare.reliable ? '' : ' — предварительно, мало вскрытий')));
       if (a.classTops) s.append(el('div', 'rm-note', 'Топы с руками «' + a.classTops.cls + '» здесь (по вскрытиям, n=' + a.classTops.n + '): ' + Object.entries(a.classTops.share).filter(([, v]) => v > 0).map(([k, v]) => ({ call: 'колл', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин', open: 'опен', limp: 'лимп', iso: 'изо', check: 'чек' })[k] + ' ' + pct(v)).join(', ')));

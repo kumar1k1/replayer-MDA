@@ -446,7 +446,13 @@
       const rows = acts.map((act, q) => {
         const row = { act, ru: RU[act] || act, freqT: FB.f[q], freqTop: FT.f[q], freqReg: FR.n >= 30 ? FR.f[q] : null, freqFish: FI ? FI[q] : null, freqF: FF.f[q] };
         // EV действия по базе (все руки, топы → реги): сколько в среднем приносит этот колл / 3-бет в таком споте
-        if (act !== 'fold') { const slB = spotLevel('T', sp, act); if (slB.ev && slB.ev.m != null) { row.evBase = slB.ev.m; row.nBase = slB.ev.n; } }
+        // источник — явно: топы в точно таком споте → реги в точно таком споте → топы по семейству позиций; от 100 раздач.
+        // Действие, которое топы и реги здесь почти не делают (< 1%), не оцениваем — иначе EV был бы по редким исключениям
+        if (act !== 'fold' && (FT.f[q] >= 0.01 || (FR.n >= 30 && FR.f[q] >= 0.01))) {
+          const { S, Sb } = keys(sp);
+          const src = [['топы', 'T|' + S], ['реги', 'greg|' + S], ['топы, обобщённо по позициям', 'T|' + Sb]];
+          for (const [who, key] of src) { const c = evOK(cellEV(key + '|' + act + '|*')); if (c && c.n >= 100 && c.m != null) { row.evBase = c.m; row.nBase = c.n; row.evBaseWho = who; break; } }
+        }
         if (act === 'fold') return Object.assign(row, { ev: 0, se: 0, src: 'точно', n: null, evBase: 0 });
         let size = sizeFor(sp, act);
         const vars = sizeVariants(sp, act, cards, h, info);
