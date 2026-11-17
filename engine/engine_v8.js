@@ -79,8 +79,16 @@
       const a = one(d0), b = d1 !== d0 ? one(d1) : null;
       if (a && b) return { d: (1 - w1) * a.d + w1 * b.d, se: Math.sqrt(((1 - w1) * a.se) ** 2 + (w1 * b.se) ** 2), n: Math.round((1 - w1) * a.n + w1 * b.n), key, depths: d0 + '–' + d1 };
       const x = a && (w1 < 0.5 || !b) ? a : b || a; if (!x) return null;
-      if (Math.abs(Math.log((sp.eff || x.depth) / x.depth)) > 0.45) return null; // ближайшая глубина слишком далеко
+      if ((sp.eff || x.depth) < x.depth && Math.abs(Math.log((sp.eff || x.depth) / x.depth)) > 0.45) return null; // ближайшая глубина слишком далеко (глубже 125 bb — берём 125)
       return { d: x.d, se: x.se, n: x.n, key, depths: String(x.depth) };
+    }
+    // частоты GTO для руки в этом споте (ближайшая глубина): { depth, key, f: {fold, call|limp, raise, shove} }
+    function gtoFreq(sp, h) {
+      if (!GTO || h == null) return null; const key = gtoNodeKey(sp); if (!key) return null;
+      const e = sp.eff || 0; let best = null; for (const d of G_DEPTHS) if (GTO.nodes[d + '|' + key] && (best == null || Math.abs(Math.log(e / d)) < Math.abs(Math.log(e / best)))) best = d;
+      if (best == null) return null; const nd = GTO.nodes[best + '|' + key], r = nd.hands[K.H169[h].label]; if (!r) return null;
+      const f = {}; nd.acts.forEach((a, k) => { if (r[k][0] > 0.005) f[a] = r[k][0]; });
+      return { depth: best, key, f };
     }
     // EV руки: реальный уровень спота + GTO-форма (вместо смещённого EV по вскрытиям)
     function handEVgto(sp, act, h, sl, pfa, mfa) {
@@ -487,7 +495,7 @@
         for (const a of acts) if (a !== 'fold') { const x = cellHC('T|' + Sb + '|' + a + '|' + cl); c[a] = x ? x.n : 0; n += c[a]; }
         if (n >= 10) classTops = { cls: CL_RU[cl] || cl, n, share: Object.fromEntries(Object.entries(c).map(([a, v]) => [a, v / n])) };
       }
-      return { compare, classTops, freqWho: whoB, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
+      return { compare, classTops, gtoF: gtoFreq(sp, h), freqWho: whoB, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
     }
     // вердикт фактическому действию: act — метка из разметки (open:x2.2 / shove / …), sz — корзина сайза (d.sz)
     function verdict(adv, act, sz) {

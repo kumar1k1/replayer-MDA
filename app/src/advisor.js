@@ -103,6 +103,10 @@
         if (!next.cards) s.append(el('div', 'rm-note', 'Карты неизвестны — варианты оценены по диапазону и частотам топов.'));
         const r = el('div', 'rm-rec'); r.append(el('span', null, 'Совет'), el('b', null, a.rec.ru)); s.append(r);
         s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));
+      if (a.gtoF) { const RUA = { fold: 'фолд', call: 'колл', limp: 'лимп', raise: a.tbl === 'RFI' ? 'опен' : a.tbl === 'VS3' ? '4-бет' : a.tbl === 'ISO' ? 'изо' : '3-бет', shove: 'олл-ин' };
+        const parts = Object.entries(a.gtoF.f).sort((x, y) => y[1] - x[1]).map(([k, v]) => RUA[k] + ' ' + Math.round(v * 100) + '%');
+        s.append(el('div', 'rm-why', 'GTO (HRC, 8-max, ' + a.gtoF.depth + ' BB' + (Math.abs(d.eff - a.gtoF.depth) > 3 ? ' — ближайший к вашим ' + fmt(d.eff, 0) : '') + '): ' + (parts.join(', ') || 'нет данных'))); }
+      else s.append(el('div', 'rm-note', 'GTO: в решениях HRC такого спота нет' + (a.tbl === 'ISO' ? ' (кроме SB, в GTO никто не лимпит)' : a.tbl === 'VS3' ? ' (есть только ответ открывшего на 3-бет без коллеров)' : a.tbl === 'VSO' ? ' (есть только ответ на открытие без коллеров)' : '') + '.'));
       // варианты: «сброс соперника» — как часто сбрасывает тот, против кого действие (опен — все за спиной, 3-бет — открывший)
       const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', (a.freqWho === 'регов' ? 'реги' : a.freqWho === 'всех игроков' ? 'все' : 'топы') + ', %', 'диапазон'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
       const bucketRu = (act, b) => act === 'iso' ? ' · ' + b.replace('+', '+').replace('+4+', '+4 и больше') + ' BB сверх лимпов' : act === 'open' ? '' : ' · ' + b + ' от рейза';
