@@ -50,7 +50,7 @@
     box.style.left = Math.max(8, r.left - w - 12) + 'px'; box.style.top = Math.max(8, Math.min(window.innerHeight - 460, r.top - 160)) + 'px'; MX = box;
   }
   function hideMatrix() { if (MX) { MX.remove(); MX = null; } }
-  if (!document.getElementById('rm-mx-css')) { const st = document.createElement('style'); st.id = 'rm-mx-css'; st.textContent = '.rm-mx{position:fixed;z-index:9999;width:420px;background:#151a22;border:1px solid #2c3442;border-radius:10px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.5);font:12px Inter,system-ui,sans-serif;color:#cfd6e2}.rm-mx-t{font-weight:600;margin-bottom:8px}.rm-mx-g{display:grid;grid-template-columns:repeat(13,1fr);gap:2px}.rm-mx-c{font:10px JetBrains Mono,monospace;text-align:center;padding:5px 0;border-radius:3px}.rm-mx-n{margin-top:8px;color:#8a94a6;font-size:11px}.rm-rng{white-space:nowrap}'; document.head.append(st); }
+  if (!document.getElementById('rm-mx-css')) { const st = document.createElement('style'); st.id = 'rm-mx-css'; st.textContent = '.rm-rec span.rm-mix{font-size:11.5px;color:var(--soft);font-weight:600;margin-left:4px;text-transform:none;letter-spacing:0}.rm-mx{position:fixed;z-index:9999;width:420px;background:#151a22;border:1px solid #2c3442;border-radius:10px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.5);font:12px Inter,system-ui,sans-serif;color:#cfd6e2}.rm-mx-t{font-weight:600;margin-bottom:8px}.rm-mx-g{display:grid;grid-template-columns:repeat(13,1fr);gap:2px}.rm-mx-c{font:10px JetBrains Mono,monospace;text-align:center;padding:5px 0;border-radius:3px}.rm-mx-n{margin-top:8px;color:#8a94a6;font-size:11px}.rm-rng{white-space:nowrap}'; document.head.append(st); }
   const ACTIVE = (act) => !/^(fold|check)$/.test(String(act));
   let CTX = null; // { i, H, box, body }
   window.RM_SIDE = {
@@ -101,14 +101,19 @@
       if (!known) s.append(el('div', 'rm-note', 'Фолд или чек — не оцениваем (оцениваются ваши решения и активные действия соперников).'));
       else {
         if (!next.cards) s.append(el('div', 'rm-note', 'Карты неизвестны — варианты оценены по диапазону и частотам топов.'));
-        const r = el('div', 'rm-rec'); r.append(el('span', null, 'Совет'), el('b', null, a.rec.ru)); s.append(r);
+        const r = el('div', 'rm-rec'); r.append(el('span', null, 'Совет'), el('b', null, a.rec.ru));
+        // веса для этой руки: GTO (смешанная стратегия HRC) — в скобках рядом с советом
+        if (a.gtoF) { const RUA = { fold: 'фолд', call: 'колл', limp: 'лимп', raise: a.tbl === 'RFI' ? 'опен' : a.tbl === 'VS3' ? '4-бет' : a.tbl === 'ISO' ? 'изо' : '3-бет', shove: 'олл-ин' };
+          const mix = Object.entries(a.gtoF.f).sort((x, y) => y[1] - x[1]).map(([k, v]) => RUA[k] + ' ' + Math.round(v * 100) + '%').join(', ');
+          if (mix) r.append(el('span', 'rm-mix', '(GTO для ' + a.hand + ': ' + mix + ')')); }
+        s.append(r);
         s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));
       if (a.gtoF) { const RUA = { fold: 'фолд', call: 'колл', limp: 'лимп', raise: a.tbl === 'RFI' ? 'опен' : a.tbl === 'VS3' ? '4-бет' : a.tbl === 'ISO' ? 'изо' : '3-бет', shove: 'олл-ин' };
         const parts = Object.entries(a.gtoF.f).sort((x, y) => y[1] - x[1]).map(([k, v]) => RUA[k] + ' ' + Math.round(v * 100) + '%');
-        s.append(el('div', 'rm-why', 'GTO (HRC, 8-max, ' + a.gtoF.depth + ' BB' + (Math.abs(d.eff - a.gtoF.depth) > 3 ? ' — ближайший к вашим ' + fmt(d.eff, 0) : '') + '): ' + (parts.join(', ') || 'нет данных'))); }
+        s.append(el('div', 'rm-note', 'GTO — решения HRC, 8-max, ' + a.gtoF.depth + ' BB' + (Math.abs(d.eff - a.gtoF.depth) > 3 ? ' (ближайший к вашим ' + fmt(d.eff, 0) + ')' : '') + (parts.length ? '' : ': по этой руке нет данных'))); }
       else s.append(el('div', 'rm-note', 'GTO: в решениях HRC такого спота нет' + (a.tbl === 'ISO' ? ' (кроме SB, в GTO никто не лимпит)' : a.tbl === 'VS3' ? ' (есть только ответ открывшего на 3-бет без коллеров)' : a.tbl === 'VSO' ? ' (есть только ответ на открытие без коллеров)' : '') + '.'));
       // варианты: «сброс соперника» — как часто сбрасывает тот, против кого действие (опен — все за спиной, 3-бет — открывший)
-      const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', (a.freqWho === 'регов' ? 'реги' : a.freqWho === 'всех игроков' ? 'все' : 'топы') + ', %', 'диапазон'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
+      const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соп.', (a.freqWho === 'регов' ? 'реги' : a.freqWho === 'всех игроков' ? 'все' : 'топы') + ', %', 'реги, %', 'диапазон'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
       const bucketRu = (act, b) => act === 'iso' ? ' · ' + b.replace('+', '+').replace('+4+', '+4 и больше') + ' BB сверх лимпов' : act === 'open' ? '' : ' · ' + b + ' от рейза';
       // EV по вскрытиям смещён (рука попадает в оценку, только если дошла до вскрытия) — не показываем как цифру
       const evCell = (r) => { const biased = r.src === 'рука' || r.src === 'класс руки'; const td = el('td', 'num', r.ev == null || biased ? '—' : sgn(r.ev)); if (biased && r.ev != null) td.title = 'по вскрытиям ' + sgn(r.ev) + ' BB — оценка смещена (выигрыши без вскрытия не видны), в расчёт не берём'; else if (r.src === 'GTO-поправка') td.title = 'реальный EV спота по всем раздачам + разница руки из GTO'; else if (/эквити/.test(r.src || '')) td.title = 'точный расчёт по эквити против диапазонов соперников'; return td; };
@@ -123,7 +128,7 @@
       for (const row of a.rows) {
         const on = row.act === a.rec.act;
         const tr = el('tr', on ? 'on' : row.reliable ? '' : 'dim');
-        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '')), evCell(row), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), rngCell(a.rk, row.act === 'open' || row.act === 'iso' || row.act === '3bet' || row.act === '4bet' || row.act === 'call' || row.act === 'limp' || row.act === 'shove' ? row.act : null, row.ru));
+        tr.append(el('td', null, row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '')), evCell(row), oppCell(row.oppFold, row.pFold, row.act), el('td', 'num', pct(row.freqT)), el('td', 'num', row.freqReg == null ? '—' : pct(row.freqReg)), rngCell(a.rk, row.act === 'open' || row.act === 'iso' || row.act === '3bet' || row.act === '4bet' || row.act === 'call' || row.act === 'limp' || row.act === 'shove' ? row.act : null, row.ru));
         if (row.bounty) tr.title = 'баунти: ' + row.bounty;
         t.append(tr);
         // размеры этого действия: EV каждого, сброс соперника, доля среди этих рейзов у топов
@@ -131,13 +136,13 @@
           if (!(v.shareT > 0.005) && !(row.size && v.bucket === row.size.bucket)) continue; // только размеры, которые реально делают в базе
           const ch = row.size && v.bucket === row.size.bucket;
           const tv = el('tr', 'rm-sz' + (ch && on ? ' on' : '') + (v.reliable ? '' : ' dim'));
-          tv.append(el('td', null, '    ' + fmt(v.to, 1) + ' BB' + (row.act === '3bet' || row.act === '4bet' ? ' (' + v.bucket.replace(/x$/, row.act === '4bet' ? 'x 3-бета' : 'x открытия').replace('≤', 'до ') + ')' : '') + (v.allin ? ' → пуш' : '')), evCell(v), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), rngCell(a.rk, v.A, row.ru.replace(/ до .*$/, '') + ' ' + fmt(v.to, 1) + ' BB'));
+          tv.append(el('td', null, '    ' + fmt(v.to, 1) + ' BB' + (row.act === '3bet' || row.act === '4bet' ? ' (' + v.bucket.replace(/x$/, row.act === '4bet' ? 'x 3-бета' : 'x открытия').replace('≤', 'до ') + ')' : '') + (v.allin ? ' → пуш' : '')), evCell(v), oppCell(v.oppFold, v.pFold, row.act), el('td', 'num', v.shareT != null ? pct(v.shareT) : ''), el('td', 'num', ''), rngCell(a.rk, v.A, row.ru.replace(/ до .*$/, '') + ' ' + fmt(v.to, 1) + ' BB'));
           tv.title = 'размер ' + v.bucket + bucketRu(row.act, v.bucket) + ': у топов ' + v.nT + ' таких рейзов в этом споте (' + (v.shareT != null ? pct(v.shareT) : '—') + ' их рейзов), у поля ' + v.nF;
           t.append(tv);
         }
       }
       s.append(t);
-      s.append(el('div', 'rm-note', 'EV — сколько BB в среднем приносит действие по сравнению с фолдом (у фолда 0). Топы, % — как часто топ-игроки делают это действие в таком споте (если у топов мало раздач — реги, затем все игроки); в строках размеров — какую долю их рейзов составляет этот размер. Диапазон — наведите, чтобы увидеть матрицу рук, с которыми в базе это делали (по вскрытиям). «—» в EV — по этой руке мало раздач.'));
+      s.append(el('div', 'rm-note', 'EV — сколько BB в среднем приносит действие по сравнению с фолдом (у фолда 0). Топы, % и реги, % — как часто топ-игроки и реги делают это действие в таком споте (любыми руками); в строках размеров — какую долю их рейзов составляет этот размер. Диапазон — наведите, чтобы увидеть матрицу рук, с которыми в базе это делали (по вскрытиям). «—» в EV — по этой руке мало раздач.'));
       const bRows = a.rows.filter(r => r.bounty); if (bRows.length) s.append(el('div', 'rm-why', 'Баунти в расчёте: ' + bRows.map(r => r.ru + ' — ' + r.bounty).join('; ')));
       if (a.compare) s.append(el('div', 'rm-why', 'Колл ' + sgn(a.compare.call) + ' (n=' + a.compare.callN + ') против «' + a.compare.raiseRu + '» ' + sgn(a.compare.raise) + ' (n=' + a.compare.raiseN + '): ' + (a.compare.diff >= 0 ? 'рейз лучше на ' : 'колл лучше на ') + fmt(Math.abs(a.compare.diff)) + ' BB' + (a.compare.reliable ? '' : ' — предварительно, мало вскрытий')));
       if (a.classTops) s.append(el('div', 'rm-note', 'Топы с руками «' + a.classTops.cls + '» здесь (по вскрытиям, n=' + a.classTops.n + '): ' + Object.entries(a.classTops.share).filter(([, v]) => v > 0).map(([k, v]) => ({ call: 'колл', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин', open: 'опен', limp: 'лимп', iso: 'изо', check: 'чек' })[k] + ' ' + pct(v)).join(', ')));
