@@ -38,6 +38,61 @@
     // а банки, выигранные без вскрытия, теряются (AKo-опен на полной базе: −1,4 bb при n = 3 426). Пока нет поправки (GTO-профиль),
     // такой EV — только справка: «играть или нет» решают частоты топов, а точными остаются фолд, пуш и колл олл-ина (эквити).
     const HC_TRUST = !!(opts && opts.hcTrust);
+    // Поправка через GTO-профиль (data/gto_profile.json, 20 млн раздач HRC, карты видны всегда):
+    // уровень — реальный EV продолжения спота по ВСЕМ раздачам (карты не нужны), разница между руками — из GTO:
+    //   cont(рука) = cont(спот, реально) + [EV_GTO(рука) − средний EV_GTO диапазона] / (1 − P(все сбросят)),  стек — между ближайшими глубинами.
+    const GTO = opts && opts.gto && opts.gto.nodes ? opts.gto : null;
+    const G_DEPTHS = GTO ? GTO.depths.slice().sort((a, b) => a - b) : [];
+    const COMBOS = (h) => { const l = K.H169[h].label; return l.length === 2 ? 6 : l[2] === 's' ? 4 : 12; };
+    const H_OF = {}; for (let h = 0; h < 169; h++) H_OF[K.H169[h].label] = h;
+    const POS_SEATS = { 2: ['BTN/SB', 'BB'], 3: ['BTN', 'SB', 'BB'], 4: ['BTN', 'SB', 'BB', 'CO'], 5: ['BTN', 'SB', 'BB', 'UTG', 'CO'], 6: ['BTN', 'SB', 'BB', 'UTG', 'HJ', 'CO'], 7: ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'HJ', 'CO'], 8: ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'HJ', 'HJ2', 'CO'], 9: ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'UTG+2', 'HJ', 'HJ2', 'CO'] };
+    function pos8(lbl, ns) { // позиция 8-max HRC по расстоянию до баттона
+      if (lbl === 'SB' || lbl === 'BB') return lbl; if (lbl === 'BTN') return 'BU';
+      const L = POS_SEATS[ns] || POS_SEATS[9], i = L.indexOf(lbl); if (i < 3) return null;
+      const d = L.length - i; return ['BU', 'CO', 'HJ', 'MP', 'EP'][d] || 'UTG';
+    }
+    const GCLS = { open: 'raise', iso: 'raise', '3bet': 'raise', '4bet': 'raise', limp: 'limp', call: 'call' };
+    function gtoNodeKey(sp) {
+      const P = pos8(sp.pos, sp.ns), X = sp.oppPos ? pos8(sp.oppPos, sp.ns) : null; if (!P) return null;
+      if (sp.tbl === 'RFI') return 'RFI|' + P;
+      if (sp.tbl === 'VSO' && X && (sp.C || 'C0') === 'C0') return 'VSO|' + P + '|' + X;
+      if (sp.tbl === 'VS3' && X && sp.openI === sp.i && (sp.C || 'C0') === 'C0') return 'VS3|' + P + '|' + X;
+      if (sp.tbl === 'ISO' && P === 'BB' && X === 'SB') return 'ISO|BB|SB';
+      return null;
+    }
+    // разница EV руки и среднего диапазона этого действия в GTO (bb), по двум ближайшим глубинам
+    function gtoShape(sp, h, act) {
+      if (!GTO || h == null) return null;
+      const c = GCLS[String(act).split('@')[0]]; if (!c) return null;
+      const key = gtoNodeKey(sp); if (!key) return null;
+      const e = Math.max(G_DEPTHS[0], Math.min(G_DEPTHS[G_DEPTHS.length - 1], sp.eff || 0));
+      let i = 0; while (i < G_DEPTHS.length - 1 && G_DEPTHS[i + 1] < e) i++;
+      const d0 = G_DEPTHS[i], d1 = G_DEPTHS[Math.min(i + 1, G_DEPTHS.length - 1)];
+      const w1 = d1 === d0 ? 0 : Math.log(e / d0) / Math.log(d1 / d0);
+      const one = (d) => {
+        const nd = GTO.nodes[d + '|' + key]; if (!nd) return null; const k = nd.acts.indexOf(c); if (k < 0) return null;
+        const r = nd.hands[K.H169[h].label]; if (!r || r[k][1] == null) return null;
+        let sw = 0, sm = 0; for (const l in nd.hands) { const x = nd.hands[l][k]; if (x[1] == null) continue; const w = COMBOS(H_OF[l]) * x[0]; sw += w; sm += w * x[1]; }
+        if (!(sw > 0)) return null;
+        return { d: r[k][1] - sm / sw, se: r[k][3] || 0, n: r[k][2], depth: d };
+      };
+      const a = one(d0), b = d1 !== d0 ? one(d1) : null;
+      if (a && b) return { d: (1 - w1) * a.d + w1 * b.d, se: Math.sqrt(((1 - w1) * a.se) ** 2 + (w1 * b.se) ** 2), n: Math.round((1 - w1) * a.n + w1 * b.n), key, depths: d0 + '–' + d1 };
+      const x = a && (w1 < 0.5 || !b) ? a : b || a; if (!x) return null;
+      if (Math.abs(Math.log((sp.eff || x.depth) / x.depth)) > 0.45) return null; // ближайшая глубина слишком далеко
+      return { d: x.d, se: x.se, n: x.n, key, depths: String(x.depth) };
+    }
+    // EV руки: реальный уровень спота + GTO-форма (вместо смещённого EV по вскрытиям)
+    function handEVgto(sp, act, h, sl, pfa, mfa) {
+      const g = gtoShape(sp, h, act); if (!g) return null;
+      const raw = sl.raw.find(x => x && x.n > (x.nfa || 0)); if (!raw) return null;
+      const nc = raw.n - (raw.nfa || 0); if (nc < 30) return null;
+      const contAll = (raw.n * raw.m - (raw.nfa || 0) * (raw.mfa || 0)) / nc;
+      const pS = Math.min(0.95, sl.pfa || 0);
+      const cont = contAll + g.d / (1 - pS);
+      const se = Math.sqrt(((raw.sd || 0) / Math.sqrt(nc)) ** 2 + (g.se / (1 - pS)) ** 2) * (1 - pfa);
+      return { m: pfa * mfa + (1 - pfa) * cont, se, n: Math.min(nc, g.n), src: 'GTO-поправка', gto: g, contAll };
+    }
     opts = opts || {};
     const EQ = eqTable.eq ? Float32Array.from(eqTable.eq, v => v / 10000) : eqTable;
     const EV = model.EV, HC = model.HC;
@@ -296,9 +351,9 @@
         let pfa = sl.pfa, mfa = sl.mfa;
         if (act === 'open' && of) { pfa = of.p; mfa = sp.potBefore; }
         v.pFold = pfa;
-        if (cards) { const r = handEV(sp, A, h, sl, pfa, mfa); if (r) Object.assign(v, { ev: r.m, se: r.se, n: r.n, src: r.src }); }
+        if (cards) { const g = !HC_TRUST ? handEVgto(sp, A, h, sl, pfa, mfa) : null; const r = g || handEV(sp, A, h, sl, pfa, mfa); if (r) Object.assign(v, { ev: r.m, se: r.se, n: r.n, src: r.src }, g ? { gto: g.gto } : {}); }
         else if (sl.ev) Object.assign(v, { ev: sl.ev.m, se: sl.ev.se, n: sl.ev.n, src: 'диапазон' });
-        v.reliable = v.ev !== null && v.n >= MIN_HAND_N && !v.allin;
+        v.reliable = v.ev !== null && v.n >= MIN_HAND_N && !v.allin && (HC_TRUST || v.src === 'GTO-поправка');
         out.push(v); totT += nT; totF += nF;
       }
       out.forEach(v => { v.shareT = totT ? v.nT / totT : null; v.shareF = totF ? v.nF / totF : null; });
@@ -365,6 +420,8 @@
         if (fa) { pfa = fa.p; pfaSrc = fa.src; row.lineup = fa.each || null; if (act === 'open') mfa = sp.potBefore; }
         row.pFold = pfa; row.pFoldSrc = pfaSrc;
         if (cards) {
+          const g = !HC_TRUST ? handEVgto(sp, act, h, sl, pfa, mfa) : null;
+          if (g) return Object.assign(row, { ev: g.m, se: g.se, src: g.src, n: g.n, gto: g.gto, evSpot: sl.ev ? sl.ev.m : null });
           const r = handEV(sp, act, h, sl, pfa, mfa);
           if (r) return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, evSpot: sl.ev ? sl.ev.m : null });
           return Object.assign(row, { ev: null, se: null, src: 'нет данных по руке', n: 0, evSpot: sl.ev ? sl.ev.m : null });
@@ -372,7 +429,7 @@
         if (sl.ev) return Object.assign(row, { ev: sl.ev.m, se: sl.ev.se, src: 'диапазон', n: sl.ev.n });
         return Object.assign(row, { ev: null, se: null, src: 'нет данных', n: 0 });
       });
-      rows.forEach(r => { r.reliable = !r.asShove && (r.act === 'fold' || /^эквити/.test(r.src) || (HC_TRUST && r.ev !== null && (r.src === 'рука' || r.src === 'класс руки') && r.n >= MIN_HAND_N)); if (!HC_TRUST && (r.src === 'рука' || r.src === 'класс руки')) r.biased = true; });
+      rows.forEach(r => { r.reliable = !r.asShove && (r.act === 'fold' || /^эквити/.test(r.src) || (HC_TRUST && r.ev !== null && (r.src === 'рука' || r.src === 'класс руки') && r.n >= MIN_HAND_N) || (r.src === 'GTO-поправка' && r.ev !== null && r.n >= MIN_HAND_N)); if (!HC_TRUST && (r.src === 'рука' || r.src === 'класс руки')) r.biased = true; });
       let best = rows[0];
       for (const r of rows) if (r.reliable && r.ev > best.ev) best = r;
       const ra = cards ? rangeAct(sp, acts, FT.n >= 30 ? FT : FF, h) : null;
@@ -448,7 +505,7 @@
   function decisionsBacking(rp, grpOf, fp, room, ctx) {
     const st = SP.stratumOf(fp || '', rp.title), tb = SP.tableOf(rp.n), kd = SP.kindOf(rp, rp.text || '', fp);
     const bounty = bountiesOf(rp);
-    return SP.preflopDecisions(rp, grpOf, true).map(d => Object.assign(d, { st, tb, kd, room: room || 'ps', bounty, bbChips: rp.bb || 1, stage: ctx && ctx.stage || null, tour: ctx && ctx.tour || null }));
+    return SP.preflopDecisions(rp, grpOf, true).map(d => Object.assign(d, { st, tb, kd, room: room || 'ps', ns: rp.n, bounty, bbChips: rp.bb || 1, stage: ctx && ctx.stage || null, tour: ctx && ctx.tour || null }));
   }
   // баунти по местам из строк «Seat N: ник (стек in chips, $X bounty)»
   function bountiesOf(rp) {

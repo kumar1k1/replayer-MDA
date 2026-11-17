@@ -3,7 +3,7 @@
 // подсказки — панель «Сейчас ход» (js/advisor.js).
 (function () {
   const SP = window.RMSpots, E8 = window.RMEngine8, K = window.RMCards, CLU = window.RMClusters, STG = window.STAGE;
-  const ENG = E8.create(window.RM_MODEL, window.RM_EQ, { sizes: window.RM_SIZES, lineup: window.RM_LINEUP });
+  const ENG = E8.create(window.RM_MODEL, window.RM_EQ, { sizes: window.RM_SIZES, lineup: window.RM_LINEUP, gto: window.RM_GTO || null });
   const PLAYERS = window.RM_PLAYERS || {};
   const roomOf = (t) => (/^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other');
   const ROOM_RU = { ps: 'PokerStars', coin: 'CoinPoker', gg: 'GGPoker' };

@@ -7,7 +7,7 @@ const C = require('../pipeline/common.cjs'), Kc = require('../lib/cards.js'), E8
 const D = (f) => path.join(__dirname, '..', 'data', f);
 const rj = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const model = C.loadModel(process.env.MODEL || C.MODEL_FILE());
-const eng = E8.create(model, rj(D('eq169.json')), { sizes: rj(process.env.SIZES || D('sizes_v8.json')), lineup: rj(process.env.LINEUP || D('lineup_v8.json')) });
+const eng = E8.create(model, rj(D('eq169.json')), { sizes: rj(process.env.SIZES || D('sizes_v8.json')), lineup: rj(process.env.LINEUP || D('lineup_v8.json')), gto: fs.existsSync(D('gto_profile.json')) ? rj(D('gto_profile.json')) : null });
 const P = C.loadParser(), parse = C.makeParse(P);
 let fails = 0;
 const ok = (c, m) => { console.log((c ? 'ok  ' : 'FAIL') + ' ' + m); if (!c) { fails++; process.exitCode = 1; } };

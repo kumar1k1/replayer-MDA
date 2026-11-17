@@ -88,6 +88,7 @@ sz.eq = asJs('eq169.js', path.join(ROOT, 'data', 'eq169.json'), 'RM_EQ');
 sz.sizes = asJs('sizes.js', path.join(ROOT, 'data', 'sizes_v8.json'), 'RM_SIZES');
 sz.lineup = asJs('lineup.js', path.join(ROOT, 'data', 'lineup_v8.json'), 'RM_LINEUP');
 sz.clusters = asJs('clusters.js', path.join(ROOT, 'data', 'clusters_v2.json'), 'RM_CLMODEL');
+if (fs.existsSync(path.join(ROOT, 'data', 'gto_profile.json'))) sz.gto = asJs('gto_profile.js', path.join(ROOT, 'data', 'gto_profile.json'), 'RM_GTO'); else W('data/gto_profile.js', '');
 if (fs.existsSync(path.join(ROOT, 'data', 'stage_calib.json'))) asJs('stage_calib.js', path.join(ROOT, 'data', 'stage_calib.json'), 'RM_STAGE_CALIB'); else W('data/stage_calib.js', '');
 // игроки: «рум:ник» → [кластер, расстояние, второй кластер, рук, надёжен, префлоп-счётчики (разреженно «слот:число»)]
 const APP_MIN = +(process.env.APP_MIN_HANDS || 100); // в реплеер — игроки с ≥ 100 рук: у остальных кластер почти пуловый
