@@ -123,6 +123,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
           addEV(c + '|' + S + '|' + act + '|*', rel, fa);
         }
         addEV(coh + '|' + Sb + '|' + act + '|*', rel, fa); // обобщённый уровень (семейство позиций)
+        if (g === 'greg') addEV('greg|' + Sb + '|' + act + '|*', rel, fa); // реги по семейству позиций — для поправки весов рук
         // стадия — слой поверх (план C9): отдельные ячейки «Z|стадия|…»; в движке стягиваются к общим, если данных мало
         if (stage) { addEV('Z|' + stage + '|' + coh + '|' + S + '|' + act + '|*', rel, fa); addEV('Z|' + stage + '|' + coh + '|' + Sb + '|' + act + '|*', rel, fa); }
         // размеры (п.6 → п.8): EV и частоты по корзине сайза — «3bet@3x», чтобы выбирать размер по EV, а не только по частоте
@@ -143,6 +144,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
           addHC(coh + '|' + S + '|' + act + '|' + cl, rel);
           addHC(coh + '|' + Sb + '|' + act + '|' + cl, rel);
           addHC(coh + '|' + Sb + '|' + act + '|*', rel); // среднее продолжения по вскрытым — для сдвига вскрытий
+          // реги отдельно (руки на вскрытии): веса «как реги играют эту руку» в панели
+          if (g === 'greg') { addHC('greg|' + Sb + '|' + act + '|h' + s.h, rel); addHC('greg|' + Sb + '|' + act + '|*', rel); }
           if (sizedA) { addHC(coh + '|' + Sb + '|' + sizedA + '|h' + s.h, rel); addHC(coh + '|' + S + '|' + sizedA + '|' + cl, rel); addHC(coh + '|' + Sb + '|' + sizedA + '|' + cl, rel); addHC(coh + '|' + Sb + '|' + sizedA + '|*', rel); }
         }
         // диапазоны олл-инов (по 169 рукам), по группе игрока

@@ -102,6 +102,9 @@
           const mix = Object.entries(a.gtoF.f).sort((x, y) => y[1] - x[1]).map(([k, v]) => RUA[k] + ' ' + Math.round(v * 100) + '%').join(', ');
           if (mix) r.append(el('span', 'rm-mix', '(GTO для ' + a.hand + ': ' + mix + ')')); }
         s.append(r);
+        if (a.handW) { const RUB = { call: 'колл', limp: 'лимп', open: 'опен', iso: 'изо', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин' };
+          const ws = Object.entries(a.handW.w).filter(x => x[1] > 0.005).sort((x, y) => y[1] - x[1]).map(([k, v]) => (RUB[k] || k) + ' ' + Math.round(v * 100) + '%').join(', ');
+          if (ws) s.append(el('div', 'rm-why', (a.handW.who === 'реги' ? 'Реги' : 'Топы') + ' с ' + a.hand + ' здесь, когда играют: ' + ws + ' — по ' + a.handW.shown + ' показанным рукам' + (a.handW.same ? '' : ' (стек ' + a.handW.band + ' BB)') + '; фолды по базе не видны')); }
         s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));
       if (a.gtoF) { const RUA = { fold: 'фолд', call: 'колл', limp: 'лимп', raise: a.tbl === 'RFI' ? 'опен' : a.tbl === 'VS3' ? '4-бет' : a.tbl === 'ISO' ? 'изо' : '3-бет', shove: 'олл-ин' };
         const parts = Object.entries(a.gtoF.f).sort((x, y) => y[1] - x[1]).map(([k, v]) => RUA[k] + ' ' + Math.round(v * 100) + '%');

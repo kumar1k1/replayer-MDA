@@ -7,8 +7,8 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const C = require('../pipeline/common.cjs'), K = require('../lib/cards.js'), SP = require('../lib/spots.js'), E8 = require('../engine/engine_v8.js'), CLU = require('../lib/clusters.js');
 const DIST = process.env.DIST || path.join(__dirname, '..', 'app', 'dist');
 const W = {}; const ctx = vm.createContext({ window: W });
-for (const f of ['model', 'eq169', 'sizes', 'lineup', 'players', 'gto_profile']) { const p = path.join(DIST, 'data', f + '.js'); if (fs.existsSync(p) && fs.statSync(p).size) vm.runInContext(fs.readFileSync(p, 'utf8'), ctx); }
-const ENG = E8.create(W.RM_MODEL, W.RM_EQ, { sizes: W.RM_SIZES, lineup: W.RM_LINEUP, gto: W.RM_GTO || null });
+for (const f of ['model', 'eq169', 'sizes', 'lineup', 'players', 'gto_profile', 'ranges']) { const p = path.join(DIST, 'data', f + '.js'); if (fs.existsSync(p) && fs.statSync(p).size) vm.runInContext(fs.readFileSync(p, 'utf8'), ctx); }
+const ENG = E8.create(W.RM_MODEL, W.RM_EQ, { sizes: W.RM_SIZES, lineup: W.RM_LINEUP, gto: W.RM_GTO || null, ranges: W.RM_RANGES || null });
 const PL = W.RM_PLAYERS || {}, pfC = new Map();
 function player(room, nick) { const k = room + ':' + nick, p = PL[k]; if (!p) return null; let pf = pfC.get(k); if (!pf) { pf = new Int32Array(315); if (p[5]) for (const s of p[5].split(',')) { const [o, v] = s.split(':'); pf[+o] = +v; } pfC.set(k, pf); } return { cl: p[0], d: p[1], cl2: p[2], hands: p[3], reliable: !!p[4], pf, grp: CLU.GROUP[p[0]] || 'unk' }; }
 const parse = C.makeParse(C.loadParser());

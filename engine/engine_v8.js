@@ -82,6 +82,33 @@
       if ((sp.eff || x.depth) < x.depth && Math.abs(Math.log((sp.eff || x.depth) / x.depth)) > 0.45) return null; // ближайшая глубина слишком далеко (глубже 125 bb — берём 125)
       return { d: x.d, se: x.se, n: x.n, key, depths: String(x.depth) };
     }
+    // ---------- как топы играют ИМЕННО эту руку в этом споте (по вскрытиям) ----------
+    // Видно, с чем топы дошли до вскрытия после колла / 3-бета / опена и т.д. Фолды не видны, поэтому это веса среди
+    // продолжений. Поправка: действие реже доходит до вскрытия (3-бет часто забирает банк сразу) — делим на долю
+    // вскрытий этого действия в споте (вскрытия / все такие решения топов, по всем рукам).
+    // реги (R) — если в модели есть (после пересчёта), иначе топы (T)
+    const RGS = opts && opts.ranges ? [['R', 'greg', 'реги'], ['T', 'T', 'топы']].filter(([k]) => opts.ranges[k]).map(([k, coh, who]) => ({ map: opts.ranges[k], coh, who })) : [];
+    const RG = RGS.length ? true : null; const rgCache = new Map();
+    const BANDS7 = ['<12', '12-19', '20-35', '36-59', '60-99', '100-149', '150+'];
+    function rgCount(map, key, h) { const ck = map === (RGS[0] && RGS[0].map) ? '0|' + key : '1|' + key; if (!rgCache.has(ck)) { const s = map[key]; const m = {}; if (s) for (const x of s.split(',')) { const [a, c] = x.split(':'); m[+a] = +c; } rgCache.set(ck, m); } return rgCache.get(ck)[h] || 0; }
+    function handWeights(sp, h, acts) {
+      if (!RG || h == null) return null;
+      const cont = acts.filter(a => a !== 'fold' && a !== 'check'); if (cont.length < 2) return null;
+      const Sb = keys(sp).Sb, parts = Sb.split('|'), bi = BANDS7.indexOf(parts[5]);
+      const order = [bi]; for (let d = 1; d < 7; d++) { if (bi - d >= 0) order.push(bi - d); if (bi + d < 7) order.push(bi + d); }
+      for (const src of RGS) for (const j of order) {
+        if (j < 0) continue; if (Math.abs(j - bi) > 2) break; const p2 = parts.slice(); p2[5] = BANDS7[j]; const S2 = p2.join('|');
+        const w = {}; let tot = 0, shown = 0;
+        for (const a of cont) {
+          const c = rgCount(src.map, S2 + '|' + a, h); shown += c;
+          const sd = cellHC(src.coh + '|' + S2 + '|' + a + '|*'), all = cellEV(src.coh + '|' + S2 + '|' + a + '|*');
+          const rate = sd && all && all.n >= 30 && sd.n > 0 ? Math.min(1, sd.n / all.n) : null;
+          w[a] = c && rate ? c / rate : c ? c : 0; tot += w[a];
+        }
+        if (shown >= 20 && tot > 0) { for (const a in w) w[a] /= tot; return { w, shown, band: BANDS7[j], same: j === bi, who: src.who }; }
+      }
+      return null;
+    }
     // частоты GTO для руки в этом споте (ближайшая глубина): { depth, key, f: {fold, call|limp, raise, shove} }
     function gtoFreq(sp, h) {
       if (!GTO || h == null) return null; const key = gtoNodeKey(sp); if (!key) return null;
@@ -515,6 +542,12 @@
         else if (rr && rr.reliable && rr.act === 'shove' && rr.ev < 0) rec = { act: 'fold', why: 'по частотам — рейз, но при таком стеке это пуш, а он хуже фолда' };
         else rec = { act: 'fold', why: rows.some(r => r.reliable && r.act !== 'fold') ? 'все надёжные варианты хуже фолда' : (ra ? 'по частотам базы — фолд (рука в лучших ' + pctS(ra.pct) + '%)' : 'нет надёжных данных') };
       }
+      // веса топов для этой руки: если рука по базе играется (не фолд) и показанных рук достаточно — действие берём по ним
+      const hw = cards ? handWeights(sp, h, acts) : null;
+      if (hw && rec.act !== 'fold' && !/эквити/.test(rec.why)) {
+        const top = Object.entries(hw.w).sort((a, b) => b[1] - a[1])[0];
+        if (top && top[0] !== rec.act && rowOf(top[0])) { rec = { act: top[0], why: 'по тому, как ' + hw.who + ' играют ' + K.H169[h].label + ' в этом споте' }; best = rowOf(top[0]); }
+      }
       const recRow = rowOf(rec.act);
       if (recRow && recRow.asShove && rowOf('shove')) { rec = { act: 'shove', why: rec.why + '; ' + recRow.size.why }; best = rowOf('shove'); }
       rec.size = recRow && recRow.size && !recRow.asShove ? recRow.size : null;
@@ -532,7 +565,7 @@
         for (const a of acts) if (a !== 'fold') { const x = cellHC('T|' + Sb + '|' + a + '|' + cl); c[a] = x ? x.n : 0; n += c[a]; }
         if (n >= 10) classTops = { cls: CL_RU[cl] || cl, n, share: Object.fromEntries(Object.entries(c).map(([a, v]) => [a, v / n])) };
       }
-      return { compare, classTops, regN: FR.n, gtoF: gtoFreq(sp, h), freqWho: whoB, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
+      return { compare, classTops, handW: hw, regN: FR.n, gtoF: gtoFreq(sp, h), freqWho: whoB, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
     }
     // вердикт фактическому действию: act — метка из разметки (open:x2.2 / shove / …), sz — корзина сайза (d.sz)
     function verdict(adv, act, sz) {

@@ -8,9 +8,9 @@ const C = require('../pipeline/common.cjs'), K = require('../lib/cards.js'), E8 
 const DIST = process.env.DIST || path.join(__dirname, '..', 'app', 'dist');
 const W = {}; const ctx = vm.createContext({ window: W });
 process.stdout.write('Загружаю модель реплеера (~10–30 с)... ');
-for (const f of ['model', 'eq169', 'sizes', 'lineup', 'players', 'gto_profile', 'stage_calib']) { const p = path.join(DIST, 'data', f + '.js'); if (fs.existsSync(p) && fs.statSync(p).size) vm.runInContext(fs.readFileSync(p, 'utf8'), ctx); }
+for (const f of ['model', 'eq169', 'sizes', 'lineup', 'players', 'gto_profile', 'ranges', 'stage_calib']) { const p = path.join(DIST, 'data', f + '.js'); if (fs.existsSync(p) && fs.statSync(p).size) vm.runInContext(fs.readFileSync(p, 'utf8'), ctx); }
 console.log('готово');
-const ENG = E8.create(W.RM_MODEL, W.RM_EQ, { sizes: W.RM_SIZES, lineup: W.RM_LINEUP, gto: W.RM_GTO || null });
+const ENG = E8.create(W.RM_MODEL, W.RM_EQ, { sizes: W.RM_SIZES, lineup: W.RM_LINEUP, gto: W.RM_GTO || null, ranges: W.RM_RANGES || null });
 const PL = W.RM_PLAYERS || {}, pfC = new Map();
 function player(room, nick) { const k = room + ':' + nick, p = PL[k]; if (!p) return null; let pf = pfC.get(k); if (!pf) { pf = new Int32Array(315); if (p[5]) for (const s of p[5].split(',')) { const [o, v] = s.split(':'); pf[+o] = +v; } pfC.set(k, pf); } return { cl: p[0], grp: CLU.GROUP[p[0]] || 'unk', pf }; }
 const parse = C.makeParse(C.loadParser());

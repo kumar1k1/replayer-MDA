@@ -75,13 +75,14 @@ const sz = {};
   }
   let cut = 0;
   // диапазоны по вскрытиям для матрицы в панели: «обобщённый спот | действие(@размер)» → сколько раз каждую из 169 рук показали
-  const RG = { T: {}, F: {} }; const reH = /^([TF])\|(~.*)\|([^|]+)\|h(\d+)$/;
+  const RG = { T: {}, F: {}, R: {} }; const reH = /^(T|F|greg)\|(~.*)\|([^|]+)\|h(\d+)$/;
   const M = C8.loadModel(mf, (sec, k, v) => {
-    if (sec === 'HC') { const m = reH.exec(k); if (m) { const o = RG[m[1]], key = m[2] + '|' + m[3]; (o[key] || (o[key] = {}))[m[4]] = v[0]; } }
+    if (sec === 'HC') { const m = reH.exec(k); if (m) { const o = RG[m[1] === 'greg' ? 'R' : m[1]], key = m[2] + '|' + m[3]; (o[key] || (o[key] = {}))[m[4]] = v[0]; } }
     if ((sec === 'HC' && v[0] < hcMin) || (sec === 'EV' && v[0] < evMin)) { cut++; return false; } return true;
   });
   { const pack = (o) => { const r = {}; for (const k in o) { const e = Object.entries(o[k]); if (e.reduce((s, x) => s + x[1], 0) >= 20) r[k] = e.map(([h, n]) => h + ':' + n).join(','); } return r; };
-    const rs = JSON.stringify({ T: pack(RG.T), F: pack(RG.F) }); W('data/ranges.js', 'window.RM_RANGES=' + rs + ';\n'); sz.ranges = rs.length; }
+    // F (не топы, с фишами) в реплеер не берём
+    const rs = JSON.stringify({ T: pack(RG.T), R: pack(RG.R) }); W('data/ranges.js', 'window.RM_RANGES=' + rs + ';\n'); sz.ranges = rs.length; }
   M.meta = Object.assign({}, M.meta, { appHcMin: hcMin, appEvMin: evMin });
   // запись по частям: целиком одной строкой не помещается
   const fd = fs.openSync(path.join(OUT, 'data', 'model.js'), 'w'); let total = 0, buf = '';
