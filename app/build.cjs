@@ -50,13 +50,39 @@ for (const f of ['shim.js', 'advisor.js', 'app.js']) W('js/' + f, R(path.join(__
 // 4. данные (как скрипты: index.html открывается без сервера, fetch локальных файлов браузер запрещает)
 const asJs = (name, file, varName) => { const s = R(file); W('data/' + name, 'window.' + varName + '=' + s + ';\n'); return s.length; };
 const sz = {};
-// модель: на полной базе — сотни МБ; для браузера отсекаются ячейки вскрытий с n < HC_MIN и пустые ячейки EV
+// модель: на полной базе — больше гигабайта; для браузера отсекаются редкие ячейки (вскрытия HC с n < HC_MIN, EV с n < EV_MIN).
+// Пороги подбираются сами, чтобы model.js был не больше APP_MODEL_MB (по умолчанию 200 МБ); HC_MIN / EV_MIN можно задать явно.
 {
-  const M = JSON.parse(R(process.env.MODEL || path.join(OUTD, 'model_v8.json')));
-  const HC_MIN = +(process.env.HC_MIN || 5), EV_MIN = +(process.env.EV_MIN || 1); let cut = 0;
-  for (const k in M.HC) if (M.HC[k][0] < HC_MIN) { delete M.HC[k]; cut++; }
-  for (const k in M.EV) if (M.EV[k][0] < EV_MIN) { delete M.EV[k]; cut++; }
-  const s = JSON.stringify(M); W('data/model.js', 'window.RM_MODEL=' + s + ';\n'); sz.model = s.length; sz.modelCut = cut;
+  const C8 = require(path.join(ROOT, 'pipeline', 'common.cjs'));
+  const mf = process.env.MODEL || (fs.existsSync(path.join(OUTD, 'model_v8.ndjson')) ? path.join(OUTD, 'model_v8.ndjson') : path.join(OUTD, 'model_v8.json'));
+  const LIM = (+(process.env.APP_MODEL_MB || 200)) * 1048576;
+  const HCG = [5, 10, 15, 20, 30, 50, 80, 120, 200, 400], EVG = [1, 2, 3, 5, 10, 20, 50];
+  let hcMin = +(process.env.HC_MIN || 0), evMin = +(process.env.EV_MIN || 0);
+  if (!hcMin || !evMin) { // 1-й проход: сколько байт дают ячейки с n не меньше порога
+    const hcB = new Array(HCG.length).fill(0), evB = new Array(EVG.length).fill(0); let other = 0;
+    C8.loadModel(mf, (sec, k, v) => {
+      const b = k.length + JSON.stringify(v).length + 4;
+      if (sec === 'HC') { for (let i = 0; i < HCG.length; i++) if (v[0] >= HCG[i]) hcB[i] += b; }
+      else if (sec === 'EV') { for (let i = 0; i < EVG.length; i++) if (v[0] >= EVG[i]) evB[i] += b; }
+      else other += b;
+      return false;
+    });
+    let pick = null;
+    outer: for (let j = 0; j < EVG.length; j++) for (let i = 0; i < HCG.length; i++) { if (hcB[i] + evB[j] + other <= LIM) { pick = [i, j]; break outer; } }
+    if (!pick) pick = [HCG.length - 1, EVG.length - 1];
+    if (!hcMin) hcMin = HCG[pick[0]]; if (!evMin) evMin = EVG[pick[1]];
+    console.log('модель для реплеера: пороги HC ≥', hcMin, 'EV ≥', evMin, '| ожидаемый размер', ((hcB[HCG.indexOf(hcMin)] || 0) / 1048576 + (evB[EVG.indexOf(evMin)] || 0) / 1048576 + other / 1048576).toFixed(0), 'МБ');
+  }
+  let cut = 0;
+  const M = C8.loadModel(mf, (sec, k, v) => { if ((sec === 'HC' && v[0] < hcMin) || (sec === 'EV' && v[0] < evMin)) { cut++; return false; } return true; });
+  M.meta = Object.assign({}, M.meta, { appHcMin: hcMin, appEvMin: evMin });
+  // запись по частям: целиком одной строкой не помещается
+  const fd = fs.openSync(path.join(OUT, 'data', 'model.js'), 'w'); let total = 0, buf = '';
+  const put = (x) => { buf += x; if (buf.length > 8e6) { fs.writeSync(fd, buf); total += buf.length; buf = ''; } };
+  put('window.RM_MODEL={"v":' + JSON.stringify(M.v) + ',"meta":' + JSON.stringify(M.meta));
+  for (const sec of ['EV', 'HC', 'RS', 'RC']) { put(',"' + sec + '":{'); let first = true; for (const k in M[sec]) { put((first ? '' : ',') + JSON.stringify(k) + ':' + JSON.stringify(M[sec][k])); first = false; } put('}'); }
+  put('};\n'); fs.writeSync(fd, buf); total += buf.length; fs.closeSync(fd);
+  sz.model = total; sz.modelCut = cut;
 }
 sz.eq = asJs('eq169.js', path.join(ROOT, 'data', 'eq169.json'), 'RM_EQ');
 sz.sizes = asJs('sizes.js', path.join(ROOT, 'data', 'sizes_v8.json'), 'RM_SIZES');

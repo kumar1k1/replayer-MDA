@@ -6,7 +6,7 @@ const fs = require('fs'), path = require('path');
 const C = require('../pipeline/common.cjs'), Kc = require('../lib/cards.js'), E8 = require('../engine/engine_v8.js');
 const D = (f) => path.join(__dirname, '..', 'data', f);
 const rj = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
-const model = rj(process.env.MODEL || path.join(C.OUT, 'model_v8.json'));
+const model = C.loadModel(process.env.MODEL || C.MODEL_FILE());
 const eng = E8.create(model, rj(D('eq169.json')), { sizes: rj(process.env.SIZES || D('sizes_v8.json')), lineup: rj(process.env.LINEUP || D('lineup_v8.json')) });
 const P = C.loadParser(), parse = C.makeParse(P);
 let fails = 0;

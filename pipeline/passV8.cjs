@@ -10,7 +10,7 @@
 //     размер — lib/sizing.js по топам (п.6). «Эффективный олл-ин» (ставка покрывает эфф. стек) — это shove.
 // Запуск: TOPS=out/tops_v8.json PLAYERS_CL=out/players_cl_v8.json node --max-old-space-size=12288 pipeline/passV8.cjs
 //   RESUME=1 — продолжить с чекпоинта; LIMIT=N — первые N рук.
-// Выход: out/model_v8.json
+// Выход: out/model_v8.ndjson (построчно, см. C.saveModel / C.loadModel)
 // ============================================================================
 const fs = require('fs'), path = require('path');
 const C = require('./common.cjs');
@@ -186,7 +186,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   const Ro = (M) => { const o = {}; for (const [k, a] of M) { let s = 0; for (const v of a) s += v; if (s >= 5) o[k] = sparse(a); } return o; };
   stats.broken = stats_broken;
   const model = { v: 8, meta: { hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, bands: C.BAND_NAMES, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
-  const outF = process.env.MODEL_OUT || path.join(C.OUT, 'model_v8.json');
-  fs.writeFileSync(outF, JSON.stringify(model));
+  const outF = process.env.MODEL_OUT || path.join(C.OUT, 'model_v8.ndjson');
+  C.saveModel(outF, model); // построчно: на полной базе JSON целиком не помещается в одну строку (> 512 МБ)
   C.log('v8 ГОТОВО: рук', stats.hands, 'решений', stats.dec, 'олл-ин-поправок', stats.adj, '| ячеек EV', Object.keys(EVo).length, 'HC', Object.keys(HCo).length, 'RS', Object.keys(model.RS).length, 'RC', Object.keys(model.RC).length, '|', (fs.statSync(outF).size / 1048576).toFixed(1), 'МБ', ((Date.now() - t0) / 60000).toFixed(1), 'мин');
 })();

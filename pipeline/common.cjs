@@ -70,6 +70,31 @@ function ndWriter(file) {
   const flush = () => { if (buf.length) { fs.writeSync(fd, buf.join('\n') + '\n'); buf = []; len = 0; } };
   return { put(row) { const s = JSON.stringify(row); buf.push(s); len += s.length; if (len > 8e6) flush(); }, close() { flush(); fs.closeSync(fd); fs.renameSync(tmp, file); } };
 }
+// синхронное построчное чтение больших NDJSON (без одной гигантской строки)
+function ndForEachSync(file, onRow) {
+  const fd = fs.openSync(file, 'r'), B = Buffer.alloc(1 << 24); let rest = '', pos = 0, n;
+  while ((n = fs.readSync(fd, B, 0, B.length, pos)) > 0) {
+    pos += n; const s = rest + B.toString('utf8', 0, n); const parts = s.split('\n'); rest = parts.pop();
+    for (const ln of parts) if (ln) onRow(JSON.parse(ln));
+  }
+  if (rest.trim()) onRow(JSON.parse(rest));
+  fs.closeSync(fd);
+}
+// Модель v8 на полной базе — больше 512 МБ JSON, поэтому хранится построчно: 1-я строка {v, meta}, далее [раздел, ключ, значение]
+const MODEL_FILE = () => process.env.MODEL || path.join(OUT, 'model_v8.ndjson');
+function saveModel(file, model) {
+  const w = ndWriter(file); w.put({ v: model.v, meta: model.meta });
+  for (const sec of ['EV', 'HC', 'RS', 'RC']) for (const k in model[sec]) w.put([sec, k, model[sec][k]]);
+  w.close();
+}
+// keep(раздел, ключ, значение) → false — пропустить (для облегчённой модели реплеера)
+function loadModel(file, keep) {
+  file = file || MODEL_FILE();
+  if (/\.json$/i.test(file)) return JSON.parse(fs.readFileSync(file, 'utf8')); // старый формат (выборка)
+  const M = { v: 8, meta: null, EV: {}, HC: {}, RS: {}, RC: {} };
+  ndForEachSync(file, (r) => { if (!Array.isArray(r)) { M.v = r.v; M.meta = r.meta; return; } if (!keep || keep(r[0], r[1], r[2])) M[r[0]][r[1]] = r[2]; });
+  return M;
+}
 async function ndRead(file, onRow) {
   const rl = require('readline').createInterface({ input: fs.createReadStream(file, { encoding: 'utf8', highWaterMark: 1 << 20 }), crlfDelay: Infinity });
   for await (const ln of rl) if (ln) onRow(JSON.parse(ln));
@@ -183,4 +208,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ progress, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ progress, ndForEachSync, saveModel, loadModel, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);

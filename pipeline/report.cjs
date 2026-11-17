@@ -6,7 +6,7 @@ const OUT = process.env.OUT_DIR || path.join(__dirname, 'out');
 const J = (f) => { try { return JSON.parse(fs.readFileSync(path.join(OUT, f), 'utf8')); } catch (e) { return null; } };
 const L = [];
 const pool = J('pool_v8.json'), cl = J('clusters_report.json'), tops = J('tops_report.json'), sz = J('sizes_report.json'), lu = J('lineup_report.json');
-let meta = null; try { const s = fs.readFileSync(path.join(OUT, 'model_v8.json'), 'utf8'); const i = s.indexOf('"meta":'); meta = JSON.parse(s.slice(i + 7, s.indexOf('}', i) + 1)); } catch (e) { /* нет модели */ }
+let meta = null; try { const f = path.join(OUT, 'model_v8.ndjson'); const fd = fs.openSync(f, 'r'), b = Buffer.alloc(1 << 16); const n = fs.readSync(fd, b, 0, b.length, 0); fs.closeSync(fd); meta = JSON.parse(b.toString('utf8', 0, n).split('\n')[0]).meta; } catch (e) { /* нет модели */ }
 L.push('# Итог прогона replayer-MDA — ' + new Date().toISOString().slice(0, 16).replace('T', ' '), '');
 L.push('## 1. Статы игроков');
 if (pool) L.push('- раздач: ' + pool.stats.hands + ', повторов отсеяно: ' + pool.stats.dups + ', повреждённых: ' + pool.stats.broken + ', ошибок разбора: ' + pool.stats.errs, '- игроков всего: ' + pool.players + ', выгружено (≥ 50 рук): ' + pool.kept);
@@ -38,7 +38,7 @@ else L.push('- НЕТ stage_eval.json');
 if (pool && pool.stats && pool.stats.kinds) L.push('- форматы раздач: ' + JSON.stringify(pool.stats.kinds));
 if (tops && tops.byFmt) L.push('- топы по формату (A/B): ' + Object.entries(tops.byFmt).map(([f, v]) => f + ' ' + v.A + '/' + v.B).join(', '));
 L.push('', '## 6. Модель v8');
-if (meta) L.push('- ' + JSON.stringify(meta)); else L.push('- НЕТ model_v8.json');
+if (meta) L.push('- ' + JSON.stringify(meta)); else L.push('- НЕТ model_v8.ndjson');
 const out = path.join(OUT, 'ИТОГ_ПРОГОНА.md');
 fs.writeFileSync(out, L.join('\n') + '\n');
 console.log(L.join('\n'));

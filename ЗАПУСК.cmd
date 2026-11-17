@@ -53,7 +53,7 @@ call :step 5  "Лайнап - каждая 20-я раздача"                 lineupdone  "node -
 if errorlevel 1 goto :stop
 set "SAMPLE="
 set "IDSET_BITS="
-call :step 6  "Модель v8 - весь проход"                      modeldone   "node --max-old-space-size=%MEM% pipeline\passV8.cjs"      "v8_state.ndjson v8_ids.bin"
+call :step 6  "Модель v8 - весь проход"                      modeldone   "node --max-old-space-size=%MEM% pipeline\passV8.cjs"      ""
 if errorlevel 1 goto :stop
 set "MAX_SOURCES="
 call :step 7  "Сборка реплеера app\dist"                     appdone     "node --max-old-space-size=%MEM% app\build.cjs"            ""
