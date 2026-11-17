@@ -34,7 +34,7 @@ const F = (n) => Array(n).fill(0);
 console.log('— RFI');
 let sp = spot(['UTGp: folds', 'MPp: folds', 'COp: folds'], 'BTNp');
 let a = check('BTN 40bb AsAh', sp, 'AsAh', 'open', (a) => a.rec.size && a.rec.size.to >= 2 && a.rec.size.to <= 2.5);
-ok(a.st === 'mid' && /ближайший/.test(a.stNote || ''), '   лимит $10 (micro) в базе контейнера отсутствует — взята ближайшая страта: ' + a.stNote);
+ok(a.st === 'micro' ? !/лимита/.test(a.stNote || '') : /ближайший/.test(a.stNote || ''), '   лимит $10 (micro): ' + (a.st === 'micro' ? 'есть в базе — взят свой' : 'нет в базе — взят ближайший «' + a.st + '»') + (a.stNote ? ' (' + a.stNote + ')' : ''));
 ok(a.rows.find(r => r.act === 'open').pFoldSrc.startsWith('лайнап'), '   P(все сфолдят) после опена — по лайнапу: ' + (a.rows.find(r => r.act === 'open').pFold * 100).toFixed(1) + '%');
 sp = spot([], 'UTGp');
 check('UTG 40bb 7c2d', sp, '7c2d', 'fold');
