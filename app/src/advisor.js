@@ -29,7 +29,7 @@
   let MX = null;
   function showMatrix(anchor, R, title) {
     hideMatrix(); const K = window.RMCards; const lab = {}; for (let h = 0; h < 169; h++) lab[K.H169[h].label] = h;
-    const box = el('div', 'rm-mx'); box.append(el('div', 'rm-mx-t', title + ' — ' + R.n + ' рук со вскрытием (' + (R.coh === 'T' ? 'топы' : 'все игроки') + ')'));
+    const box = el('div', 'rm-mx'); box.append(el('div', 'rm-mx-t', title + ' — ' + R.n + ' рук со вскрытием (' + (R.coh === 'T' ? 'топы' : 'игроки не из топов') + ')'));
     const g = el('div', 'rm-mx-g'); let mx = 0; const dens = {};
     for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) { const l = i === j ? RANKS[i] + RANKS[j] : i < j ? RANKS[i] + RANKS[j] + 's' : RANKS[j] + RANKS[i] + 'o'; const h = lab[l]; const c = h != null ? R.m[h] || 0 : 0; const d = c / (i === j ? 6 : i < j ? 4 : 12); dens[l] = [c, d]; if (d > mx) mx = d; }
     for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) { const l = i === j ? RANKS[i] + RANKS[j] : i < j ? RANKS[i] + RANKS[j] + 's' : RANKS[j] + RANKS[i] + 'o'; const [c, d] = dens[l]; const q = mx ? d / mx : 0; const cell = el('div', 'rm-mx-c', l); cell.style.background = c ? 'rgba(242,176,62,' + (0.15 + 0.85 * q).toFixed(2) + ')' : 'rgba(255,255,255,0.04)'; cell.style.color = q > 0.55 ? '#1b1b1b' : ''; cell.title = l + ': ' + c; g.append(cell); }
@@ -92,7 +92,7 @@
         const r = el('div', 'rm-rec'); r.append(el('span', null, 'Совет'), el('b', null, a.rec.ru)); s.append(r);
         s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));
       // варианты: «сброс соперника» — как часто сбрасывает тот, против кого действие (опен — все за спиной, 3-бет — открывший)
-      const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', 'топы, %', 'диапазон'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
+      const t = el('table', 'rm-tab'); const hd = el('tr'); ['действие', 'EV, BB', 'сброс соперника', (a.freqWho === 'регов' ? 'реги' : a.freqWho === 'всех игроков' ? 'все' : 'топы') + ', %', 'диапазон'].forEach(x => hd.append(el('th', null, x))); t.append(hd);
       const bucketRu = (act, b) => act === 'iso' ? ' · ' + b.replace('+', '+').replace('+4+', '+4 и больше') + ' BB сверх лимпов' : act === 'open' ? '' : ' · ' + b + ' от рейза';
       const rngCell = (rk, act, title) => {
         const td = el('td', 'num rm-rng'); const R = act && rk ? rangeOf(rk, act) : null;
@@ -118,7 +118,7 @@
         }
       }
       s.append(t);
-      s.append(el('div', 'rm-note', 'EV — сколько BB в среднем приносит действие по сравнению с фолдом (у фолда 0). Топы, % — как часто топ-игроки делают это действие в таком споте; в строках размеров — какую долю их рейзов составляет этот размер. Диапазон — наведите, чтобы увидеть матрицу рук, с которыми в базе это делали (по вскрытиям). «—» в EV — по этой руке мало раздач.'));
+      s.append(el('div', 'rm-note', 'EV — сколько BB в среднем приносит действие по сравнению с фолдом (у фолда 0). Топы, % — как часто топ-игроки делают это действие в таком споте (если у топов мало раздач — реги, затем все игроки); в строках размеров — какую долю их рейзов составляет этот размер. Диапазон — наведите, чтобы увидеть матрицу рук, с которыми в базе это делали (по вскрытиям). «—» в EV — по этой руке мало раздач.'));
       const bRows = a.rows.filter(r => r.bounty); if (bRows.length) s.append(el('div', 'rm-why', 'Баунти в расчёте: ' + bRows.map(r => r.ru + ' — ' + r.bounty).join('; ')));
       if (a.compare) s.append(el('div', 'rm-why', 'Колл ' + sgn(a.compare.call) + ' (n=' + a.compare.callN + ') против «' + a.compare.raiseRu + '» ' + sgn(a.compare.raise) + ' (n=' + a.compare.raiseN + '): ' + (a.compare.diff >= 0 ? 'рейз лучше на ' : 'колл лучше на ') + fmt(Math.abs(a.compare.diff)) + ' BB' + (a.compare.reliable ? '' : ' — предварительно, мало вскрытий')));
       if (a.classTops) s.append(el('div', 'rm-note', 'Топы с руками «' + a.classTops.cls + '» здесь (по вскрытиям, n=' + a.classTops.n + '): ' + Object.entries(a.classTops.share).filter(([, v]) => v > 0).map(([k, v]) => ({ call: 'колл', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин', open: 'опен', limp: 'лимп', iso: 'изо', check: 'чек' })[k] + ' ' + pct(v)).join(', ')));

@@ -154,7 +154,7 @@
     function spotLevel(coh, sp, act) {
       const { S, Sb } = keys(sp);
       const c = [cellEV(coh + '|' + S + '|' + act + '|' + sp.oppGrp), withStage(sp, coh, S + '|' + act + '|*', cellEV(coh + '|' + S + '|' + act + '|*')), withStage(sp, coh, Sb + '|' + act + '|*', cellEV(coh + '|' + Sb + '|' + act + '|*'))].map(evOK);
-      if (coh === 'T') c.push(evOK(cellEV('F|' + S + '|' + act + '|*')), evOK(cellEV('F|' + Sb + '|' + act + '|*')));
+      if (coh === 'T') c.push(evOK(cellEV('greg|' + S + '|' + act + '|*')), evOK(cellEV('F|' + S + '|' + act + '|*')), evOK(cellEV('F|' + Sb + '|' + act + '|*')));
       const ev = shrink(c, K_SPOT);
       const fa = c.find(x => x && x.n >= 20) || c.find(Boolean);
       return { ev, pfa: fa ? fa.nfa / fa.n : 0, mfa: fa && fa.nfa ? fa.mfa : 0, raw: c, pfaSrc: 'спот' };
@@ -408,9 +408,11 @@
       if (sp.kdReal) sp.kd0 = sp.kdReal;
       const acts = ACTS[sp.tbl].filter(a => !(a === 'check' && sp.toCall > 0.001) && !(a === 'shove' && sp.eff > 40) && !(a === 'fold' && sp.toCall <= 0.001 && sp.tbl === 'ISO'));
       const h = cards ? K.h169(cards[0], cards[1]) : null;
-      const FT = freqs('T', sp, acts), FF = freqs('F', sp, acts);
+      const FT = freqs('T', sp, acts), FF = freqs('F', sp, acts), FR = freqs('greg', sp, acts);
+      // если у топов мало раздач — сначала реги (кластеры-реги), и только потом все остальные (там и фиши)
+      const FB = FT.n >= 30 ? FT : FR.n >= 30 ? FR : FF, whoB = FT.n >= 30 ? 'топов' : FR.n >= 30 ? 'регов' : 'всех игроков';
       const rows = acts.map((act, q) => {
-        const row = { act, ru: RU[act] || act, freqT: FT.f[q], freqF: FF.f[q] };
+        const row = { act, ru: RU[act] || act, freqT: FB.f[q], freqTop: FT.f[q], freqF: FF.f[q] };
         if (act === 'fold') return Object.assign(row, { ev: 0, se: 0, src: 'точно', n: null });
         let size = sizeFor(sp, act);
         const vars = sizeVariants(sp, act, cards, h, info);
@@ -443,15 +445,15 @@
       rows.forEach(r => { r.reliable = !r.asShove && (r.act === 'fold' || /^эквити/.test(r.src) || (HC_TRUST && r.ev !== null && (r.src === 'рука' || r.src === 'класс руки') && r.n >= MIN_HAND_N) || (r.src === 'GTO-поправка' && r.ev !== null && r.n >= MIN_HAND_N)); if (!HC_TRUST && (r.src === 'рука' || r.src === 'класс руки')) r.biased = true; });
       let best = rows[0];
       for (const r of rows) if (r.reliable && r.ev > best.ev) best = r;
-      let ra = cards ? rangeAct(sp, acts, FT.n >= 30 ? FT : FF, h) : null;
+      let ra = cards ? rangeAct(sp, acts, FB, h) : null;
       // частоты топов дробятся (холодный 4-бет, глубокие стеки): «топы всегда сбрасывают» на 50–200 раздачах — не повод
       // сбрасывать сильнейшие руки. Если по топам фолд, а рука в лучших 10% и у поля входит в продолжающий диапазон — берём поле;
       // руки из лучших 2,5% не сбрасываются, когда есть рейз — берём самый агрессивный рейз.
-      if (ra && ra.act === 'fold' && ra.pct <= 0.10 && FT.n >= 30 && FF.n >= 30) { const rf = rangeAct(sp, acts, FF, h); if (rf && rf.act !== 'fold') ra = Object.assign(rf, { field: true }); }
+      if (ra && ra.act === 'fold' && ra.pct <= 0.10 && FB === FT) { const F2 = FR.n >= 30 ? FR : FF.n >= 30 ? FF : null; const rf = F2 ? rangeAct(sp, acts, F2, h) : null; if (rf && rf.act !== 'fold') ra = Object.assign(rf, { field: F2 === FR ? 'регов' : 'всех игроков' }); }
       if (ra && ra.act === 'fold' && ra.pct <= 0.025 && sp.tbl !== 'AI') { const rz = ['4bet', '3bet', 'iso', 'open'].find(a => acts.indexOf(a) >= 0); if (rz) ra = { act: rz, pct: ra.pct, band: 0, floor: true }; }
       const rowOf = (a) => rows.find(r => r.act === a);
       let rec;
-      const Fsrc = FT.n >= 30 ? FT : FF, who = FT.n >= 30 ? 'топов' : 'поля';
+      const Fsrc = FB, who = whoB;
       if (!cards && Fsrc.n >= 30) {
         // карты неизвестны (чужая раздача без вскрытия): EV конкретной руки не посчитать — показываем, как играют топы
         const q = Fsrc.f.reduce((m, v, k) => (v > Fsrc.f[m] ? k : m), 0);
@@ -459,12 +461,12 @@
         rec = { act: acts[q], why: 'карты неизвестны — чаще всего ' + who + ' здесь: ' + (RU[acts[q]] || acts[q]) + ' ' + Math.round(Fsrc.f[q] * 100) + '%', byFreq: true, freq: Fsrc.f, freqActs: acts };
       } else if (best.act === 'shove' && sp.eff > 15 && ra && ra.act !== 'shove' && ra.act !== 'fold' && rowOf(ra.act) && !rowOf(ra.act).reliable && !rowOf(ra.act).asShove) {
         best = rowOf(ra.act);
-        rec = { act: ra.act, why: 'частоты ' + (FT.n >= 30 ? 'топов' : 'поля') + ': рука в лучших ' + pctS(ra.pct) + '%' };
+        rec = { act: ra.act, why: 'частоты ' + (ra.field || whoB) + ': рука в лучших ' + pctS(ra.pct) + '%' };
       } else if (best.act !== 'fold') rec = { act: best.act, why: 'максимальный EV (' + best.src + ')' };
       else {
         let rr = ra && ra.act !== 'fold' ? rowOf(ra.act) : null;
         if (rr && rr.asShove && rowOf('shove')) rr = rowOf('shove'); // рейз этого размера = пуш по смыслу
-        if (rr && !rr.reliable) { best = rr; rec = { act: rr.act, why: ra.floor ? 'частоты: рука в лучших ' + pctS(ra.pct) + '% — сильнейшие руки не сбрасывают' : 'частоты ' + (FT.n >= 30 && !ra.field ? 'топов' : 'поля') + ': рука в лучших ' + pctS(ra.pct) + '%' }; }
+        if (rr && !rr.reliable) { best = rr; rec = { act: rr.act, why: ra.floor ? 'частоты: рука в лучших ' + pctS(ra.pct) + '% — сильнейшие руки не сбрасывают' : 'частоты ' + (ra.field || whoB) + ': рука в лучших ' + pctS(ra.pct) + '%' }; }
         else if (rr && rr.reliable && rr.act === 'shove' && rr.ev < 0) rec = { act: 'fold', why: 'по частотам — рейз, но при таком стеке это пуш, а он хуже фолда' };
         else rec = { act: 'fold', why: rows.some(r => r.reliable && r.act !== 'fold') ? 'все надёжные варианты хуже фолда' : (ra ? 'по частотам базы — фолд (рука в лучших ' + pctS(ra.pct) + '%)' : 'нет надёжных данных') };
       }
@@ -485,7 +487,7 @@
         for (const a of acts) if (a !== 'fold') { const x = cellHC('T|' + Sb + '|' + a + '|' + cl); c[a] = x ? x.n : 0; n += c[a]; }
         if (n >= 10) classTops = { cls: CL_RU[cl] || cl, n, share: Object.fromEntries(Object.entries(c).map(([a, v]) => [a, v / n])) };
       }
-      return { compare, classTops, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
+      return { compare, classTops, freqWho: whoB, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
     }
     // вердикт фактическому действию: act — метка из разметки (open:x2.2 / shove / …), sz — корзина сайза (d.sz)
     function verdict(adv, act, sz) {
