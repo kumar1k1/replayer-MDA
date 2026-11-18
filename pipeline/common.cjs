@@ -56,8 +56,13 @@ class IdSet {
     const k = this.key(room, id); if (!isFinite(k)) return true;
     let h = (Math.imul((k % 4294967296) >>> 0, 2654435761) ^ Math.floor(k / 4294967296)) >>> 0, i = h & this.mask;
     while (this.t[i] !== 0) { if (this.t[i] === k) return false; i = (i + 1) & this.mask; }
-    if (this.n > this.cap * 0.85) throw new Error('IdSet переполнен: увеличьте IDSET_BITS');
+    if (this.n > this.cap * 0.85) { this.grow(); return this.add(room, id); }
     this.t[i] = k; this.n++; return true;
+  }
+  // места не хватает (добавили новые румы к старой базе) — вдвое больше, все номера переносятся
+  grow() {
+    const old = this.t; this.cap *= 2; this.mask = this.cap - 1; this.t = new Float64Array(this.cap); this.n = 0;
+    for (let q = 0; q < old.length; q++) { const k = old[q]; if (k === 0) continue; let h = (Math.imul((k % 4294967296) >>> 0, 2654435761) ^ Math.floor(k / 4294967296)) >>> 0, i = h & this.mask; while (this.t[i] !== 0) i = (i + 1) & this.mask; this.t[i] = k; this.n++; }
   }
 }
 
@@ -114,6 +119,9 @@ function progress(step, done) {
     fs.writeFileSync(f + '.tmp', JSON.stringify(p)); fs.renameSync(f + '.tmp', f);
   } catch (e) {}
 }
+// CK_EVERY=N — чекпоинт не после каждого источника, а после каждого N-го (новые румы — сотни файлов по 150 МБ,
+// а состояние модели весит гигабайты). При обрыве теряется не больше N источников.
+const CK_EVERY = Math.max(1, +(process.env.CK_EVERY || 1));
 function partLimiter() { let k = 0; return { hit() { k++; return MAX_SOURCES > 0 && k >= MAX_SOURCES; }, count: () => k }; }
 
 function loadParser() {
@@ -210,4 +218,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ progress, ndForEachSync, saveModel, loadModel, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ CK_EVERY, progress, ndForEachSync, saveModel, loadModel, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);

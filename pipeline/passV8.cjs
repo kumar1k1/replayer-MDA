@@ -37,6 +37,7 @@ const CL = fs.existsSync(clFile) ? readJ(clFile) : {};
 const grpOfK = (room, nick) => { const c = CL[C.playerKey(room, nick)]; return c ? CLU.GROUP[c[0]] || 'unk' : 'unk'; };
 // топ для раздачи половины h — отобран по другой половине
 const isTop = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; return (h === 'A' ? T.B : T.A).has(C.playerKey(room, nick)); };
+const ROOM_LAYER = new Set((process.env.ROOM_LAYER || 'wpn,ipoker').split(',').filter(Boolean));
 const actClass = (d) => (d.act === 'shove' || d.aiEff ? 'shove' : d.act.split(':')[0]);
 C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, '| по формату:', Object.keys(TOPSF).join(',') || 'нет (общие)', '| турниров', Object.keys(TOURN).length, '| игроков с кластером', Object.keys(CL).length);
 
@@ -80,12 +81,13 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
     w.close(); C.saveIds(IDS, IDSF);
   };
   let errs = 0;
-  const part = C.partLimiter();
+  const part = C.partLimiter(); let unsaved = false;
   for await (const x of C.iterHands(C.sourceFiles(), done)) {
     if (x.end) {
-      stats.done.push(x.end); saveState(); C.progress('model', stats.done.length);
-      C.log('v8: источник пройден', x.end, '— рук', stats.hands, 'ячеек EV', EV.size, 'HC', HC.size, '(чекпоинт)');
-      if (part.hit()) { C.log('v8: часть готова — запустите снова'); process.exit(C.PART_EXIT); }
+      stats.done.push(x.end); const ck = stats.done.length % C.CK_EVERY === 0; C.progress('model', stats.done.length);
+      const hit = part.hit(); if (ck || hit) saveState(); unsaved = !(ck || hit);
+      C.log('v8: источник пройден', x.end, '— рук', stats.hands, 'ячеек EV', EV.size, 'HC', HC.size, ck || hit ? '(чекпоинт)' : '');
+      if (hit) { C.log('v8: часть готова — запустите снова'); process.exit(C.PART_EXIT); }
       continue;
     }
     if (LIMIT && stats.hands >= LIMIT) break;
@@ -123,6 +125,14 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
           addEV(c + '|' + S + '|' + act + '|*', rel, fa);
         }
         addEV(coh + '|' + Sb + '|' + act + '|*', rel, fa); // обобщённый уровень (семейство позиций)
+        // слой рума (владелец, 18.11.2026): у новых румов — свои ячейки топов и регов «T@wpn|…», «greg@ipoker|…»;
+        // движок берёт их первыми для раздач этого рума, а при малой выборке — общие (все румы)
+        if (ROOM_LAYER.has(room)) {
+          for (const c of [coh === 'T' ? 'T' : null, g === 'greg' ? 'greg' : null]) if (c) { addEV(c + '@' + room + '|' + S + '|' + act + '|*', rel, fa); addEV(c + '@' + room + '|' + Sb + '|' + act + '|*', rel, fa); }
+        }
+        // карты героя известны и при фолде («Dealt to»: свои истории, у iPoker — в каждой раздаче) — честные частоты
+        // по рукам, включая фолд: «D<T|R|O>|Sb|действие|hN» (T — топ, R — рег, O — остальные)
+        if (rp.hero === i && rp.hc && rp.hc[i]) { const hc = K.parseCards(String(rp.hc[i])); if (hc && hc.length === 2) { const dh = K.h169(hc[0], hc[1]); addHC('D' + (coh === 'T' ? 'T' : g === 'greg' ? 'R' : 'O') + '|' + Sb + '|' + act + '|h' + dh, rel); stats.dealt = (stats.dealt || 0) + 1; } }
         if (g === 'greg') addEV('greg|' + Sb + '|' + act + '|*', rel, fa); // реги по семейству позиций — для поправки весов рук
         // стадия — слой поверх (план C9): отдельные ячейки «Z|стадия|…»; в движке стягиваются к общим, если данных мало
         if (stage) { addEV('Z|' + stage + '|' + coh + '|' + S + '|' + act + '|*', rel, fa); addEV('Z|' + stage + '|' + coh + '|' + Sb + '|' + act + '|*', rel, fa); }
@@ -163,6 +173,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       if (stats.hands % 1000000 === 0) C.log('v8:', stats.hands, 'рук, решений', stats.dec, 'поправок на олл-ин', stats.adj, ((Date.now() - t0) / 60000).toFixed(1) + ' мин');
     } catch (e) { if (++errs <= 8) C.log('v8 ERR', e.message); }
   }
+  if (unsaved) saveState(); // состояние — полное: к нему можно добавлять новые архивы (RESUME=1)
   // ---------- сериализация ----------
   // Порог — на СПОТ (сумма по действиям), а не на ячейку: иначе редкие действия выпадают и частоты
   // смещаются к частым (в v6 колл пуша мог исчезнуть, и выходило «все фолдят»). Малые ячейки — только счётчик.
@@ -188,7 +199,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   const sparse = (a) => { const o = []; for (let h = 0; h < 169; h++) if (a[h]) o.push(h + ':' + a[h]); return o.join(','); };
   const Ro = (M) => { const o = {}; for (const [k, a] of M) { let s = 0; for (const v of a) s += v; if (s >= 5) o[k] = sparse(a); } return o; };
   stats.broken = stats_broken;
-  const model = { v: 8, meta: { hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, bands: C.BAND_NAMES, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
+  const model = { v: 8, meta: { dealt: stats.dealt || 0, hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, bands: C.BAND_NAMES, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
   const outF = process.env.MODEL_OUT || path.join(C.OUT, 'model_v8.ndjson');
   C.saveModel(outF, model); // построчно: на полной базе JSON целиком не помещается в одну строку (> 512 МБ)
   C.log('v8 ГОТОВО: рук', stats.hands, 'решений', stats.dec, 'олл-ин-поправок', stats.adj, '| ячеек EV', Object.keys(EVo).length, 'HC', Object.keys(HCo).length, 'RS', Object.keys(model.RS).length, 'RC', Object.keys(model.RC).length, '|', (fs.statSync(outF).size / 1048576).toFixed(1), 'МБ', ((Date.now() - t0) / 60000).toFixed(1), 'мин');

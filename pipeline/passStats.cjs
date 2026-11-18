@@ -61,12 +61,13 @@ function P(key) { let p = players.get(key); if (!p) { p = { u: new Uint32Array(N
 (async () => {
   const t0 = Date.now();
   if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { await loadState(); C.log('статы: продолжаю с чекпоинта — рук', st.hands, 'архивов пройдено', st.done.length); }
-  const part = C.partLimiter();
+  const part = C.partLimiter(); let unsaved = false;
   for await (const x of C.iterHands(C.sourceFiles(), new Set(st.done))) {
     if (x.end) {
-      st.done.push(x.end); saveState(); C.progress('stats', st.done.length);
-      C.log('статы: пройден', x.end, '— рук', st.hands, 'игроков', players.size, ((Date.now() - t0) / 60000).toFixed(1) + ' мин (чекпоинт сохранён)');
-      if (part.hit()) { C.log('статы: часть готова (' + part.count() + ' арх.) — запустите снова, продолжу со следующего'); process.exit(C.PART_EXIT); }
+      st.done.push(x.end); const ck = st.done.length % C.CK_EVERY === 0; C.progress('stats', st.done.length);
+      const hit = part.hit(); if (ck || hit) saveState(); unsaved = !(ck || hit);
+      C.log('статы: пройден', x.end, '— рук', st.hands, 'игроков', players.size, ((Date.now() - t0) / 60000).toFixed(1) + ' мин' + (ck || hit ? ' (чекпоинт сохранён)' : ''));
+      if (hit) { C.log('статы: часть готова (' + part.count() + ' арх.) — запустите снова, продолжу со следующего'); process.exit(C.PART_EXIT); }
       continue;
     }
     if (LIMIT && st.hands >= LIMIT) break;
@@ -96,6 +97,7 @@ function P(key) { let p = players.get(key); if (!p) { p = { u: new Uint32Array(N
       if (st.hands % 1000000 === 0) C.log('статы:', st.hands, 'рук, игроков', players.size, ((Date.now() - t0) / 60000).toFixed(1) + ' мин');
     } catch (e) { if (++st.errs <= 8) C.log('статы ERR', e.message); }
   }
+  if (unsaved && process.env.KEEP_STATE === '1') saveState(); // добавление румов: состояние нужно для следующей добавки
   // ---------- выгрузка ----------
   const pool = { u: new Float64Array(NU), players: 0, hands: st.hands };
   const fd = fs.openSync(path.join(C.OUT, 'players_v8.ndjson'), 'w');
