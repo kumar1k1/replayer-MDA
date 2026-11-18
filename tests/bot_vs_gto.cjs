@@ -43,7 +43,7 @@ function handText(kind, P, X, depth, lbl) {
 }
 const CLS = (a) => ({ open: 'raise', iso: 'raise', '3bet': 'raise', '4bet': 'raise', raise: 'raise', limp: 'limp', call: 'call', check: 'check', fold: 'fold', shove: 'shove' })[a] || a;
 const DBG = process.env.DBG === '1';
-const res = {}; const worst = [];
+const res = {}; const CAT = {}, TOT = {}; const worst = [];
 let nCalls = 0, fails = 0;
 for (const key of Object.keys(G.nodes).filter(k => !process.env.ONLY || new RegExp(process.env.ONLY).test(k))) {
   const [d, kind, P, X] = key.split('|'), depth = +d, nd = G.nodes[key];
@@ -67,6 +67,8 @@ for (const key of Object.keys(G.nodes).filter(k => !process.env.ONLY || new RegE
     // GTO смесь: EV = Σ f·ev (фолд = 0); EV нашего действия — из базы, если GTO его делает этой рукой
     let evMix = 0, ok = true; for (let q = 0; q < nd.acts.length; q++) { if (g[q][0] > 0.01) { if (g[q][1] == null) { ok = false; } else evMix += g[q][0] * g[q][1]; } }
     const evMy = my === 'fold' ? 0 : ki >= 0 && g[ki][1] != null && g[ki][0] > 0.01 ? g[ki][1] : null;
+    // категория расхождения: наше действие → основное действие GTO (по комбинациям), по типу спота и глубине
+    { const gm = nd.acts.map((x, q) => [x, g[q][0]]).sort((a2, b2) => b2[1] - a2[1])[0][0]; const ck = kind + '|' + (depth <= 20 ? '10-20' : depth <= 40 ? '25-40' : '50-125') + '|' + my + '→' + gm; CAT[ck] = CAT[ck] || { w: 0, ex: [] }; CAT[ck].w += w * (1 - f); if (f < 0.5 && CAT[ck].ex.length < 6) CAT[ck].ex.push(depth + 'bb ' + P + (X ? ' vs ' + X : '') + ' ' + lbl); const tk = kind + '|' + (depth <= 20 ? '10-20' : depth <= 40 ? '25-40' : '50-125'); TOT[tk] = (TOT[tk] || 0) + w; }
     R.w += w; R.n++; R.agree += w * f; if (f < 0.05) R.gross += w;
     // в равновесии все действия из опоры GTO равноценны (разница EV между ними в базе — шум симуляции): потеря 0;
     // фолд там, где GTO играет, — потеря = EV смеси GTO; розыгрыш там, где GTO фолдит, — EV не известен («не оценено»)
@@ -90,5 +92,10 @@ for (const [kind, T] of Object.entries(tot)) L.push(`| ${kind} | ${pct(T.agree /
 worst.sort((a, b) => b[0] - a[0]);
 L.push('', '## Самые дорогие фолды (GTO играет, потеря > 0.3 bb)', '', ...worst.filter(x => x[0] > 0).slice(0, 60).map(([l, s]) => '- ' + l.toFixed(2) + ' bb — ' + s));
 if (DBG) L.push('', '## Розыгрыши там, где GTO фолдит или так не играет', '', ...worst.filter(x => x[0] === 0).map(([, s]) => '- ' + s));
+L.push('', '## Где расходимся: наше действие → чаще всего у GTO (доля рук спота, где GTO так не играет)', '', '| спот | стеки | наше → GTO | доля | примеры |', '|---|---|---|---|---|');
+for (const [k, c] of Object.entries(CAT).map(([k, c]) => [k, c]).filter(([k]) => { const [, , t] = k.split('|'); const [a, b] = t.split('→'); return a !== b; }).sort((a, b) => b[1].w / TOT[b[0].split('|').slice(0, 2).join('|')] - a[1].w / TOT[a[0].split('|').slice(0, 2).join('|')])) {
+  const [kind, band, t] = k.split('|'), share = c.w / TOT[kind + '|' + band]; if (share < 0.01) continue;
+  L.push(`| ${kind} | ${band} | ${t.replace('raise', 'рейз').replace('shove', 'пуш').replace('call', 'колл').replace('fold', 'фолд').replace('limp', 'лимп').replace('raise', 'рейз').replace('shove', 'пуш').replace('call', 'колл').replace('fold', 'фолд').replace('limp', 'лимп')} | ${pct(share)} | ${c.ex.join(', ')} |`);
+}
 const outF = path.join(__dirname, '..', 'pipeline', 'out', 'БОТ_ПРОТИВ_GTO.md'); fs.mkdirSync(path.dirname(outF), { recursive: true }); fs.writeFileSync(outF, L.join('\n'));
 console.log(L.slice(0, 12).join('\n')); console.log('...\n' + outF);
