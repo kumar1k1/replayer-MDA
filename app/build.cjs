@@ -111,6 +111,8 @@ W('data/players.js', 'window.RM_PLAYERS=' + JSON.stringify(pl) + ';\n'); sz.play
 // пример раздач (необязательно): DEMO=<файл .txt> — откроется сразу при запуске
 W('js/demo.js', process.env.DEMO ? 'window.RM_DEMO=' + JSON.stringify(R(process.env.DEMO)) + ';\n' : '');
 
+// значок для ярлыка «Умный реплеер» на рабочем столе
+if (fs.existsSync(path.join(__dirname, 'icon.ico'))) fs.copyFileSync(path.join(__dirname, 'icon.ico'), path.join(OUT, 'icon.ico'));
 // 5. страница
 let page = R(path.join(__dirname, 'src', 'index.html'));
 page = page.replace('{{BUILD}}', new Date().toISOString().slice(0, 16).replace('T', ' ') + (mdaCommit ? ' · реплеер MDA Lab ' + mdaCommit : ''));
