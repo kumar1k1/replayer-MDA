@@ -112,6 +112,7 @@
       else s.append(el('div', 'rm-note', 'GTO: в решениях HRC такого спота нет' + (a.tbl === 'ISO' ? ' (кроме SB, в GTO никто не лимпит)' : a.tbl === 'VS3' ? ' (есть только ответ открывшего на 3-бет без коллеров)' : a.tbl === 'VSO' ? ' (есть только ответ на открытие без коллеров)' : '') + '.'));
       // варианты: «сброс соперника» — как часто сбрасывает тот, против кого действие (опен — все за спиной, 3-бет — открывший)
       // EV по вскрытиям смещён (рука попадает в оценку, только если дошла до вскрытия) — не показываем как цифру
+      const RU_SHORT = { open: 'опен', iso: 'изо', limp: 'лимп', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин', check: 'чек', raise: 'рейз' };
       const evCell = (r) => { const biased = r.src === 'рука' || r.src === 'класс руки'; const td = el('td', 'num', r.ev == null || biased ? '—' : sgn(r.ev)); if (biased && r.ev != null) td.title = 'по вскрытиям ' + sgn(r.ev) + ' BB — оценка смещена (выигрыши без вскрытия не видны), в расчёт не берём'; else if (r.src === 'GTO-поправка') td.title = 'реальный EV спота по всем раздачам + разница руки из GTO'; else if (/эквити/.test(r.src || '')) td.title = 'точный расчёт по эквити против диапазонов соперников'; return td; };
       const t = el('table', 'rm-tab'); const hd = el('tr');
       [['действие', ''], ['EV руки', 'EV вашей руки (BB к фолду): точный расчёт по эквити или реальный EV спота + разница руки из GTO'], ['EV базы', 'сколько в среднем приносит это действие в таком споте всеми руками (BB к фолду), по базе топов/регов'], ['топы', 'как часто топы делают это действие здесь (любыми руками)'], ['реги', 'как часто реги делают это действие здесь'], ['фиши', 'как часто фиши и суперфиши делают это действие здесь — для сравнения, в советах не участвуют']].forEach(([x, tt]) => { const th = el('th', null, x); if (tt) th.title = tt; hd.append(th); }); t.append(hd);
@@ -126,6 +127,10 @@
         t.append(tr);
       }
       s.append(t);
+      // частоты словами: как в этом споте играют реги и топы всеми руками, и какие размеры рейза ставят топы
+      const frq = (k, who) => { const L = a.rows.filter(r => r[k] != null && r[k] > 0.005).map(r => (r.act === 'fold' ? 'фолд' : r.act === 'call' ? 'колл' : (RU_SHORT[r.act] || r.act)) + ' ' + pct(r[k])); return L.length ? who + ' здесь всеми руками: ' + L.join(', ') : null; };
+      const fr = [frq('freqReg', 'Реги'), frq('freqT', 'Топы')].filter(Boolean); if (fr.length) s.append(el('div', 'rm-why', fr.join('. ') + '.'));
+      for (const row of a.rows) if (row.size && row.size.dist && row.size.dist.length > 1) s.append(el('div', 'rm-why', 'Размеры «' + (RU_SHORT[row.act] || row.act) + '» у топов здесь: ' + row.size.dist.map(d => d.to + 'бб ' + d.share + '%').join(' · ') + ' — совет берёт самый частый (' + row.size.to + 'бб).'));
       s.append(el('div', 'rm-note', 'EV руки — для вашей руки, EV базы — в среднем всеми руками у топов (если мало — у регов) в таком споте, BB к фолду; наведите — видно, чьё и по скольким раздачам. Топы / реги / фиши — как часто они делают это действие здесь. Фиши — только для сравнения, советы по ним не строятся. «—» — мало данных.'));
       const bRows = a.rows.filter(r => r.bounty); if (bRows.length) s.append(el('div', 'rm-why', 'Баунти в расчёте: ' + bRows.map(r => r.ru + ' — ' + r.bounty).join('; ')));
       if (a.compare) s.append(el('div', 'rm-why', 'Колл ' + sgn(a.compare.call) + ' (n=' + a.compare.callN + ') против «' + a.compare.raiseRu + '» ' + sgn(a.compare.raise) + ' (n=' + a.compare.raiseN + '): ' + (a.compare.diff >= 0 ? 'рейз лучше на ' : 'колл лучше на ') + fmt(Math.abs(a.compare.diff)) + ' BB' + (a.compare.reliable ? '' : ' — предварительно, мало вскрытий')));
