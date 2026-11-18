@@ -491,8 +491,11 @@
         if (vars && vars.length) {
           row.sizes = vars;
           const pk = pickSize(sp, act, vars);
-          if (pk) size = Object.assign({}, size, { to: pk.to, bucket: pk.bucket, by: pk.by, why: pk.why, share: pk.v.shareT != null ? Math.round(pk.v.shareT * 100) : null, src: 'ev', allin: pk.v.allin });
-          else if (size) size.why = 'размер — самый частый у топов (' + size.bucket + (size.share ? ', ' + Math.round(size.share) + '%' : '') + '); EV по размерам пока не оценить — мало вскрытий';
+          // размер — как ставят топы (самая частая корзина, реальная сумма); EV по размерам — только подсказка
+          if (size) {
+            size = Object.assign({}, size, { by: 'base', why: 'размер — самый частый у топов: до ' + size.to + ' bb' + (size.share ? ' (' + Math.round(size.share) + '% их рейзов)' : '') });
+            if (pk && pk.bucket !== size.bucket && pk.v && !pk.v.allin) size.why += '; по EV вскрытий лучше выглядит до ' + pk.to + ' bb' + (pk.by === 'ev-pre' ? ' (предварительно)' : '');
+          } else if (pk) size = { to: pk.to, bucket: pk.bucket, by: pk.by, why: pk.why, src: 'ev', allin: pk.v.allin };
           const ch = vars.find(v => v.bucket === (size && size.bucket));
           if (ch && ch.oppFold) row.oppFold = ch.oppFold;
         }
