@@ -18,7 +18,7 @@ function normalizeHand(t) {
           .replace(/^(.+?: folds) \[[^\]]*\][ \t]*$/gm, '$1');
 }
 // рум по заголовку
-function roomOf(t) { return /^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other'; }
+function roomOf(t) { return /^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*WPN Hand #/.test(t) ? 'wpn' : /^\s*iPoker Hand #/.test(t) ? 'ipoker' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other'; }
 // CoinPoker в экспорте показывает у ПОБЕДИТЕЛЯ только карты, которые играют (одна карта вместо двух) —
 // вскрытия CoinPoker смещены (12% вскрытий, все — победители). Их нельзя брать в диапазоны и поправку на олл-ин.
 const SHOWDOWN_TRUSTED = (room) => room !== 'coin';
@@ -51,7 +51,7 @@ function handIntact(rp, fin, text) {
 // 100 млн номеров ≈ 1 ГБ при ёмкости 2^27. Номер раздачи у PS/CoinPoker — до ~3e11; рум кодируется сдвигом 1e12.
 class IdSet {
   constructor(bits) { this.cap = 2 ** (bits || +(process.env.IDSET_BITS || 27)); this.mask = this.cap - 1; this.t = new Float64Array(this.cap); this.n = 0; }
-  key(room, id) { return ({ ps: 1, coin: 2, gg: 3 }[room] || 4) * 1e12 + (+id % 1e12) + 1; }
+  key(room, id) { return ({ ps: 1, coin: 2, gg: 3, wpn: 5, ipoker: 6 }[room] || 4) * 1e12 + (+id % 1e12) + 1; }
   add(room, id) { // true — новый, false — повтор
     const k = this.key(room, id); if (!isFinite(k)) return true;
     let h = (Math.imul((k % 4294967296) >>> 0, 2654435761) ^ Math.floor(k / 4294967296)) >>> 0, i = h & this.mask;
@@ -145,7 +145,7 @@ function sourceFiles() {
     for (const f of fs.readdirSync(d)) {
       const p = path.join(d, f), st = fs.statSync(p);
       if (st.isDirectory()) walk(p);
-      else if ((/\.rar$/i.test(f) || /\.txt$/i.test(f)) && !(/h2n[-_]?3/i.test(f) && !/h2n[-_]?4/i.test(f)) && !skip.has(f)) files.push(p);
+      else if ((/\.rar$/i.test(f) || /\.txt(\.gz)?$/i.test(f)) && !(/h2n[-_]?3/i.test(f) && !/h2n[-_]?4/i.test(f)) && !skip.has(f)) files.push(p);
     }
   };
   dirs.forEach(walk);
@@ -158,6 +158,8 @@ async function* iterHands(files, done) {
     if (done && done.has(base)) continue;
     if (/\.txt$/i.test(file)) {
       yield* splitHands(fs.readFileSync(file, 'utf8'), base);
+    } else if (/\.txt\.gz$/i.test(file)) {
+      yield* splitHands(require('zlib').gunzipSync(fs.readFileSync(file)).toString('utf8'), base);
     } else {
       if (!unrar) unrar = require(require.resolve('node-unrar-js', { paths: [process.cwd(), BACKING, __dirname] }));
       const extractor = await unrar.createExtractorFromData({ data: fs.readFileSync(file) });
