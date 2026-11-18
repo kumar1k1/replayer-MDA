@@ -13,8 +13,10 @@ const ROOT = path.join(__dirname, '..');
 const OUTR = process.env.OUT_ROOMS || path.join(ROOT, 'новые_румы');
 const TMP = path.join(ROOT, 'gto', 'tmp');
 fs.mkdirSync(OUTR, { recursive: true }); fs.mkdirSync(TMP, { recursive: true });
-const DONE_F = path.join(OUTR, 'конвертация_готово.json'), IDS_F = path.join(OUTR, 'конвертация_номера.bin');
-const LOG_F = path.join(OUTR, 'конвертация.log');
+// CONV_TAG=wpn2 — повторный перевод (исправленный переводчик): свой список готовых, свои номера, своя папка вывода
+const TAG = process.env.CONV_TAG || '';
+const DONE_F = path.join(OUTR, 'конвертация_готово' + (TAG ? '_' + TAG : '') + '.json'), IDS_F = path.join(OUTR, 'конвертация_номера' + (TAG ? '_' + TAG : '') + '.bin');
+const LOG_F = path.join(OUTR, 'конвертация' + (TAG ? '_' + TAG : '') + '.log');
 const log = (s) => { console.log(s); fs.appendFileSync(LOG_F, new Date().toISOString().slice(0, 19) + ' ' + s + '\n'); };
 const C = require('../pipeline/common.cjs');
 const done = fs.existsSync(DONE_F) ? JSON.parse(fs.readFileSync(DONE_F, 'utf8')) : {};
@@ -22,7 +24,7 @@ const seen = fs.existsSync(IDS_F) ? C.loadIds(IDS_F) : new C.IdSet(27); // но�
 const CHUNK = 150 * 1024 * 1024;
 
 // остатки прерванного запуска
-for (const d of ['wpn', 'ipoker']) { const p = path.join(OUTR, d); if (fs.existsSync(p)) for (const f of fs.readdirSync(p)) if (f.endsWith('.part')) fs.unlinkSync(path.join(p, f)); }
+for (const d of ['wpn', 'ipoker', TAG].filter(Boolean)) { const p = path.join(OUTR, d); if (fs.existsSync(p)) for (const f of fs.readdirSync(p)) if (f.endsWith('.part')) fs.unlinkSync(path.join(p, f)); }
 for (const f of fs.readdirSync(TMP)) if (/^conv_/.test(f)) try { fs.unlinkSync(path.join(TMP, f)); } catch (e) {}
 
 function writerFor(room, base) {
@@ -76,7 +78,7 @@ async function doRar(ent, key, room) {
             st.hands++; W.add(t);
           };
           if (isXml) V.ipokerXmlToPS(s, put, sess);
-          else for (const h of s.split(/\r?\n(?=Game Hand #)/)) { if (!/^\s*Game Hand #/.test(h)) continue; const t = V.wpnToPS(h); if (t) put(t); else st.bad++; }
+          else for (const h of s.split(/\r?\n(?=Game Hand #)/)) { if (!/^\s*Game Hand #/.test(h)) continue; const t = V.wpnToPS(h, fh.name); if (t) put(t); else st.bad++; }
         }
       }
     }
@@ -90,7 +92,7 @@ async function doRar(ent, key, room) {
   const zips = []; for (const d of dirs) if (fs.existsSync(d)) for (const f of fs.readdirSync(d).sort()) if (/\.zip$/i.test(f)) zips.push(path.join(d, f));
   const jobs = [];
   for (const zf of zips) for (const e of Z.entries(zf)) if (!e.dir && /\.rar$/i.test(e.name)) jobs.push({ zf, e, key: path.basename(zf, '.zip') + '__' + path.basename(e.name) });
-  const room = (j) => /wpn/i.test(j.key) ? 'wpn' : 'ipoker';
+  const room = (j) => TAG || (/wpn/i.test(j.key) ? 'wpn' : 'ipoker');
   const left = jobs.filter(j => !done[j.key]);
   log(`Архивов .rar всего ${jobs.length}, уже переведено ${jobs.length - left.length}, осталось ${left.length}`);
   let n = 0;

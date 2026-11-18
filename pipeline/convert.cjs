@@ -9,7 +9,9 @@ const num = (x) => { const v = parseFloat(String(x == null ? '' : x).replace(/,/
 const fmt = (v) => { const r = Math.round(v * 100) / 100; return String(r); };
 
 // ---------------- WPN ----------------
-function wpnToPS(t) {
+// fp — путь файла внутри архива: «2607-WPN-HL-954Mb/$109/$109__Freezeout/WPN-HL-109 (10).txt» — бай-ин и формат
+// турнира есть только там (в заголовке раздачи WPN их нет), переносим в название турнира.
+function wpnToPS(t, fp) {
   const lines = t.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
   const h = /^Game Hand #(\d+) - Tournament #(\d+) - Holdem\(No Limit\) - Level (\d+) \(([\d.,]+)\/([\d.,]+)\)\s*- (.+)$/.exec(lines[0]);
@@ -17,7 +19,8 @@ function wpnToPS(t) {
   const tb = /^Table '(.*)' (\d+)-max Seat #(\d+) is the button$/.exec(lines[1] || '');
   if (!tb) return null;
   const out = [];
-  out.push(`WPN Hand #${h[1]}: Tournament #${h[2]}, WPN Hold'em No Limit - Level ${h[3]} (${fmt(num(h[4]))}/${fmt(num(h[5]))}) - ${h[6].replace(/\s*UTC$/, ' UTC')}`);
+  const bm = /[$€£]\s?([\d.]+)/.exec(fp || ''), km = /(Knockout|Freezeout|Mystery|Bounty|PKO|Turbo|Hyper)/i.exec(fp || '');
+  out.push(`WPN Hand #${h[1]}: Tournament #${h[2]}, ${bm ? '$' + bm[1] + ' ' : ''}WPN${km ? ' ' + km[1] : ''} Hold'em No Limit - Level ${h[3]} (${fmt(num(h[4]))}/${fmt(num(h[5]))}) - ${h[6].replace(/\s*UTC$/, ' UTC')}`);
   out.push(`Table '${h[2]} ${tb[1]}' ${tb[2]}-max Seat #${tb[3]} is the button`);
   const nicks = [];
   let i = 2;
@@ -37,7 +40,7 @@ function wpnToPS(t) {
     if (inSum) {
       const m = /^Total pot ([\d.,]+)/.exec(l);
       if (m) { pot = num(m[1]); continue; }
-      const w = /^Seat \d+: .*?\bwon ([\d.,]+)/.exec(l), n = w && who(l.replace(/^Seat \d+: /, ''));
+      const w = /^Seat \d+: .*?\b(?:won|collected) \(?([\d.,]+)/.exec(l), n = w && who(l.replace(/^Seat \d+: /, ''));
       if (w && n) wins.push(`${n} collected ${fmt(num(w[1]))} from pot`);
       continue;
     }
