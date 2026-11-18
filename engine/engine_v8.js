@@ -105,7 +105,12 @@
           const rate = sd && all && all.n >= 30 && sd.n > 0 ? Math.min(1, sd.n / all.n) : null;
           w[a] = c && rate ? c / rate : c ? c : 0; tot += w[a];
         }
-        if (shown >= 20 && tot > 0) { for (const a in w) w[a] /= tot; return { w, shown, band: BANDS7[j], same: j === bi, who: src.who }; }
+        if (shown >= 20 && tot > 0) {
+          // как часто рука вообще играется: оценка числа розыгрышей (показанные / доля вскрытий) против числа раз,
+          // когда она должна была прийти в этом споте (все решения × комбо/1326). Фолды в базе не видны — так их и находим.
+          for (const a in w) w[a] /= tot;
+          return { w, shown, band: BANDS7[j], same: j === bi, who: src.who };
+        }
       }
       return null;
     }
@@ -548,6 +553,17 @@
       }
       // веса топов для этой руки: если рука по базе играется (не фолд) и показанных рук достаточно — действие берём по ним
       const hw = cards ? handWeights(sp, h, acts) : null;
+      // полные частоты руки (с фолдом): фолды в базе не видны, поэтому долю розыгрыша берём из места руки в диапазоне
+      // (порядок рук по GTO) и того, сколько всего реги/топы здесь продолжают; мягкий край ±3% рук вокруг границы.
+      // Колл / 3-бет внутри розыгрыша — по показанным рукам (hw.w). Прямой подсчёт по вскрытиям завышает средние руки.
+      if (hw && ra && ra.pct != null) {
+        const FW = hw.who === 'реги' ? FR : FT, iF = acts.indexOf('fold');
+        if (FW.n >= 30) {
+          const cont = iF >= 0 ? 1 - FW.f[iF] : 1, play = Math.max(0, Math.min(1, (cont + 0.03 - ra.pct) / 0.06));
+          hw.play = play; hw.cont = cont; hw.pct = ra.pct;
+          hw.full = Object.assign(iF >= 0 ? { fold: 1 - play } : {}, Object.fromEntries(Object.entries(hw.w).map(([a, v]) => [a, v * play])));
+        }
+      }
       if (hw && rec.act !== 'fold' && !/эквити/.test(rec.why)) {
         const top = Object.entries(hw.w).sort((a, b) => b[1] - a[1])[0];
         if (top && top[0] !== rec.act && rowOf(top[0])) { rec = { act: top[0], why: 'по тому, как ' + hw.who + ' играют ' + K.H169[h].label + ' в этом споте' }; best = rowOf(top[0]); }
