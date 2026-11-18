@@ -61,6 +61,34 @@ function P(key) { let p = players.get(key); if (!p) { p = { u: new Uint32Array(N
 (async () => {
   const t0 = Date.now();
   if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { await loadState(); C.log('статы: продолжаю с чекпоинта — рук', st.hands, 'архивов пройдено', st.done.length); }
+  if (process.env.SHARD_TAG) st.shardTag = process.env.SHARD_TAG;
+  // MERGE_SHARDS="папка1;папка2" — сложить состояния параллельных потоков (каждый — один раз: метка потока запоминается)
+  let merged = false;
+  for (const dir of (process.env.MERGE_SHARDS || '').split(';').filter(Boolean)) {
+    const SF = path.join(dir, 'stats_state.ndjson'), IF = path.join(dir, 'stats_ids.bin'); if (!fs.existsSync(SF)) continue;
+    { const h0 = JSON.parse(C.firstLine(SF))[1]; st.mergedTags = st.mergedTags || []; if (!h0.shardTag || st.mergedTags.includes(h0.shardTag)) { C.log('статы: поток ' + dir + ' уже сложен — пропускаю'); continue; } }
+    let sst = null; const pend = [];
+    await C.ndRead(SF, (r) => {
+      if (r[0] === 's') { sst = r[1]; return; }
+      if (r[0] === 'p') { const p = P(r[1]); for (let i = 0; i < r[2].length; i += 2) p.u[r[2][i]] += r[2][i + 1]; for (let i = 0; i < r[3].length; i++) p.f[i] += r[3][i]; }
+      else if (r[0] === 't') pend.push(r);
+    });
+    st.mergedTags = st.mergedTags || [];
+    for (const [, k, T2] of pend) {
+      let T = TOUR.get(k);
+      if (!T) { T = { kd: T2.kd, N: 0, Pb: 0, win: 0, ev: [], s0: [], bk: new Map(), lv: [99, 0], title: T2.title }; TOUR.set(k, T); }
+      T.N = Math.max(T.N, T2.N); T.Pb = Math.max(T.Pb, T2.Pb); T.win = T.win || T2.win; T.ev.push(...T2.ev);
+      for (const v of T2.s0) if (T.s0.length < 400) T.s0.push(v);
+      T.lv = [Math.min(T.lv[0], T2.lv[0]), Math.max(T.lv[1], T2.lv[1])];
+      for (const [b, s0, n, tb] of T2.bk) { let B = T.bk.get(b); if (!B) { B = [0, 0, new Set()]; T.bk.set(b, B); } B[0] += s0; B[1] += n; for (const x of tb) B[2].add(x); }
+    }
+    for (const x of ['hands', 'dups', 'broken', 'errs']) st[x] = (st[x] || 0) + (sst[x] || 0);
+    st.kinds = st.kinds || {}; for (const [k, v] of Object.entries(sst.kinds || {})) st.kinds[k] = (st.kinds[k] || 0) + v;
+    st.done.push(...sst.done); st.mergedTags.push(sst.shardTag);
+    if (fs.existsSync(IF)) IDS.mergeFrom(C.loadIds(IF));
+    merged = true; C.log('статы: сложен поток', dir, '— рук всего', st.hands, 'игроков', players.size);
+  }
+  if (merged) saveState();
   const part = C.partLimiter(); let unsaved = false;
   for await (const x of C.iterHands(C.sourceFiles(), new Set(st.done))) {
     if (x.end) {

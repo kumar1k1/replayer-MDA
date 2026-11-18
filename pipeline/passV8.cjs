@@ -58,7 +58,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
 
 // ---------- проход ----------
 (async () => {
-  const t0 = Date.now();
+  const t0 = Date.now(); let mergedAny = false;
   // чекпоинт — построчный файл, читается потоково (на полной базе — сотни МБ); плюс список встреченных раздач (повторы)
   if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) {
     await C.ndRead(STATE, ([t, k, v]) => {
@@ -67,6 +67,25 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
     });
     IDS = C.loadIds(IDSF); stats_broken = stats.broken || 0;
     C.log('v8: продолжаю с чекпоинта, рук', stats.hands, 'источников', stats.done.length);
+  }
+  if (process.env.SHARD_TAG) stats.shardTag = process.env.SHARD_TAG;
+  // MERGE_SHARDS — сложить состояния параллельных потоков (ячейки EV/HC/RS/RC складываются: суммы и счётчики)
+  for (const dir of (process.env.MERGE_SHARDS || '').split(';').filter(Boolean)) {
+    const SF = path.join(dir, 'v8_state.ndjson'), IF = path.join(dir, 'v8_ids.bin'); if (!fs.existsSync(SF)) continue;
+    let sst = null; const add = (M, k, v) => { const c = M.get(k); if (!c) { M.set(k, v); return; } for (let i = 0; i < v.length; i++) c[i] += v[i]; };
+    stats.mergedTags = stats.mergedTags || [];
+    { const h0 = JSON.parse(C.firstLine(SF))[2]; if (!h0.shardTag || stats.mergedTags.includes(h0.shardTag)) { C.log('v8: поток ' + dir + ' уже сложен — пропускаю'); continue; } }
+    await C.ndRead(SF, ([t, k, v]) => {
+      if (t === 's') { sst = v; return; }
+      if (t === 'e') add(EV, k, v); else if (t === 'h') add(HC, k, v); else if (t === 'rs') add(RS, k, Int32Array.from(v)); else if (t === 'rc') add(RC, k, Int32Array.from(v));
+    });
+    for (const x of ['hands', 'dec', 'adj', 'sd', 'dups', 'dealt', 'broken']) stats[x] = (stats[x] || 0) + (sst[x] || 0);
+    stats_broken = stats.broken;
+    stats.stages = stats.stages || {}; for (const [k2, v2] of Object.entries(sst.stages || {})) stats.stages[k2] = (stats.stages[k2] || 0) + v2;
+    stats.done.push(...sst.done); stats.mergedTags.push(sst.shardTag);
+    if (fs.existsSync(IF)) IDS.mergeFrom(C.loadIds(IF));
+    C.log('v8: сложен поток', dir, '— рук всего', stats.hands, 'ячеек EV', EV.size);
+    mergedAny = true;
   }
   const done = new Set(stats.done);
   // сохранение — только на границе архива: иначе при продолжении архив прошёлся бы заново и часть раздач посчиталась бы дважды
@@ -173,7 +192,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       if (stats.hands % 1000000 === 0) C.log('v8:', stats.hands, 'рук, решений', stats.dec, 'поправок на олл-ин', stats.adj, ((Date.now() - t0) / 60000).toFixed(1) + ' мин');
     } catch (e) { if (++errs <= 8) C.log('v8 ERR', e.message); }
   }
-  if (unsaved) saveState(); // состояние — полное: к нему можно добавлять новые архивы (RESUME=1)
+  if (unsaved || mergedAny) saveState(); // состояние — полное: к нему можно добавлять новые архивы (RESUME=1)
+  if (process.env.STATE_ONLY === '1') { C.log('v8: поток готов — состояние сохранено'); return; } // параллельный поток: модель соберёт слияние
   // ---------- сериализация ----------
   // Порог — на СПОТ (сумма по действиям), а не на ячейку: иначе редкие действия выпадают и частоты
   // смещаются к частым (в v6 колл пуша мог исчезнуть, и выходило «все фолдят»). Малые ячейки — только счётчик.

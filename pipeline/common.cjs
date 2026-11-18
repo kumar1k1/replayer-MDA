@@ -52,6 +52,14 @@ function handIntact(rp, fin, text) {
 class IdSet {
   constructor(bits) { this.cap = 2 ** (bits || +(process.env.IDSET_BITS || 27)); this.mask = this.cap - 1; this.t = new Float64Array(this.cap); this.n = 0; }
   key(room, id) { return ({ ps: 1, coin: 2, gg: 3, wpn: 5, ipoker: 6 }[room] || 4) * 1e12 + (+id % 1e12) + 1; }
+  // вставить готовый ключ (слияние множеств из параллельных потоков)
+  addRaw(k) {
+    if (this.n > this.cap * 0.85) this.grow();
+    let h = (Math.imul((k % 4294967296) >>> 0, 2654435761) ^ Math.floor(k / 4294967296)) >>> 0, i = h & this.mask;
+    while (this.t[i] !== 0) { if (this.t[i] === k) return false; i = (i + 1) & this.mask; }
+    this.t[i] = k; this.n++; return true;
+  }
+  mergeFrom(o) { for (let q = 0; q < o.t.length; q++) if (o.t[q] !== 0) this.addRaw(o.t[q]); }
   add(room, id) { // true — новый, false — повтор
     const k = this.key(room, id); if (!isFinite(k)) return true;
     let h = (Math.imul((k % 4294967296) >>> 0, 2654435761) ^ Math.floor(k / 4294967296)) >>> 0, i = h & this.mask;
@@ -145,7 +153,15 @@ function halfOf(handId) {
 // ---------- обход базы ----------
 // RAW_DIRS="папка1;папка2" — папки с .rar и/или .txt (по умолчанию raw и raw-ps проекта Backing).
 // SKIP="2608-PS-.rar;…" — архивы, которые пропускать. DONE — множество уже пройденных (для ресюма).
+// первая строка большого построчного файла (заголовок состояния) — без чтения всего файла
+function firstLine(file) {
+  const fd = fs.openSync(file, 'r'); let s = '', pos = 0; const b = Buffer.alloc(1 << 20);
+  for (;;) { const n = fs.readSync(fd, b, 0, b.length, pos); if (!n) break; s += b.subarray(0, n).toString('utf8'); pos += n; const i = s.indexOf('\n'); if (i >= 0) { s = s.slice(0, i); break; } }
+  fs.closeSync(fd); return s;
+}
 function sourceFiles() {
+  // SOURCE_LIST=файл.json — точный список источников (параллельный режим: свой список у каждого потока)
+  if (process.env.SOURCE_LIST) return JSON.parse(fs.readFileSync(process.env.SOURCE_LIST, 'utf8'));
   const dirs = (process.env.RAW_DIRS ? process.env.RAW_DIRS.split(';') : [path.join(BACKING, 'raw'), path.join(BACKING, 'raw-ps')]).filter(d => d && fs.existsSync(d));
   const skip = new Set((process.env.SKIP || '2608-PS-.rar').split(';').filter(Boolean));
   const files = [];
@@ -218,4 +234,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ CK_EVERY, progress, ndForEachSync, saveModel, loadModel, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ firstLine, CK_EVERY, progress, ndForEachSync, saveModel, loadModel, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
