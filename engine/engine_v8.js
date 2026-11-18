@@ -281,40 +281,75 @@
       return { bb, usd, why: (hu ? 'хедз-ап: весь баунти соперника и ваш' : 'прямой баунти $' + (Math.round(usd * 100) / 100)) + ' ≈ ' + Math.round(bb * 10) / 10 + ' bb' };
     }
     // ---------- точный пуш: сумма по первому коллеру ----------
+    // частота колла олл-ина игроком класса g в споте (C — коллеров олл-ина перед ним: 'C0' / 'C1').
+    // Порядок при малой выборке (владелец, 19.11.2026): тот же класс в этом споте → тот же класс, позиции обобщённо →
+    // тот же класс на соседних стеках → и только потом все не-топы (пул). Пусто — null (не выдумываем частоту).
+    function aiCallRate(sp, o, g, Rn, C) {
+      const tk = sp.tb + sp.kd, B = SP.BAND_NAMES, b0 = B.indexOf(SP.bandOf(Math.min(sp.behind, o.behind != null ? o.behind : o.stack))), bands = [b0, b0 - 1, b0 + 1].filter(x => x >= 0 && x < B.length);
+      const S = (bd, pos2) => ['AI', sp.st, tk, pos2 ? SP.posBand(o.pos) : o.pos, pos2 ? SP.posBand(sp.pos) : sp.pos, B[bd], Rn, C].join('|');
+      const cnt = (pref) => { const c = cellEV(pref + '|call|' + sp.grp) || cellEV(pref + '|call|*'), f = cellEV(pref + '|fold|' + sp.grp) || cellEV(pref + '|fold|*'); return c || f ? { c: c ? c.n : 0, f: f ? f.n : 0 } : null; };
+      const levels = [[g, bands[0], false, 'класс игрока, этот спот'], [g, bands[0], true, 'класс игрока, позиции обобщённо']];
+      for (const bd of bands.slice(1)) levels.push([g, bd, false, 'класс игрока, соседний стек ' + B[bd]], [g, bd, true, 'класс игрока, соседний стек ' + B[bd] + ', позиции обобщённо']);
+      levels.push(['F', bands[0], false, 'все не-топы (пул)'], ['F', bands[0], true, 'все не-топы (пул), позиции обобщённо']);
+      for (const [coh, bd, gen, src] of levels) {
+        const fr = cnt((gen ? '~' : '') === '~' ? coh + '|~' + S(bd, true) : coh + '|' + S(bd, false));
+        if (fr && fr.c + fr.f >= 20) return { pc: (fr.c + 1) / (fr.c + fr.f + 2), src, n: fr.c + fr.f };
+      }
+      return null;
+    }
+    // EV пуша (к фолду, bb): по каждому игроку за спиной — частота колла и диапазон колла (по вскрытиям, по его классу),
+    // эквити руки против диапазона. Несколько коллеров (владелец, 19.11.2026): после колла каждый следующий может
+    // доколлировать (частота — из спотов, где перед ним уже есть коллер, эквити на троих — произведение двух эквити, с запасом).
+    // Возвращает и разброс результата (σ, bb) — для проверки «стоит ли дисперсия такого перевеса».
+    const SHOVE_MIN_EDGE = (opts && opts.shoveMinEdge != null) ? opts.shoveMinEdge : 0.5, SHOVE_MIN_EDGE_PCT = (opts && opts.shoveMinEdgePct != null) ? opts.shoveMinEdgePct : 0.02;
     function shoveEV(sp, cards, info) {
       const h = K.h169(cards[0], cards[1]), tk = sp.tb + sp.kd;
-      let pAll = 1, ev = 0, nR = 0; const bounties = [];
+      let nR = 0, noData = []; const bounties = [];
       const Rd = sp.tbl === 'VSO' ? 2 : sp.tbl === 'VS3' ? 3 : 1, Rn = 'R' + Rd;
-      const pot = sp.potBefore;
+      const pot = sp.potBefore, cH0 = sp.eff - sp.inv;
+      const opp = [];
       for (const b of behindOf(sp, info)) {
         const o = b.o, eff = Math.min(sp.stack, o.stack);
         const sB = SP.stackB(Math.min(sp.behind, o.behind != null ? o.behind : o.stack - (o.inv || 0)));
         const g = 'g' + o.grp;
-        let pc, pcSrc;
+        let pc, pcSrc, pcOver = null;
         if (LM && Rd === 1 && !(o.inv > 1.3)) {
           // пуш первым: частота колла конкретного игрока (его статы → кластер → пул + поправка на позицию пушера)
           const r = LM.prob('ai', b.band, o.pos, b.pf, b.cl, { aggPos: SP.posBand(sp.pos), size: '*', fmt: sp.kd0 || sp.kd, stage: sp.stage });
-          pc = r ? r.call : 0.15; pcSrc = 'лайнап: ' + (r ? r.src : 'нет');
+          if (r) { pc = r.call; pcSrc = 'лайнап: ' + r.src; } else { const a = aiCallRate(sp, o, g, Rn, 'C0'); if (!a) { noData.push(o.pos); continue; } pc = a.pc; pcSrc = a.src; }
         } else {
-          const S = ['AI', sp.st, tk, o.pos, sp.pos, SP.bandOf(Math.min(sp.behind, o.behind)), Rn, 'C0'].join('|');
-          const Sb = '~' + ['AI', sp.st, tk, SP.posBand(o.pos), SP.posBand(sp.pos), SP.bandOf(Math.min(sp.behind, o.behind)), Rn, 'C0'].join('|');
-          const cnt = (pref) => { const c = cellEV(pref + '|call|' + sp.grp) || cellEV(pref + '|call|*'), f = cellEV(pref + '|fold|' + sp.grp) || cellEV(pref + '|fold|*'); return c || f ? { c: c ? c.n : 0, f: f ? f.n : 0 } : null; };
-          const fr = cnt(g + '|' + S) || cnt('F|' + S) || cnt('F|' + Sb);
-          pc = fr && fr.c + fr.f >= 10 ? (fr.c + 1) / (fr.c + fr.f + 4) : 0.15; pcSrc = fr ? 'спот' : 'запасной 15%';
+          const a = aiCallRate(sp, o, g, Rn, 'C0'); if (!a) { noData.push(o.pos); continue; }
+          pc = a.pc; pcSrc = a.src;
           const OR = personalOR('ai', b.band, o.pos, b, 'call');
-          if (OR !== 1) { pc = oddsMul(pc, OR); pcSrc += ' × игрок'; }
+          if (OR !== 1) { pc = oddsMul(pc, OR); pcSrc += ' × личные статы'; }
         }
+        { const a1 = aiCallRate(sp, o, g, Rn, 'C1'); pcOver = a1 ? a1.pc : pc; } // доколл; нет данных — как колл (с запасом)
         const prior = sp.tbl === 'VS3' && o.j === sp.refI ? 0.08 : (o.inv || 0) > 1.3 ? 0.25 : 1;
         const R = mixRange(range(model.RC, [g, sp.st, tk, o.pos, sp.pos, sB, Rn].join('|')), range(model.RC, ['*', sp.st, tk, SP.posBand(o.pos), SP.posBand(sp.pos), sB, Rn].join('|')), pc * prior);
         nR += R.n;
         let sR = 0, sA = 0; for (let r = 0; r < 169; r++) if (R.r[r]) { sR += R.r[r]; sA += R.r[r] * K.availCombos(r, cards) / K.H169[r].combos; }
-        if (sR > 0) pc = Math.min(0.99, pc * (1326 / 1225) * sA / sR);
+        if (sR > 0) { const k = (1326 / 1225) * sA / sR; pc = Math.min(0.99, pc * k); pcOver = Math.min(0.99, pcOver * k); }
         const eq = K.eqVsRange(EQ, cards, R.r);
         const cH = eff - sp.inv, cO = eff - (o.inv || 0);
         const bt = bountyBB(sp, o.j), bAdd = bt ? bt.bb : 0; if (bt && bt.bb > 0) bounties.push(o.pos + ': +' + (Math.round(bt.bb * 10) / 10) + ' bb (' + bt.why + ')');
-        const win = eq * (pot + cH + cO + bAdd) - cH;
-        if (DEBUG) DEBUG.push({ pos: o.pos, pc: +pc.toFixed(3), pcSrc, eq: +eq.toFixed(3), win: +win.toFixed(2), bounty: bAdd, rsrc: R.src });
-        ev += pAll * pc * win; pAll *= 1 - pc;
+        opp.push({ pos: o.pos, pc, pcOver, pcSrc, eq, cH, cO, bAdd, rsrc: R.src });
+      }
+      if (noData.length) return { m: null, n: 0, se: null, src: 'нет данных: как ' + noData.join(', ') + ' отвечают на олл-ин', pFold: null, h };
+      // проход по игрокам в порядке хода: P(все до него сбросили) × P(колл) × [он один / ещё кто-то доколлировал]
+      let pAll = 1, ev = 0, m2 = 0, pMulti = 0;
+      for (let j = 0; j < opp.length; j++) {
+        const o = opp[j]; let qNone = 1, w3 = 0, w3sq = 0;
+        for (let k = j + 1; k < opp.length; k++) {
+          const q = opp[k], p = qNone * q.pcOver, e3 = o.eq * q.eq, cH = Math.min(o.cH, q.cH), P3 = pot + cH + Math.min(o.cO, cH) + Math.min(q.cO, cH) + o.bAdd + q.bAdd;
+          w3 += p * (e3 * P3 - cH); w3sq += p * (e3 * (P3 - cH) ** 2 + (1 - e3) * cH * cH); qNone *= 1 - q.pcOver;
+        }
+        const P2 = pot + o.cH + o.cO + o.bAdd, win = o.eq * P2 - o.cH;
+        const pj = pAll * o.pc;
+        ev += pj * (qNone * win + w3);
+        m2 += pj * (qNone * (o.eq * (P2 - o.cH) ** 2 + (1 - o.eq) * o.cH * o.cH) + w3sq);
+        pMulti += pj * (1 - qNone);
+        if (DEBUG) DEBUG.push({ pos: o.pos, pc: +o.pc.toFixed(3), pcOver: +o.pcOver.toFixed(3), pcSrc: o.pcSrc, eq: +o.eq.toFixed(3), win: +win.toFixed(2), bounty: o.bAdd, rsrc: o.rsrc });
+        pAll *= 1 - o.pc;
       }
       // калибровка P(все сбросят) на пуш первым по проверке лайнапа на отложенной половине (полный прогон 17.11.2026):
       // до 74% модель точна, выше чуть завышает (83,4 → 81,5; 91,1 → 88,6). Части «колл» масштабируются пропорционально.
@@ -322,10 +357,11 @@
         const P = [[0.741, 0.741], [0.834, 0.815], [0.911, 0.886], [1, 0.975]];
         let k = 0; while (k < P.length - 2 && pAll > P[k + 1][0]) k++;
         const [x0, y0] = P[k], [x1, y1] = P[k + 1], pc2 = y0 + (y1 - y0) * (pAll - x0) / (x1 - x0);
-        ev *= (1 - pc2) / (1 - pAll); pAll = pc2;
+        ev *= (1 - pc2) / (1 - pAll); m2 *= (1 - pc2) / (1 - pAll); pMulti *= (1 - pc2) / (1 - pAll); pAll = pc2;
       }
-      ev += pAll * pot;
-      return { m: ev, n: nR, se: null, src: 'эквити', pFold: pAll, h, bounty: bounties.length ? bounties.join('; ') : null };
+      ev += pAll * pot; m2 += pAll * pot * pot;
+      const sd = Math.sqrt(Math.max(0, m2 - ev * ev));
+      return { m: ev, n: nR, se: null, sd, risk: cH0, pMulti, src: 'эквити', pFold: pAll, h, bounty: bounties.length ? bounties.join('; ') : null };
     }
     function callAllinEV(sp, cards) {
       const tk = sp.tb + sp.kd, g = 'g' + (sp.oppGrp || 'unk');
@@ -506,7 +542,7 @@
           if (ch && ch.oppFold) row.oppFold = ch.oppFold;
         }
         if (size) { row.size = size; row.ru = RU[act] + ' до ' + size.to + ' bb'; if (size.allin) row.asShove = true; }
-        if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold, bounty: r.bounty }); }
+        if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold, bounty: r.bounty, sd: r.sd, risk: r.risk, pMulti: r.pMulti }); }
         if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq, bounty: r.bounty }); }
         const sl = spotLevel('T', sp, act);
         let pfa = sl.pfa, mfa = sl.mfa, pfaSrc = 'спот';
@@ -570,7 +606,37 @@
       }
       const recRow = rowOf(rec.act);
       if (recRow && recRow.asShove && rowOf('shove')) { rec = { act: 'shove', why: rec.why + '; ' + recRow.size.why }; best = rowOf('shove'); }
-      rec.size = recRow && recRow.size && !recRow.asShove ? recRow.size : null;
+      // ---- только плюсовые действия (владелец, 19.11.2026) ----
+      // EV руки: точный (эквити) или реальный EV спота + разница руки из GTO; если его нет — средний EV топов этим
+      // действием в споте (для сильнейших 5% рук средний EV не мерило — их не трогаем). Действие не в плюс к фолду →
+      // другое плюсовое, иначе фолд. Отклонения топов от GTO остаются, если по базе они в плюс.
+      const evHand = (r) => (r && r.ev != null && !r.biased && (r.src === 'GTO-поправка' || /^эквити/.test(r.src)) ? r.ev : null);
+      const evAny = (r) => { const e = evHand(r); return e != null ? { v: e, by: 'EV руки' } : r && r.evBase != null ? { v: r.evBase, by: 'средний EV этим действием в споте, ' + (r.evBaseWho || 'топы') } : null; };
+      const eqPct = (() => { if (h == null) return 1; let c = 0; for (const r of RANK) { c += K.H169[r].combos; if (r === h) return c / 1326; } return 1; })();
+      if (cards && rec.act !== 'fold' && !(eqPct <= 0.05 && evHand(rowOf(rec.act)) == null)) {
+        const e = evAny(rowOf(rec.act));
+        if (e && e.v <= 0) {
+          const alt = rows.filter(r => r.act !== 'fold' && r.act !== rec.act && evHand(r) != null && evHand(r) > 0).sort((x, y) => evHand(y) - evHand(x))[0];
+          const was = RU[rec.act] || rec.act;
+          if (alt) { rec = { act: alt.act, why: was + ' по базе не в плюс (' + e.by + ' ' + (Math.round(e.v * 100) / 100) + ' bb) — ' + (RU[alt.act] || alt.act) + ' в плюс: ' + (Math.round(evHand(alt) * 100) / 100) + ' bb' }; best = alt; }
+          else { rec = { act: 'fold', why: was + ' по базе не в плюс к фолду (' + e.by + ' ' + (Math.round(e.v * 100) / 100) + ' bb) — советуем только плюсовые действия' }; best = rowOf('fold') || rows[0]; }
+        }
+      }
+      // ---- дисперсия пуша (владелец, 19.11.2026): олл-ин советуем, только если перевес над вариантом с меньшим риском
+      // не меньше SHOVE_MIN_EDGE bb и не меньше SHOVE_MIN_EDGE_PCT от стека, которым рискуем ----
+      if (rec.act === 'shove') {
+        const sh = rowOf('shove');
+        if (sh && sh.ev != null && sh.risk > 0) {
+          const alts = rows.filter(r => r.act !== 'shove' && !r.asShove && (r.act === 'fold' || (evHand(r) != null && evHand(r) > 0)));
+          const alt = alts.sort((x, y) => (x.act === 'fold' ? 0 : evHand(x)) < (y.act === 'fold' ? 0 : evHand(y)) ? 1 : -1)[0];
+          const aEV = alt ? (alt.act === 'fold' ? 0 : evHand(alt)) : 0, edge = sh.ev - aEV, need = Math.max(SHOVE_MIN_EDGE, SHOVE_MIN_EDGE_PCT * sh.risk);
+          const r2 = (v) => Math.round(v * 100) / 100;
+          if (alt && edge < need) { rec = { act: alt.act, why: 'олл-ин лучше ' + (RU[alt.act] || alt.act) + ' всего на ' + r2(edge) + ' bb при риске ' + r2(sh.risk) + ' bb (разброс ±' + r2(sh.sd || 0) + ' bb) — не стоит дисперсии, нужно хотя бы ' + r2(need) + ' bb' }; best = alt; }
+          else if (sh.pMulti > 0.02) rec.why += '; учтены доколлы: с вероятностью ' + Math.round(sh.pMulti * 100) + '% в игре трое';
+        }
+      }
+      const recRow2 = rowOf(rec.act);
+      rec.size = recRow2 && recRow2.size && !recRow2.asShove ? recRow2.size : null;
       rec.ru = rec.size ? RU[rec.act] + ' до ' + rec.size.to + ' bb' : RU[rec.act] || rec.act;
       let compare = null;
       const callR = rowOf('call'), raiseR = ['3bet', 'iso', '4bet', 'open'].map(rowOf).find(r => r && r.size);
