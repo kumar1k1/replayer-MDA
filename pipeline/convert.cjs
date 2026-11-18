@@ -33,7 +33,9 @@ function wpnToPS(t, fp) {
   if (!nicks.length) return null;
   const byLen = nicks.slice().sort((a, b) => b.length - a.length);
   const who = (l) => { for (const n of byLen) if (l.startsWith(n + ' ') || l.startsWith(n + ':')) return n; return null; };
-  let pot = 0, inSum = false; const wins = [];
+  let pot = 0, inSum = false, hasU = false; const wins = [];
+  // вложения игроков — чтобы вернуть неуравненную ставку, если в истории нет строки «Uncalled bet» (WPN, август 2026)
+  const invW = {}, curW = {}; const addW = (n, v) => { invW[n] = (invW[n] || 0) + v; };
   for (; i < lines.length; i++) {
     const l = lines[i];
     if (/^\*\*\* SUMMARY \*\*\*/.test(l)) { inSum = true; continue; }
@@ -44,23 +46,25 @@ function wpnToPS(t, fp) {
       if (w && n) wins.push(`${n} collected ${fmt(num(w[1]))} from pot`);
       continue;
     }
-    if (/^\*\*\* /.test(l)) { out.push(l); continue; }
+    if (/^\*\*\* /.test(l)) { out.push(l); if (/FLOP|TURN|RIVER/.test(l)) for (const k in curW) curW[k] = 0; continue; }
     if (/^(Main pot|Side pot)/.test(l)) continue;
     let m;
-    if ((m = /^Uncalled bet \(([\d.,]+)\) returned to (.+)$/.exec(l))) { out.push(`Uncalled bet (${fmt(num(m[1]))}) returned to ${m[2]}`); continue; }
+    if ((m = /^Uncalled bet \(([\d.,]+)\) returned to (.+)$/.exec(l))) { hasU = true; out.push(`Uncalled bet (${fmt(num(m[1]))}) returned to ${m[2]}`); continue; }
     const n = who(l); if (!n) continue;
     const r = l.slice(n.length).replace(/^:?\s*/, '');
     const ai = /and is all-in\s*$/.test(r) ? ' and is all-in' : '';
-    if ((m = /^posts ante ([\d.,]+)/.exec(r))) out.push(`${n}: posts the ante ${fmt(num(m[1]))}`);
-    else if ((m = /^posts the (small|big) blind ([\d.,]+)/.exec(r))) out.push(`${n}: posts ${m[1]} blind ${fmt(num(m[2]))}`);
+    if ((m = /^posts ante ([\d.,]+)/.exec(r))) { out.push(`${n}: posts the ante ${fmt(num(m[1]))}`); addW(n, num(m[1])); }
+    else if ((m = /^posts the (small|big) blind ([\d.,]+)/.exec(r))) { out.push(`${n}: posts ${m[1]} blind ${fmt(num(m[2]))}`); addW(n, num(m[2])); curW[n] = (curW[n] || 0) + num(m[2]); }
     else if (/^folds/.test(r)) out.push(`${n}: folds`);
     else if (/^checks/.test(r)) out.push(`${n}: checks`);
-    else if ((m = /^calls ([\d.,]+)/.exec(r))) out.push(`${n}: calls ${fmt(num(m[1]))}${ai}`);
-    else if ((m = /^bets ([\d.,]+)/.exec(r))) out.push(`${n}: bets ${fmt(num(m[1]))}${ai}`);
-    else if ((m = /^raises ([\d.,]+) to ([\d.,]+)/.exec(r))) out.push(`${n}: raises ${fmt(num(m[1]))} to ${fmt(num(m[2]))}${ai}`);
+    else if ((m = /^calls ([\d.,]+)/.exec(r))) { out.push(`${n}: calls ${fmt(num(m[1]))}${ai}`); addW(n, num(m[1])); curW[n] = (curW[n] || 0) + num(m[1]); }
+    else if ((m = /^bets ([\d.,]+)/.exec(r))) { out.push(`${n}: bets ${fmt(num(m[1]))}${ai}`); addW(n, num(m[1])); curW[n] = (curW[n] || 0) + num(m[1]); }
+    else if ((m = /^raises ([\d.,]+) to ([\d.,]+)/.exec(r))) { out.push(`${n}: raises ${fmt(num(m[1]))} to ${fmt(num(m[2]))}${ai}`); addW(n, num(m[2]) - (curW[n] || 0)); curW[n] = num(m[2]); }
     else if ((m = /^shows \[(.+?)\]/.exec(r))) out.push(`${n}: shows [${m[1]}]`);
   }
   if (!inSum || !wins.length) return null;
+  // возврат — только если вложено больше, чем «Total pot» (в раздачах без колла WPN большой блайнд не возвращает)
+  if (!hasU) { const o = Object.entries(invW).sort((a, b) => b[1] - a[1]), tot = o.reduce((a, x) => a + x[1], 0), d = Math.min(tot - pot, o.length >= 2 ? o[0][1] - o[1][1] : 0); if (d > 0.005) out.push(`Uncalled bet (${fmt(d)}) returned to ${o[0][0]}`); }
   const won = wins.reduce((a, x) => a + num(/collected ([\d.]+)/.exec(x)[1]), 0);
   return out.concat(wins, ['*** SUMMARY ***', `Total pot ${fmt(pot)} | Rake ${fmt(Math.max(0, pot - won))}`]).join('\n');
 }
@@ -87,6 +91,8 @@ function ipokerGameToPS(g, sess) {
   gen.replace(/<player\b([^>]*)\/?>/g, (_, a) => { const o = attrs(a); pl.push({ seat: +o.seat, name: unesc(o.name), chips: num(o.chips), dealer: o.dealer === '1', win: num(o.win), bet: num(o.bet) }); return ''; });
   if (pl.length < 2) return null;
   const btn = pl.find(p => p.dealer); if (!btn) return null;
+  if (new Set(pl.map(p => p.name)).size !== pl.length) return null; // одинаковые ники (обезличенные «player») — раздачу не разобрать
+  const stackOf = {}; pl.forEach(p => { stackOf[p.name] = p.chips; });
   const maxSeat = Math.max(...pl.map(p => p.seat));
   const size = Math.max(sess.size || 0, pl.length, maxSeat <= 10 ? 0 : maxSeat);
   const out = [];
@@ -130,6 +136,7 @@ function ipokerGameToPS(g, sess) {
       if (inv[a.p] === undefined) return null;
       const c0 = cur[a.p] || 0;
       if (a.type === 15) { out.push(`${a.p}: posts the ante ${fmt(a.sum)}`); inv[a.p] += a.sum; continue; }
+      if (a.type === 1 || a.type === 2) a.sum = Math.min(a.sum, Math.max(0, stackOf[a.p] - inv[a.p]));
       if (a.type === 1 || a.type === 2) {
         out.push(`${a.p}: posts ${a.type === 1 ? 'small' : 'big'} blind ${fmt(a.sum)}`);
         cur[a.p] = c0 + a.sum; inv[a.p] += a.sum; maxBet = Math.max(maxBet, cur[a.p]); continue;
@@ -137,8 +144,14 @@ function ipokerGameToPS(g, sess) {
       if (a.type === 0) { out.push(`${a.p}: folds`); continue; }
       if (a.type === 4) { out.push(`${a.p}: checks`); continue; }
       if (a.type === 3 || a.type === 5 || a.type === 23 || a.type === 7) {
-        const tot = c0 + a.sum, ai = a.type === 7 ? ' and is all-in' : '';
-        cur[a.p] = tot; inv[a.p] += a.sum;
+        // смысл поля sum (проверено по банку раздач): колл (3) и бет (5) — добавка; рейз (23) — сумма «до» на этой улице;
+        // олл-ин (7) — неоднозначно, поэтому «до» считаем от стека: всё, что осталось у игрока
+        const chips = stackOf[a.p];
+        let tot = a.type === 23 ? Math.max(a.sum, c0) : a.type === 7 ? c0 + Math.max(0, chips - inv[a.p]) : c0 + a.sum;
+        if (a.type !== 7 && inv[a.p] + (tot - c0) > chips) tot = c0 + Math.max(0, chips - inv[a.p]);
+        const add = tot - c0, ai = a.type === 7 || inv[a.p] + add >= chips ? ' and is all-in' : '';
+        cur[a.p] = tot; inv[a.p] += add;
+        a.sum = add;
         if (a.type === 3 || (a.type === 7 && tot <= maxBet)) out.push(`${a.p}: calls ${fmt(a.sum)}${ai}`);
         else if (maxBet === 0) { out.push(`${a.p}: bets ${fmt(a.sum)}${ai}`); maxBet = tot; lastAggr = a.p; }
         else if (a.type === 5 && r.no >= 2 && maxBet === 0) { out.push(`${a.p}: bets ${fmt(a.sum)}${ai}`); maxBet = tot; }

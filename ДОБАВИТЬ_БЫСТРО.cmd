@@ -22,8 +22,10 @@ if errorlevel 1 goto :nonode
 echo Режим работы:
 echo   Enter - ФОН: потоки с низким приоритетом, компьютером можно пользоваться
 echo   м     - МАКСИМУМ: все силы, когда вы не за компьютером
+if defined MODE_SET goto :modeok
 set "MODE="
 set /p "MODE=Режим: "
+:modeok
 set "PRIO=low"
 set "NST=8"
 set "NV=4"

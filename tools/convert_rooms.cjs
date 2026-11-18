@@ -93,7 +93,10 @@ async function doRar(ent, key, room) {
   const jobs = [];
   for (const zf of zips) for (const e of Z.entries(zf)) if (!e.dir && /\.rar$/i.test(e.name)) jobs.push({ zf, e, key: path.basename(zf, '.zip') + '__' + path.basename(e.name) });
   const room = (j) => TAG || (/wpn/i.test(j.key) ? 'wpn' : 'ipoker');
-  const left = jobs.filter(j => !done[j.key]);
+  // SKIP_KEYS_FROM=файл.json — пропустить архивы, которые в прошлом переводе целиком оказались повторами других (0 новых раздач)
+  const skipK = new Set(); if (process.env.SKIP_KEYS_FROM && fs.existsSync(process.env.SKIP_KEYS_FROM)) { const o = JSON.parse(fs.readFileSync(process.env.SKIP_KEYS_FROM, 'utf8')); for (const [k, v] of Object.entries(o)) if (v.hands === 0 && v.dup > 0) skipK.add(k); }
+  if (skipK.size) log('пропускаю архивы-повторы: ' + [...skipK].join(', '));
+  const left = jobs.filter(j => !done[j.key] && !skipK.has(j.key));
   log(`Архивов .rar всего ${jobs.length}, уже переведено ${jobs.length - left.length}, осталось ${left.length}`);
   let n = 0;
   for (const j of left) {
@@ -111,4 +114,5 @@ async function doRar(ent, key, room) {
   }
   const tot = Object.values(done).reduce((s, x) => s + (x.hands || 0), 0);
   log(`ВСЁ: переведено архивов ${Object.keys(done).length} из ${jobs.length}, раздач ${tot}. Папка: ${OUTR}`);
+  if (Object.keys(done).length + skipK.size >= jobs.length && process.env.DONE_FLAG) fs.writeFileSync(process.env.DONE_FLAG, new Date().toISOString());
 })();
