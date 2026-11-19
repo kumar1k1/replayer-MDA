@@ -51,8 +51,8 @@ const T = { tops: {
   'ps|open|36-59|BTN': { n: 9000, mode: 2, rec: 2, share: 80 },
   'ps|3bet|100-149|BB': { n: 5000, mode: 4, rec: 5, recShare: 34 },
   'ps|3bet|100-149|SB': { n: 5000, mode: 4, rec: 4, recShare: 30 },
-  'ps|iso|36-59|L1': { n: 4000, mode: 2.5, rec: 2.5 } }, pool: {
-  'ps|iso|36-59|L2': { n: 800, mode: 3, rec: 3 } } };
+  'ps|iso|36-59|BTN|L1': { n: 4000, mode: 2.5, rec: 2.5 } }, pool: {
+  'ps|iso|36-59|BTN|L2': { n: 800, mode: 3, rec: 3 } } };
 let r = SZ.recommend({ room: 'ps', action: 'open', band: '36-59', pos: 'BTN', eff: 45 }, T);
 ok(r.to === 2 && !r.allin && /^tops:/.test(r.src), 'BTN 45bb: опен 2 bb по топам');
 r = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'BB', refTo: 2.2, eff: 120 }, T);

@@ -75,7 +75,7 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { const a = A
       const v = SZ.measure(a, d.to, d.refTo, d.nLimp);
       const top = tops.has(C.playerKey(room, rp.nm[d.i]));
       // ключи: с форматом турнира (фризаут / PKO) и общие
-      for (const k of SZ.ownKeys(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd, d.oppPos ? SP.posBand(d.oppPos) : null)) {
+      for (const k of SZ.ownKeys(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd, d.oppPos ? SP.posBand(d.oppPos) : null, { C: d.C, tb: C.tableOf(rp.n) })) {
         add('pool', k, v); if (top) add('tops', k, v);
         if (a !== 'open' && a !== 'iso' && d.refTo > 0) { addA('pool', k, d.refTo, d.to); if (top) addA('tops', k, d.refTo, d.to); }
         const kk = '*' + k.slice(k.indexOf('|')); add('pool', kk, v); if (top) add('tops', kk, v);

@@ -451,7 +451,7 @@
     function sizeVariants(sp, act, cards, h, info) {
       const sa = SZACT(act, sp); if (!sa) return null;
       const { S, Sb } = keys(sp);
-      const ctx = { room: sp.room || 'ps', refTo: sp.refTo, prevTo: sa === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff, fmt: sp.kd0 || sp.kd, opp: sp.oppPos ? SP.posBand(sp.oppPos) : null };
+      const ctx = { room: sp.room || 'ps', refTo: sp.refTo, prevTo: sa === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff, fmt: sp.kd0 || sp.kd, opp: sp.oppPos ? SP.posBand(sp.oppPos) : null, C: sp.C, tb: sp.tb };
       const out = []; let totT = 0, totF = 0;
       for (const b of SZ.BUCKETS[sa].names) {
         const A = act + '@' + b, nc = (coh) => ((cellEV(coh + '|' + S + '|' + A + '|*') || cellEV(coh + '|' + Sb + '|' + A + '|*') || { n: 0 }).n);
@@ -486,7 +486,7 @@
     function sizeFor(sp, act) {
       const a = act === 'open' ? 'open' : act === 'iso' ? 'iso' : act === '3bet' ? (sp.C === 'C0' ? '3bet' : 'sqz') : act === '4bet' ? '4bet' : null;
       if (!a) return null;
-      return SZ.recommend({ room: sp.room || 'ps', action: a, band: SP.bandOf(sp.eff), pos: SP.posBand(sp.pos), opp: sp.oppPos ? SP.posBand(sp.oppPos) : null, refTo: sp.refTo, prevTo: a === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff, fmt: sp.kd0 || sp.kd }, SIZES);
+      return SZ.recommend({ room: sp.room || 'ps', action: a, band: SP.bandOf(sp.eff), pos: SP.posBand(sp.pos), opp: sp.oppPos ? SP.posBand(sp.oppPos) : null, C: sp.C, tb: sp.tb, refTo: sp.refTo, prevTo: a === '4bet' ? sp.openTo : null, nLimp: sp.nLimp, eff: sp.eff, fmt: sp.kd0 || sp.kd }, SIZES);
     }
 
     // ---------- главное ----------
