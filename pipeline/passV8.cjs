@@ -79,7 +79,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       if (t === 's') { sst = v; return; }
       if (t === 'e') add(EV, k, v); else if (t === 'h') add(HC, k, v); else if (t === 'rs') add(RS, k, Int32Array.from(v)); else if (t === 'rc') add(RC, k, Int32Array.from(v));
     });
-    for (const x of ['hands', 'dec', 'adj', 'sd', 'dups', 'dealt', 'broken']) stats[x] = (stats[x] || 0) + (sst[x] || 0);
+    for (const x of ['hands', 'dec', 'adj', 'sd', 'dups', 'dealt', 'broken', 'mysteryCut']) stats[x] = (stats[x] || 0) + (sst[x] || 0);
     stats_broken = stats.broken;
     stats.stages = stats.stages || {}; for (const [k2, v2] of Object.entries(sst.stages || {})) stats.stages[k2] = (stats.stages[k2] || 0) + v2;
     stats.done.push(...sst.done); stats.mergedTags.push(sst.shardTag);
@@ -129,6 +129,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
         const sa = T ? STG.stageAt(T, STG.tsOf(rp.date), rp.n) : null;
         if (sa && (sa.exact || STAGE_EST)) stage = sa.stage;
         stats.stages = stats.stages || {}; const sk = sa ? (sa.exact ? sa.stage : 'оценка:' + sa.stage) : 'нет'; stats.stages[sk] = (stats.stages[sk] || 0) + 1; }
+      // Mystery Bounty: только раздачи, доказанно сыгранные до призовой зоны; в призовых (и если стадию не узнать) — пропуск
+      if (kd === 'm' && process.env.MYSTERY_ITM !== 'keep') { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; if (!T || !STG.preITM(T, STG.tsOf(rp.date), rp.n)) { stats.mysteryCut = (stats.mysteryCut || 0) + 1; continue; } }
       const grpOf = (nick) => grpOfK(room, nick);
       const decs = C.preflopDecisions(rp, grpOf);
       for (const d of decs) {
@@ -219,7 +221,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   const sparse = (a) => { const o = []; for (let h = 0; h < 169; h++) if (a[h]) o.push(h + ':' + a[h]); return o.join(','); };
   const Ro = (M) => { const o = {}; for (const [k, a] of M) { let s = 0; for (const v of a) s += v; if (s >= 5) o[k] = sparse(a); } return o; };
   stats.broken = stats_broken;
-  const model = { v: 8, meta: { dealt: stats.dealt || 0, hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, bands: C.BAND_NAMES, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
+  const model = { v: 8, meta: { mysteryCut: stats.mysteryCut || 0, dealt: stats.dealt || 0, hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, bands: C.BAND_NAMES, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
   const outF = process.env.MODEL_OUT || path.join(C.OUT, 'model_v8.ndjson');
   C.saveModel(outF, model); // построчно: на полной базе JSON целиком не помещается в одну строку (> 512 МБ)
   C.log('v8 ГОТОВО: рук', stats.hands, 'решений', stats.dec, 'олл-ин-поправок', stats.adj, '| ячеек EV', Object.keys(EVo).length, 'HC', Object.keys(HCo).length, 'RS', Object.keys(model.RS).length, 'RC', Object.keys(model.RC).length, '|', (fs.statSync(outF).size / 1048576).toFixed(1), 'МБ', ((Date.now() - t0) / 60000).toFixed(1), 'мин');
