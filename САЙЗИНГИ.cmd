@@ -40,6 +40,7 @@ echo [1] Сайзинги - %NS% потоков, каждая вторая раздача - начало %date% %time%
 set "RAW_DIRS=%BACKING_DIR%/raw;%BACKING_DIR%/raw-ps;%ROOMS%"
 set "TOPS=%OUT%\tops_all.json"
 set "TOURN=%OUT%\tourn_all.json"
+set "PLAYERS_CL=%OUT%\players_cl_all.json"
 set "SAMPLE=2"
 set "IDSET_BITS=25"
 node tools\shards.cjs sizes "%OUT%" %NS% 4096 12288

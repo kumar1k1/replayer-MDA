@@ -67,4 +67,23 @@ r = SZ.recommend({ room: 'ps', action: '4bet', band: '60+', pos: 'CO', refTo: 7,
 ok(r.to >= 11.8, '4-бет не меньше минимального рейза (7 + 4.8 = 11.8 bb), даже если таблица даёт 1.5x');
 ok(SZ.recommend({ room: 'coin', action: 'open', band: '<12', pos: 'EP', eff: 10 }, {}).src === 'default', 'нет таблицы — запасное значение');
 
+console.log('— класс соперника');
+{
+  const G = { BBp: 'fish', SBp: 'reg', UTGp: 'superfish', COp: 'reg', MPp: 'nit' }, gf = (nm) => G[nm] || 'unk';
+  const rp1 = parse(hand(['UTGp: folds', 'MPp: folds', 'COp: raises 20 to 40', 'BTNp: folds', 'SBp: folds', 'BBp: folds', 'Uncalled bet (20) returned to COp', 'COp collected 50 from pot', '*** SUMMARY ***', 'Total pot 50 | Rake 0']));
+  const o = SP.preflopDecisions(rp1, gf).find(x => rp1.nm[x.i] === 'COp');
+  ok(o.blindGrp === 'fish' && SZ.vsOf('open', o) === 'f', 'опен CO, в BB фиш → размер против фиша');
+  const rp2 = parse(hand(['UTGp: calls 20', 'MPp: calls 20', 'COp: raises 80 to 100', 'BTNp: folds', 'SBp: folds', 'BBp: folds', 'UTGp: folds', 'MPp: folds', 'Uncalled bet (80) returned to COp', 'COp collected 90 from pot', '*** SUMMARY ***', 'Total pot 90 | Rake 0']));
+  const is = SP.preflopDecisions(rp2, gf).find(x => rp2.nm[x.i] === 'COp');
+  ok(is.limpGrp === 'fish' && SZ.vsOf('iso', is) === 'f', 'изо над нитом и суперфишем → против фиша');
+  const rp3 = parse(hand(['UTGp: folds', 'MPp: raises 20 to 40', 'COp: raises 80 to 120', 'BTNp: folds', 'SBp: folds', 'BBp: folds', 'MPp: folds', 'Uncalled bet (80) returned to COp', 'COp collected 110 from pot', '*** SUMMARY ***', 'Total pot 110 | Rake 0']));
+  const tb = SP.preflopDecisions(rp3, gf).find(x => rp3.nm[x.i] === 'COp');
+  ok(SZ.vsOf('3bet', tb) === 'n', '3-бет против опена нита → против нита');
+  const TV = { tops: { 'ps|3bet|100-149|CO|vn': { n: 500, rec: 2.5, recBucket: '≤2.5x', buckets: { '≤2.5x': 70, '3x': 30 } }, 'ps|3bet|100-149|CO': { n: 9000, rec: 3, recBucket: '3x', buckets: { '3x': 100 } } } };
+  let rv = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2, eff: 120, v: 'n' }, TV);
+  ok(rv.vs === 'n' && rv.bucket === '≤2.5x', 'против нита берётся размер топов против нитов, а не общий');
+  rv = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2, eff: 120, v: 'f' }, TV);
+  ok(rv.vs === null && rv.bucket === '3x', 'против фиша данных нет → общий размер');
+}
+
 if (!fails) console.log('\nВсе проверки сайзингов пройдены');
