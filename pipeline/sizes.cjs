@@ -9,8 +9,9 @@ const C = require('./common.cjs'), SP = require('../lib/spots.js'), SZ = require
 const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
 const TOPS = process.env.TOPS || path.join(C.OUT, 'tops_v8.json');
 let tops = new Set();
-if (fs.existsSync(TOPS)) { const t = JSON.parse(fs.readFileSync(TOPS, 'utf8')); tops = new Set([...Object.keys(t.A || {}), ...Object.keys(t.B || {})]); }
-C.log('sizes: топов', tops.size);
+let tops5 = new Set(); // топы-2 (≥ 5 bb/100, с топами-1) — запасной слой, если у топов-1 в ключе мало рук
+if (fs.existsSync(TOPS)) { const t = JSON.parse(fs.readFileSync(TOPS, 'utf8')); tops = new Set([...Object.keys(t.A || {}), ...Object.keys(t.B || {})]); tops5 = new Set([...Object.keys(t.A5 || {}), ...Object.keys(t.B5 || {})]); }
+C.log('sizes: топов-1', tops.size, 'топов-2 (с топами-1)', tops5.size);
 const STG = require('../lib/stage.js');
 // классы игроков (кластеры): размер против рега, нита и фиша считается отдельно
 const CLU = require('../lib/clusters.js');
@@ -21,13 +22,13 @@ const tournFile = process.env.TOURN || path.join(C.OUT, 'tourn_v8.json');
 const TOURN = fs.existsSync(tournFile) ? JSON.parse(fs.readFileSync(tournFile, 'utf8')) : {};
 
 // гистограммы значений с точностью 0,01 (а не все значения подряд): на полной базе — десятки миллионов рейзов
-let H = { pool: {}, tops: {} };
+let H = { pool: {}, tops: {}, tops5: {} };
 const add = (L, k, v) => { const h = H[L][k] = H[L][k] || {}, q = Math.round(v * 100); h[q] = (h[q] || 0) + 1; };
 // реальные суммы 3-бета / сквиза / 4-бета в bb (шаг 0,1) при данном размере предыдущего рейза: «до сколько ставят на опен 2,8»
-let HA = { pool: {}, tops: {} };
+let HA = { pool: {}, tops: {}, tops5: {} };
 const addA = (L, k, ref, to) => { const h = HA[L][k] = HA[L][k] || {}, r = (Math.round(ref * 10) / 10).toFixed(1), g = h[r] = h[r] || {}, q = Math.round(to * 10); g[q] = (g[q] || 0) + 1; };
 // проверка порога COMMIT: x = (мода пула для спота) / eff, корзины по 0.1; [пуш, рейз]
-let commit = { pool: {}, tops: {} };
+let commit = { pool: {}, tops: {}, tops5: {} };
 let nDec = 0, nAiEff = 0, nRaise = 0, done = [];
 let seen = new C.IdSet();
 // чекпоинт после каждого архива (RESUME=1 — продолжить, MAX_SOURCES=N — часть)
@@ -35,17 +36,17 @@ const STATE = path.join(C.OUT, 'sizes_state.json'), IDSF = path.join(C.OUT, 'siz
 let shardTag = process.env.SHARD_TAG || null, mergedTags = [];
 const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ shardTag, mergedTags, done, nDec, nAiEff, nRaise, commit, H, HA })); fs.renameSync(tmp, STATE); C.saveIds(seen, IDSF); };
 // сложение гистограмм параллельного потока
-const addH = (A, B) => { for (const L in B) for (const k in B[L]) { const a = A[L][k] = A[L][k] || {}; for (const q in B[L][k]) a[q] = (a[q] || 0) + B[L][k][q]; } };
-const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { const a = A[L][k] = A[L][k] || {}; for (const r in B[L][k]) { const g = a[r] = a[r] || {}; for (const q in B[L][k][r]) g[q] = (g[q] || 0) + B[L][k][r][q]; } } };
+const addH = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L] || {}; const a = A[L][k] = A[L][k] || {}; for (const q in B[L][k]) a[q] = (a[q] || 0) + B[L][k][q]; } };
+const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L] || {}; const a = A[L][k] = A[L][k] || {}; for (const r in B[L][k]) { const g = a[r] = a[r] || {}; for (const q in B[L][k][r]) g[q] = (g[q] || 0) + B[L][k][r][q]; } } };
 
 (async () => {
-  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { let st0; ({ H, HA = { pool: {}, tops: {} }, commit, nDec, nAiEff, nRaise, done, mergedTags = [] } = st0 = JSON.parse(fs.readFileSync(STATE, 'utf8'))); if (st0.shardTag) shardTag = st0.shardTag; seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
+  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { let st0; ({ H, HA = { pool: {}, tops: {}, tops5: {} }, commit, nDec, nAiEff, nRaise, done, mergedTags = [] } = st0 = JSON.parse(fs.readFileSync(STATE, 'utf8'))); if (st0.shardTag) shardTag = st0.shardTag; seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
   if (process.env.SHARD_TAG) shardTag = process.env.SHARD_TAG;
   let merged = false;
   for (const dir of (process.env.MERGE_SHARDS || '').split(';').filter(Boolean)) {
     const SF = path.join(dir, 'sizes_state.json'); if (!fs.existsSync(SF)) continue;
     const o = JSON.parse(fs.readFileSync(SF, 'utf8')); if (!o.shardTag || mergedTags.includes(o.shardTag)) { C.log('sizes: поток ' + dir + ' уже сложен — пропускаю'); continue; }
-    addH(H, o.H); addHA(HA, o.HA || {}); for (const L in o.commit) for (const k in o.commit[L]) { const c = commit[L][k] = commit[L][k] || [0, 0]; c[0] += o.commit[L][k][0]; c[1] += o.commit[L][k][1]; }
+    addH(H, o.H); addHA(HA, o.HA || {}); for (const L in o.commit) for (const k in o.commit[L]) { commit[L] = commit[L] || {}; const c = commit[L][k] = commit[L][k] || [0, 0]; c[0] += o.commit[L][k][0]; c[1] += o.commit[L][k][1]; }
     nDec += o.nDec; nAiEff += o.nAiEff; nRaise += o.nRaise; done.push(...o.done); mergedTags.push(o.shardTag); merged = true;
     C.log('sizes: сложен поток', dir, '— рейзов всего', nRaise);
   }
@@ -70,8 +71,8 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { const a = A
         if (a && a !== 'open' && d.eff > 0 && d.refTo > 0) {
           const sz = SZ.DEFAULT[a] * d.refTo / d.eff, b = Math.min(10, Math.floor(sz * 10)) / 10;
           const sh = d.act === 'shove' || d.aiEff ? 0 : 1;
-          const isTop = tops.has(C.playerKey(room, rp.nm[d.i]));
-          for (const L of isTop ? ['pool', 'tops'] : ['pool']) { const c = commit[L][a + '|' + b] = commit[L][a + '|' + b] || [0, 0]; c[sh]++; }
+          const pk0 = C.playerKey(room, rp.nm[d.i]), LS = ['pool'].concat(tops.has(pk0) ? ['tops'] : [], tops5.has(pk0) ? ['tops5'] : []);
+          for (const L of LS) { const c = commit[L][a + '|' + b] = commit[L][a + '|' + b] || [0, 0]; c[sh]++; }
         }
       }
       if (!d.to || d.aiAct) continue;
@@ -79,19 +80,19 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { const a = A
       if (d.aiEff) { nAiEff++; continue; }
       const a = d.szAct; if (!a) continue;
       const v = SZ.measure(a, d.to, d.refTo, d.nLimp);
-      const top = tops.has(C.playerKey(room, rp.nm[d.i]));
+      const pk1 = C.playerKey(room, rp.nm[d.i]), top = tops.has(pk1), top5 = tops5.has(pk1);
       // ключи: с форматом турнира (фризаут / PKO) и общие
       for (const k of SZ.ownKeys(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd, d.oppPos ? SP.posBand(d.oppPos) : null, { C: d.C, tb: C.tableOf(rp.n), v: SZ.vsOf(a, d) })) {
-        add('pool', k, v); if (top) add('tops', k, v);
-        if (a !== 'open' && a !== 'iso' && d.refTo > 0) { addA('pool', k, d.refTo, d.to); if (top) addA('tops', k, d.refTo, d.to); }
-        const kk = '*' + k.slice(k.indexOf('|')); add('pool', kk, v); if (top) add('tops', kk, v);
+        add('pool', k, v); if (top) add('tops', k, v); if (top5) add('tops5', k, v);
+        if (a !== 'open' && a !== 'iso' && d.refTo > 0) { addA('pool', k, d.refTo, d.to); if (top) addA('tops', k, d.refTo, d.to); if (top5) addA('tops5', k, d.refTo, d.to); }
+        const kk = '*' + k.slice(k.indexOf('|')); add('pool', kk, v); if (top) add('tops', kk, v); if (top5) add('tops5', kk, v);
       }
     }
   }
   if (unsaved) saveState();
   if (process.env.STATE_ONLY === '1') { C.log('sizes: поток готов — состояние сохранено'); return; }
-  const table = { built: new Date().toISOString().slice(0, 10), tops: {}, pool: {} };
-  for (const L of ['pool', 'tops']) for (const [k, hg] of Object.entries(H[L])) {
+  const table = { built: new Date().toISOString().slice(0, 10), tops: {}, tops5: {}, pool: {} };
+  for (const L of ['pool', 'tops', 'tops5']) for (const [k, hg] of Object.entries(H[L] || {})) {
     const v = Object.entries(hg).map(([q, c]) => [+q / 100, c]).sort((a, b) => a[0] - b[0]); // [значение, сколько раз]
     const N = v.reduce((s, x) => s + x[1], 0); if (N < 50) continue;
     const act = k.split('|')[1], step = act === 'open' || act === 'iso' ? 0.05 : 0.1;
@@ -112,8 +113,8 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { const a = A
   }
   const outT = path.join(__dirname, '..', 'data', 'sizes_v8.json');
   fs.writeFileSync(outT, JSON.stringify(table));
-  const cm = {}; for (const L of ['pool', 'tops']) for (const [k, [sh, r]] of Object.entries(commit[L]).sort()) if (sh + r >= 30) (cm[L] = cm[L] || {})[k] = { n: sh + r, shove: Math.round(sh / (sh + r) * 100) };
-  const rep = { decisions: nDec, raises: nRaise, aiEffRaises: nAiEff, keysPool: Object.keys(table.pool).length, keysTops: Object.keys(table.tops).length, tops: tops.size, commit: cm };
+  const cm = {}; for (const L of ['pool', 'tops', 'tops5']) for (const [k, [sh, r]] of Object.entries(commit[L] || {}).sort()) if (sh + r >= 30) (cm[L] = cm[L] || {})[k] = { n: sh + r, shove: Math.round(sh / (sh + r) * 100) };
+  const rep = { decisions: nDec, raises: nRaise, aiEffRaises: nAiEff, keysPool: Object.keys(table.pool).length, keysTops: Object.keys(table.tops).length, keysTops5: Object.keys(table.tops5).length, tops: tops.size, commit: cm };
   fs.writeFileSync(path.join(C.OUT, 'sizes_report.json'), JSON.stringify(rep, null, 1));
   C.log('sizes: решений', nDec, 'рейзов', nRaise, 'эфф. олл-инов', nAiEff, 'ключей пул/топы', rep.keysPool, rep.keysTops);
 })();

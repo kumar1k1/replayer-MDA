@@ -22,11 +22,12 @@ const LIMIT = +(process.env.LIMIT || 0);
 const readJ = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const topsFile = process.env.TOPS || path.join(C.OUT, 'tops_v8.json');
 const TJ = fs.existsSync(topsFile) ? readJ(topsFile) : { A: {}, B: {} };
-const TOPS = { A: new Set(Object.keys(TJ.A || {})), B: new Set(Object.keys(TJ.B || {})) };
+const TOPS = { A: new Set(Object.keys(TJ.A || {})), B: new Set(Object.keys(TJ.B || {})), A5: new Set(Object.keys(TJ.A5 || {})), B5: new Set(Object.keys(TJ.B5 || {})) };
+// топы-2 (≥ 5 bb/100, включая топов-1) — ячейки «U|…»: движок берёт их, если у топов-1 (≥ 8) в споте мало рук
 // топы по формату: свои, если их не меньше MIN_TOPS_FMT в обеих половинах; иначе — общие
 const MIN_TOPS_FMT = +(process.env.MIN_TOPS_FMT || 50);
 const TOPSF = {};
-for (const f of ['n', 'k', 'm']) { const t = (TJ.byFmt || {})[f]; if (t && Object.keys(t.A).length >= MIN_TOPS_FMT && Object.keys(t.B).length >= MIN_TOPS_FMT) TOPSF[f] = { A: new Set(Object.keys(t.A)), B: new Set(Object.keys(t.B)) }; }
+for (const f of ['n', 'k', 'm']) { const t = (TJ.byFmt || {})[f]; if (t && Object.keys(t.A).length >= MIN_TOPS_FMT && Object.keys(t.B).length >= MIN_TOPS_FMT) TOPSF[f] = { A: new Set(Object.keys(t.A)), B: new Set(Object.keys(t.B)), A5: new Set(Object.keys(t.A5 || {})), B5: new Set(Object.keys(t.B5 || {})) }; }
 // ход турниров — для стадии (lib/stage.js); STAGE_EST=1 — оценивать стадию и там, где мест вылета нет (по решению владельца)
 const STG = require('../lib/stage.js');
 const tournFile = process.env.TOURN || path.join(C.OUT, 'tourn_v8.json');
@@ -37,6 +38,7 @@ const CL = fs.existsSync(clFile) ? readJ(clFile) : {};
 const grpOfK = (room, nick) => { const c = CL[C.playerKey(room, nick)]; return c ? CLU.GROUP[c[0]] || 'unk' : 'unk'; };
 // топ для раздачи половины h — отобран по другой половине
 const isTop = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; return (h === 'A' ? T.B : T.A).has(C.playerKey(room, nick)); };
+const isTop5 = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; if (!T.A5) return false; return (h === 'A' ? T.B5 : T.A5).has(C.playerKey(room, nick)); };
 const ROOM_LAYER = new Set((process.env.ROOM_LAYER || 'wpn,ipoker').split(',').filter(Boolean));
 const actClass = (d) => (d.act === 'shove' || d.aiEff ? 'shove' : d.act.split(':')[0]);
 C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, '| по формату:', Object.keys(TOPSF).join(',') || 'нет (общие)', '| турниров', Object.keys(TOURN).length, '| игроков с кластером', Object.keys(CL).length);
@@ -136,30 +138,31 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       for (const d of decs) {
         const i = d.i, nick = rp.nm[i], act = actClass(d), bnd = C.bandOf(d.eff);
         const coh = isTop(room, nick, half, kd) ? 'T' : 'F', g = 'g' + grpOf(nick);
+        const CO = coh === 'T' || isTop5(room, nick, half, kd) ? [coh, 'U'] : [coh]; // U — топы ≥ 5 (с топами-1)
         const rel = A.net[i] / bb + d.inv; // относительно фолда в этой точке
         const fa = act !== 'fold' && act !== 'check' && C.foldedAround(rp, d.k, i);
         // ключ спота: TBL|страта|стол|баунти|поз|поз.опп|стек|лимперы|коллеры  (+ |действие|группа.опп)
         const S = [d.tbl, st, tb + kd, d.pos, d.oppPos, bnd, d.L, d.C].join('|');
         const Sb = '~' + [d.tbl, st, tb + kd, C.posBand(d.pos), d.oppPos ? C.posBand(d.oppPos) : '', bnd, d.L, d.C].join('|'); // «~» — обобщённый уровень (не путать с точным, если позиции совпали)
-        for (const c of [coh, g]) {
+        for (const c of [...CO, g]) {
           addEV(c + '|' + S + '|' + act + '|' + d.oppGrp, rel, fa);
           addEV(c + '|' + S + '|' + act + '|*', rel, fa);
         }
-        addEV(coh + '|' + Sb + '|' + act + '|*', rel, fa); // обобщённый уровень (семейство позиций)
+        for (const c of CO) addEV(c + '|' + Sb + '|' + act + '|*', rel, fa); // обобщённый уровень (семейство позиций)
         // слой рума (владелец, 18.11.2026): у новых румов — свои ячейки топов и регов «T@wpn|…», «greg@ipoker|…»;
         // движок берёт их первыми для раздач этого рума, а при малой выборке — общие (все румы)
         if (ROOM_LAYER.has(room)) {
-          for (const c of [coh === 'T' ? 'T' : null, g === 'greg' ? 'greg' : null]) if (c) { addEV(c + '@' + room + '|' + S + '|' + act + '|*', rel, fa); addEV(c + '@' + room + '|' + Sb + '|' + act + '|*', rel, fa); }
+          for (const c of [coh === 'T' ? 'T' : null, CO.length > 1 ? 'U' : null, g === 'greg' ? 'greg' : null]) if (c) { addEV(c + '@' + room + '|' + S + '|' + act + '|*', rel, fa); addEV(c + '@' + room + '|' + Sb + '|' + act + '|*', rel, fa); }
         }
         // карты героя известны и при фолде («Dealt to»: свои истории, у iPoker — в каждой раздаче) — честные частоты
         // по рукам, включая фолд: «D<T|R|O>|Sb|действие|hN» (T — топ, R — рег, O — остальные)
         if (rp.hero === i && rp.hc && rp.hc[i]) { const hc = K.parseCards(String(rp.hc[i])); if (hc && hc.length === 2) { const dh = K.h169(hc[0], hc[1]); addHC('D' + (coh === 'T' ? 'T' : g === 'greg' ? 'R' : 'O') + '|' + Sb + '|' + act + '|h' + dh, rel); stats.dealt = (stats.dealt || 0) + 1; } }
         if (g === 'greg') addEV('greg|' + Sb + '|' + act + '|*', rel, fa); // реги по семейству позиций — для поправки весов рук
         // стадия — слой поверх (план C9): отдельные ячейки «Z|стадия|…»; в движке стягиваются к общим, если данных мало
-        if (stage) { addEV('Z|' + stage + '|' + coh + '|' + S + '|' + act + '|*', rel, fa); addEV('Z|' + stage + '|' + coh + '|' + Sb + '|' + act + '|*', rel, fa); }
+        if (stage) for (const c of CO) { addEV('Z|' + stage + '|' + c + '|' + S + '|' + act + '|*', rel, fa); addEV('Z|' + stage + '|' + c + '|' + Sb + '|' + act + '|*', rel, fa); }
         // размеры (п.6 → п.8): EV и частоты по корзине сайза — «3bet@3x», чтобы выбирать размер по EV, а не только по частоте
         const sizedA = d.sz && (act === 'open' || act === 'iso' || act === '3bet' || act === '4bet') ? act + '@' + d.sz : null;
-        if (sizedA) { addEV(coh + '|' + S + '|' + sizedA + '|*', rel, fa); addEV(coh + '|' + Sb + '|' + sizedA + '|*', rel, fa); }
+        if (sizedA) for (const c of CO) { addEV(c + '|' + S + '|' + sizedA + '|*', rel, fa); addEV(c + '|' + Sb + '|' + sizedA + '|*', rel, fa); }
         // ответ открывшего на 3-бет по размеру 3-бета: как часто сбрасывает именно тот, в кого 3-бетят
         if (d.tbl === 'VS3' && d.nR === 2 && d.i === d.openI && d.openTo > 0 && d.refTo > 0) {
           const b3 = SZ.bucketOf('3bet', d.refTo / d.openTo);
@@ -171,13 +174,15 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
         const s = SD[i];
         if (s && !fa && act !== 'fold') {
           const cl = K.C12OF[s.h];
-          addHC(coh + '|' + Sb + '|' + act + '|h' + s.h, rel);
-          addHC(coh + '|' + S + '|' + act + '|' + cl, rel);
-          addHC(coh + '|' + Sb + '|' + act + '|' + cl, rel);
-          addHC(coh + '|' + Sb + '|' + act + '|*', rel); // среднее продолжения по вскрытым — для сдвига вскрытий
+          for (const c of CO) {
+            addHC(c + '|' + Sb + '|' + act + '|h' + s.h, rel);
+            addHC(c + '|' + S + '|' + act + '|' + cl, rel);
+            addHC(c + '|' + Sb + '|' + act + '|' + cl, rel);
+            addHC(c + '|' + Sb + '|' + act + '|*', rel); // среднее продолжения по вскрытым — для сдвига вскрытий
+          }
           // реги отдельно (руки на вскрытии): веса «как реги играют эту руку» в панели
           if (g === 'greg') { addHC('greg|' + Sb + '|' + act + '|h' + s.h, rel); addHC('greg|' + Sb + '|' + act + '|*', rel); }
-          if (sizedA) { addHC(coh + '|' + Sb + '|' + sizedA + '|h' + s.h, rel); addHC(coh + '|' + S + '|' + sizedA + '|' + cl, rel); addHC(coh + '|' + Sb + '|' + sizedA + '|' + cl, rel); addHC(coh + '|' + Sb + '|' + sizedA + '|*', rel); }
+          if (sizedA) for (const c of CO) { addHC(c + '|' + Sb + '|' + sizedA + '|h' + s.h, rel); addHC(c + '|' + S + '|' + sizedA + '|' + cl, rel); addHC(c + '|' + Sb + '|' + sizedA + '|' + cl, rel); addHC(c + '|' + Sb + '|' + sizedA + '|*', rel); }
         }
         // диапазоны олл-инов (по 169 рукам), по группе игрока
         if (s && act === 'shove') {
@@ -199,7 +204,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   // ---------- сериализация ----------
   // Порог — на СПОТ (сумма по действиям), а не на ячейку: иначе редкие действия выпадают и частоты
   // смещаются к частым (в v6 колл пуша мог исчезнуть, и выходило «все фолдят»). Малые ячейки — только счётчик.
-  const thrEV = (k) => (k[0] === 'T' ? 8 : k[0] === 'Z' ? 10 : k[0] === 'g' ? 25 : 30);
+  const thrEV = (k) => (k[0] === 'T' || k[0] === 'U' ? 8 : k[0] === 'Z' ? 10 : k[0] === 'g' ? 25 : 30);
   const r3 = (v) => Math.round(v * 1000) / 1000;
   const spotOf = (k) => { const a = k.lastIndexOf('|'), b = k.lastIndexOf('|', a - 1); return k.slice(0, b) + k.slice(a); };
   const tot = new Map();
@@ -221,7 +226,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   const sparse = (a) => { const o = []; for (let h = 0; h < 169; h++) if (a[h]) o.push(h + ':' + a[h]); return o.join(','); };
   const Ro = (M) => { const o = {}; for (const [k, a] of M) { let s = 0; for (const v of a) s += v; if (s >= 5) o[k] = sparse(a); } return o; };
   stats.broken = stats_broken;
-  const model = { v: 8, meta: { mysteryCut: stats.mysteryCut || 0, dealt: stats.dealt || 0, hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, bands: C.BAND_NAMES, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
+  const model = { v: 8, meta: { mysteryCut: stats.mysteryCut || 0, dealt: stats.dealt || 0, hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, tops5A: TOPS.A5.size, tops5B: TOPS.B5.size, topsRule: TJ.rule || null, bands: C.BAND_NAMES, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
   const outF = process.env.MODEL_OUT || path.join(C.OUT, 'model_v8.ndjson');
   C.saveModel(outF, model); // построчно: на полной базе JSON целиком не помещается в одну строку (> 512 МБ)
   C.log('v8 ГОТОВО: рук', stats.hands, 'решений', stats.dec, 'олл-ин-поправок', stats.adj, '| ячеек EV', Object.keys(EVo).length, 'HC', Object.keys(HCo).length, 'RS', Object.keys(model.RS).length, 'RC', Object.keys(model.RC).length, '|', (fs.statSync(outF).size / 1048576).toFixed(1), 'МБ', ((Date.now() - t0) / 60000).toFixed(1), 'мин');

@@ -162,9 +162,34 @@
       if (!fine) return { r: coarse ? mixPrior(coarse, norm(topRange(fallbackP)), ALPHA_R) : prior, n: coarse ? sum(coarse) : 0, src: coarse ? 'обобщённо' : 'запасной' };
       return { r: mixPrior(fine, prior, ALPHA_R), n: sum(fine), src: 'точно' };
     }
-    const cellEV = (k) => { const c = EV[k]; return c ? { n: c[0], m: c.length > 1 ? c[1] : null, sd: c[2] || 0, nfa: c[3] || 0, mfa: c[4] || 0 } : null; };
+    // Топы-1 (≥ 8 bb/100) → топы-2 (≥ 5, ячейки «U»), решение владельца 19.11.2026: если у топов-1 в споте
+    // (все действия вместе, тот же класс соперника) меньше TOP1_MIN_SPOT рук, весь спот берётся по топам-2.
+    // Решается на уровне спота, а не ячейки: частоты и EV действий спота — из одного и того же круга игроков.
+    const TOP1_MIN_SPOT = (opts && opts.top1MinSpot) || 100;
+    const SPOT_ACTS = ['fold', 'check', 'call', 'limp', 'open', 'iso', '3bet', '4bet', 'shove', 'raise'];
+    const tierCache = new Map();
+    function tierKey(k, isHC) {
+      const p = k.split('|'); let ci = 0;
+      if (p[0] === 'Z') ci = 2;
+      const c0 = p[ci]; if (c0 !== 'T' && c0.slice(0, 2) !== 'T@') return k;
+      const grp = isHC ? '*' : p[p.length - 1], pre = p.slice(0, p.length - 2).join('|');
+      const ck = pre + '#' + grp;
+      let useU = tierCache.get(ck);
+      if (useU === undefined) {
+        const tot = (pp) => { let n = 0; for (const a of SPOT_ACTS) { const c = EV[pp + '|' + a + '|' + grp]; if (c) n += c[0]; } return n; };
+        const nT = tot(pre);
+        if (nT >= TOP1_MIN_SPOT) useU = false;
+        else { const q = pre.split('|'); q[ci] = 'U' + c0.slice(1); const nU = tot(q.join('|')); useU = nU > nT; }
+        tierCache.set(ck, useU);
+      }
+      if (!useU) return k;
+      p[ci] = 'U' + c0.slice(1); return p.join('|');
+    }
+    const cellEV = (k) => { const c = EV[tierKey(k, false)]; return c ? { n: c[0], m: c.length > 1 ? c[1] : null, sd: c[2] || 0, nfa: c[3] || 0, mfa: c[4] || 0 } : null; };
     const evOK = (c) => (c && c.m !== null ? c : null);
-    const cellHC = (k) => { const c = HC[k]; return c ? { n: c[0], m: c[1], sd: c[2] || 0 } : null; };
+    const cellHC = (k) => { const c = HC[tierKey(k, true)]; return c ? { n: c[0], m: c[1], sd: c[2] || 0 } : null; };
+    // какой круг топов взят в споте (для пояснения в совете): 'T' — от 8 bb/100, 'U' — от 5
+    const tierOf = (k) => (tierKey(k, false) === k ? 'T' : 'U');
     function shrink(cells, k) {
       let m = null, n = 0, sd = 0, lvl = -1;
       for (let q = cells.length - 1; q >= 0; q--) {
@@ -682,7 +707,7 @@
       if (d <= noise) return { kind: 'близко', d, text: 'близко к лучшему («' + adv.rec.ru + '» +' + d.toFixed(2) + ' bb, в пределах шума)' };
       return { kind: 'ошибка', d, text: 'ошибка: −' + d.toFixed(2) + ' bb против «' + adv.rec.ru + '»' };
     }
-    return { debug: (on) => { DEBUG = on ? [] : null; return DEBUG; }, advise, verdict, shoveEV, callAllinEV, topRange, RANK, ACTS, RU, actClass };
+    return { debug: (on) => { DEBUG = on ? [] : null; return DEBUG; }, advise, verdict, shoveEV, callAllinEV, topRange, RANK, ACTS, RU, actClass, tierOf, cellEV };
   }
   // ctx (необязательно): { stage, tour: { S, P, B, r, R } } — стадия и сведения о турнире (lib/stage.js, app.js)
   function decisionsBacking(rp, grpOf, fp, room, ctx) {

@@ -150,6 +150,14 @@ function halfOf(handId) {
   return (h >>> 7) & 1 ? 'B' : 'A';
 }
 
+// четверть базы 0..3: старший бит — половина (как halfOf: 0 = A, 1 = B), младший — независимый бит того же хэша.
+// Для отбора топов (19.11.2026): винрейт подтверждается на двух четвертях одной половины, игра меряется на другой.
+function quarterOf(handId) {
+  let h = 2166136261; const s = String(handId);
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return (((h >>> 7) & 1) << 1) | ((h >>> 17) & 1);
+}
+
 // ---------- обход базы ----------
 // RAW_DIRS="папка1;папка2" — папки с .rar и/или .txt (по умолчанию raw и raw-ps проекта Backing).
 // SKIP="2608-PS-.rar;…" — архивы, которые пропускать. DONE — множество уже пройденных (для ресюма).
@@ -234,4 +242,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ firstLine, CK_EVERY, progress, ndForEachSync, saveModel, loadModel, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ firstLine, CK_EVERY, progress, ndForEachSync, saveModel, loadModel, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, quarterOf, sourceFiles, iterHands, splitHands }, SP);
