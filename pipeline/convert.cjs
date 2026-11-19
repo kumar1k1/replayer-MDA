@@ -220,13 +220,14 @@ function chicoToPS(t, fp) {
 // Суммы в квадратных скобках — ДОБАВКА на этой улице и у коллов, и у бетов, и у рейзов (проверено по банку:
 // «raises [19213]» у ББ с 700 вложенными = всё до 19913). Возврат неуравненной части не пишется — считаем сами.
 // Карты: «[ 9d, 9s ]». Дата «28 02 2025 21:01:02». Формат турнира — по папке архива («$11/Freezeout»).
+const why888 = (w) => { e888ToPS.why = w; return null; };
 function e888ToPS(t, fp) {
   const L = t.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   let i = 0; while (i < L.length && !/^#Game No/.test(L[i])) i++;
-  const gm = /^#Game No : (\d+)/.exec(L[i] || ''); if (!gm) return null;
-  const bl = /^([\d,.]+)\/([\d,.]+) Blinds No Limit Holdem - \*\*\* (\d\d) (\d\d) (\d{4}) ([\d:]+)/.exec(L[i + 2] || ''); if (!bl) return null;
-  const tm = /^Tournament #(\d+) (.*?) - Table #(\d+) (\d+) Max/.exec(L[i + 3] || ''); if (!tm) return null;
-  const bt = /^Seat (\d+) is the button/.exec(L[i + 4] || ''); if (!bt) return null;
+  const gm = /^#Game No : (\d+)/.exec(L[i] || ''); if (!gm) return why888('нет #Game No');
+  const bl = /^([\d,.]+)\/([\d,.]+) Blinds No Limit Holdem - \*\*\* (\d\d) (\d\d) (\d{4}) ([\d:]+)/.exec(L[i + 2] || ''); if (!bl) return why888('строка блайндов');
+  const tm = /^Tournament #(\d+) (.*?) - Table #(\d+) (\d+) Max/.exec(L[i + 3] || ''); if (!tm) return why888('строка турнира');
+  const bt = /^Seat (\d+) is the button/.exec(L[i + 4] || ''); if (!bt) return why888('строка баттона');
   const km = /(Knockout|Freezeout|Mystery|Bounty|PKO|Turbo|Hyper)/i.exec(fp || '');
   const buyin = tm[2].replace(/\s*\+\s*/g, '+');
   const out = [`888 Hand #${gm[1]}: Tournament #${tm[1]}, ${buyin} 888${km ? ' ' + km[1] : ''} Hold'em No Limit - Level I (${fmt(num(bl[1]))}/${fmt(num(bl[2]))}) - ${bl[5]}/${bl[4]}/${bl[3]} ${bl[6]} UTC`,
@@ -234,7 +235,7 @@ function e888ToPS(t, fp) {
   const pl = [], stack = {}, inv = {};
   let k = i + 5; if (/^Total number of players/.test(L[k] || '')) k++;
   for (; k < L.length; k++) { const m = /^Seat (\d+): (.+?) \( ([\d,.]+) \)$/.exec(L[k]); if (!m) break; pl.push(m[2]); stack[m[2]] = num(m[3]); inv[m[2]] = 0; out.push(`Seat ${m[1]}: ${m[2]} (${fmt(num(m[3]))} in chips)`); }
-  if (pl.length < 2) return null;
+  if (pl.length < 2) return why888('мало игроков');
   const nick = (l) => { let best = null; for (const p of pl) if (l.startsWith(p + ' ') && (!best || p.length > best.length)) best = p; return best; };
   const cards = (s) => s.replace(/[\[\]]/g, '').split(',').map(x => x.trim()).filter(Boolean).join(' ');
   let cur = {}, maxBet = 0, board = [], shows = [], coll = [], folded = new Set(), sum = false;
@@ -264,7 +265,7 @@ function e888ToPS(t, fp) {
     if (/^folds/.test(r)) { folded.add(p); out.push(`${p}: folds`); continue; }
     if (/^checks/.test(r)) { out.push(`${p}: checks`); continue; }
     if (/^(calls|bets|raises)/.test(r)) {
-      const x = Math.min(a, left(p)); if (x <= 0 && !/^calls/.test(r)) return null;
+      const x = Math.min(a, left(p)); if (x <= 0 && !/^calls/.test(r)) return why888('ставка без суммы');
       const c0 = cur[p] || 0, tot = c0 + x; inv[p] += x; cur[p] = tot;
       const ai = left(p) <= 1e-9 ? ' and is all-in' : '';
       if (/^calls/.test(r) || tot <= maxBet) out.push(`${p}: calls ${fmt(x)}${ai}`);
@@ -279,7 +280,7 @@ function e888ToPS(t, fp) {
   if (shows.length) { out.push('*** SHOW DOWN ***'); out.push(...shows); }
   let pot = 0; for (const p of pl) pot += inv[p];
   const won = coll.reduce((s2, x) => s2 + x[1], 0);
-  if (!coll.length || Math.abs(won - pot) > Math.max(2, pot * 0.001)) return null; // банк не сходится — раздачу не берём
+  if (!coll.length || Math.abs(won - pot) > Math.max(2, pot * 0.001)) return why888('банк не сходится'); // банк не сходится — раздачу не берём
   for (const [p2, x] of coll) out.push(`${p2} collected ${fmt(x)} from pot`);
   out.push('*** SUMMARY ***', `Total pot ${fmt(pot)} | Rake 0`);
   if (board.length) out.push(`Board [${board.join(' ')}]`);
