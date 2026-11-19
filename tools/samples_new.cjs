@@ -41,6 +41,21 @@ async function headOf(e) { const chunks = []; let n = 0; const r = Z.openEntry(e
       } catch (err) { log('   ' + path.basename(e.name) + ': ошибка — ' + err.message); }
       try { fs.unlinkSync(tmp); } catch (x) {}
     }
+    // .7z — два самых маленьких, через 7-Zip
+    const SEVEN = process.env.SEVENZIP || 'C:\\Program Files\\7-Zip\\7z.exe';
+    for (const e of E.filter(e => /\.7z$/i.test(e.name)).sort((a, b) => a.usize - b.usize).slice(0, 2)) {
+      if (!fs.existsSync(SEVEN)) { log('   .7z: нет 7-Zip'); break; }
+      const tmp = path.join(TMP, 'sn_' + process.pid + '.7z'), td = path.join(TMP, 'sn7_' + process.pid);
+      try {
+        await new Promise((res, rej) => { const o = fs.createWriteStream(tmp); const r = Z.openEntry(e); r.on('error', rej); o.on('error', rej); o.on('finish', res); r.pipe(o); });
+        fs.rmSync(td, { recursive: true, force: true }); fs.mkdirSync(td, { recursive: true });
+        require('child_process').spawnSync(SEVEN, ['x', tmp, '-o' + td, '-y', '-bso0', '-bsp0'], { stdio: 'ignore' });
+        const all = []; const walk = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p2 = path.join(d, f.name); if (f.isDirectory()) walk(p2); else all.push(p2); } }; walk(td);
+        log('   ' + path.basename(e.name) + ' — внутри ' + all.length + ': ' + all.slice(0, 4).map(f => path.relative(td, f)).join(', '));
+        let j = 0; for (const f of all.filter(f => /\.(txt|xml)$/i.test(f)).slice(0, 3)) fs.writeFileSync(path.join(dir, '7z' + (++j) + '__' + safe(path.basename(f)) + '.sample'), fs.readFileSync(f).subarray(0, LIM));
+      } catch (err) { log('   ' + path.basename(e.name) + ': ошибка — ' + err.message); }
+      try { fs.unlinkSync(tmp); } catch (x) {} try { fs.rmSync(td, { recursive: true, force: true }); } catch (x) {}
+    }
     // вложенные сжатые zip — первый, его первые текстовые файлы
     const nz = E.find(e => e.zipped);
     if (nz) { try { const o = await Z.openNested(nz); let j = 0; for (const e of o.files.filter(e => /\.(txt|xml|hh)$/i.test(e.name)).slice(0, 3)) fs.writeFileSync(path.join(dir, 'zip' + (++j) + '__' + safe(path.basename(e.name)) + '.sample'), await headOf(e)); log('   вложенный ' + nz.name + ' — файлов ' + o.files.length); o.cleanup(); } catch (err) { log('   вложенный zip: ошибка — ' + err.message); } }

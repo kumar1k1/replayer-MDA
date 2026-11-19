@@ -4,7 +4,7 @@
 // файлы <рум>\<zip>__<rar>__NNN.txt.gz по ~150 МБ текста. Конвейер читает их как обычные источники.
 // Идёт по одному .rar: копирует его во временный файл, переводит, удаляет. Прогресс — после каждого .rar
 // (конвертация_готово.json + номера раздач для отсева повторов), закрыть окно можно в любой момент.
-// .7z внутри zip пропускаются (их мало и они маленькие). Исходные архивы не меняются.
+// .7z внутри zip — через 7-Zip (SEVENZIP, по умолчанию C:\Program Files\7-Zip\7z.exe). Исходные архивы не меняются.
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const Z = require('../gto/zipread.cjs'), V = require('../pipeline/convert.cjs');
 const BACKING = process.env.BACKING_DIR || 'D:/маининг/реплеер';
@@ -55,37 +55,49 @@ function* pieces(buf, isXml) {
   if (carry) yield carry;
 }
 
+// перевод одного текстового файла (буфер) — формат по содержимому
+function handleFile(b, name, put, sess, st) {
+  const isXml = /\.xml$/i.test(name);
+  for (const s of pieces(b, isXml)) {
+    if (isXml) V.ipokerXmlToPS(s, put, sess);
+    // формат текста — по содержимому: WPN «Game Hand #», 888 «#Game No», Chico — «PokerStars Hand #» со столами CHC_
+    else if (/#Game No :/.test(s.slice(0, 4096))) { for (const h of s.split(/\r?\n(?=#Game No)/)) { if (!/^\s*#Game No/.test(h)) continue; const t = V.e888ToPS(h, name); if (t) put(t); else st.bad++; } }
+    else if (/PokerStars Hand #/.test(s.slice(0, 4096))) { for (const h of s.split(/\r?\n(?=PokerStars Hand #)/)) { if (!/^\s*PokerStars Hand #/.test(h)) continue; const t = V.chicoToPS(h, name); if (t) put(t); else if (/^Table 'CHC_/m.test(h)) st.bad++; else st.notRoom = (st.notRoom || 0) + 1; } }
+    else for (const h of s.split(/\r?\n(?=Game Hand #)/)) { if (!/^\s*Game Hand #/.test(h)) continue; const t = V.wpnToPS(h, name); if (t) put(t); else st.bad++; }
+  }
+}
+const SEVEN = process.env.SEVENZIP || 'C:\\Program Files\\7-Zip\\7z.exe';
+function* walkDir(d) { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) yield* walkDir(p); else yield p; } }
+
 async function doRar(ent, key, room) {
-  const tmp = path.join(TMP, 'conv_' + process.pid + '.rar');
+  const is7 = /\.7z$/i.test(ent.name);
+  const tmp = path.join(TMP, 'conv_' + process.pid + (is7 ? '.7z' : '.rar'));
   await new Promise((res, rej) => { const o = fs.createWriteStream(tmp); const r = Z.openEntry(ent); r.on('error', rej); o.on('error', rej); o.on('finish', res); r.pipe(o); });
   const st = { files: 0, hands: 0, dup: 0, bad: 0 };
-  const base = key.replace(/[\\/:*?"<>|\s]+/g, '_').replace(/\.rar$/i, '');
+  const base = key.replace(/[\\/:*?"<>|\s]+/g, '_').replace(/\.(rar|7z)$/i, '');
   const W = writerFor(room, base);
+  const put = (t) => {
+    const id = /Hand #(\d+)/.exec(t)[1];
+    if (!seen.add(room, id)) { st.dup++; return; }
+    st.hands++; W.add(t);
+  };
+  const sess = {};
+  const tdir = path.join(TMP, 'conv7_' + process.pid);
   try {
-    const ex = await unrar.createExtractorFromData({ data: fs.readFileSync(tmp) });
-    // один проход по архиву: файлы распаковываются по очереди, в памяти — только текущий
-    const r = ex.extract({ files: (fh) => !fh.flags.directory && /\.(txt|xml)$/i.test(fh.name) });
-    const sess = {};
-    {
-      for (const f of r.files) {
-        if (!f.extraction) continue; const fh = f.fileHeader;
-        st.files++;
-        const b = Buffer.from(f.extraction), isXml = /\.xml$/i.test(fh.name);
-        for (const s of pieces(b, isXml)) {
-          const put = (t) => {
-            const id = /Hand #(\d+)/.exec(t)[1];
-            if (!seen.add(room, id)) { st.dup++; return; }
-            st.hands++; W.add(t);
-          };
-          if (isXml) V.ipokerXmlToPS(s, put, sess);
-          // формат текста — по содержимому: WPN «Game Hand #», 888 «#Game No», Chico — «PokerStars Hand #» со столами CHC_
-          else if (/#Game No :/.test(s.slice(0, 4096))) { for (const h of s.split(/\r?\n(?=#Game No)/)) { if (!/^\s*#Game No/.test(h)) continue; const t = V.e888ToPS(h, fh.name); if (t) put(t); else st.bad++; } }
-          else if (/PokerStars Hand #/.test(s.slice(0, 4096))) { for (const h of s.split(/\r?\n(?=PokerStars Hand #)/)) { if (!/^\s*PokerStars Hand #/.test(h)) continue; const t = V.chicoToPS(h, fh.name); if (t) put(t); else if (/^Table 'CHC_/m.test(h)) st.bad++; else st.notRoom = (st.notRoom || 0) + 1; } }
-          else for (const h of s.split(/\r?\n(?=Game Hand #)/)) { if (!/^\s*Game Hand #/.test(h)) continue; const t = V.wpnToPS(h, fh.name); if (t) put(t); else st.bad++; }
-        }
-      }
+    if (is7) {
+      // .7z — через 7-Zip во временную папку, по файлу в памяти, папка удаляется
+      if (!fs.existsSync(SEVEN)) throw new Error('нет 7-Zip (' + SEVEN + ') — .7z пропущен');
+      fs.rmSync(tdir, { recursive: true, force: true }); fs.mkdirSync(tdir, { recursive: true });
+      const r = require('child_process').spawnSync(SEVEN, ['x', tmp, '-o' + tdir, '-y', '-bso0', '-bsp0'], { stdio: 'ignore' });
+      if (r.status !== 0 && r.status !== 1) throw new Error('7-Zip: код ' + r.status);
+      for (const f of walkDir(tdir)) if (/\.(txt|xml)$/i.test(f)) { st.files++; handleFile(fs.readFileSync(f), path.relative(tdir, f), put, sess, st); }
+    } else {
+      const ex = await unrar.createExtractorFromData({ data: fs.readFileSync(tmp) });
+      // один проход по архиву: файлы распаковываются по очереди, в памяти — только текущий
+      const r = ex.extract({ files: (fh) => !fh.flags.directory && /\.(txt|xml)$/i.test(fh.name) });
+      for (const f of r.files) { if (!f.extraction) continue; st.files++; handleFile(Buffer.from(f.extraction), f.fileHeader.name, put, sess, st); }
     }
-  } finally { try { fs.unlinkSync(tmp); } catch (e) {} }
+  } finally { try { fs.unlinkSync(tmp); } catch (e) {} try { fs.rmSync(tdir, { recursive: true, force: true }); } catch (e) {} }
   st.out = W.finish();
   return st;
 }
@@ -94,7 +106,7 @@ async function doRar(ent, key, room) {
   const dirs = process.argv.slice(2);
   const zips = []; for (const d of dirs) if (fs.existsSync(d)) for (const f of fs.readdirSync(d).sort()) if (/\.zip$/i.test(f)) zips.push(path.join(d, f));
   const jobs = [];
-  for (const zf of zips) for (const e of Z.entries(zf)) if (!e.dir && /\.rar$/i.test(e.name)) jobs.push({ zf, e, key: path.basename(zf, '.zip') + '__' + path.basename(e.name) });
+  for (const zf of zips) for (const e of Z.entries(zf)) if (!e.dir && /\.(rar|7z)$/i.test(e.name)) jobs.push({ zf, e, key: path.basename(zf, '.zip') + '__' + path.basename(e.name) });
   const room = (j) => TAG || (/wpn/i.test(j.key) ? 'wpn' : /888/.test(j.key) ? '888' : /chico/i.test(j.key) ? 'chico' : 'ipoker');
   // ONLY_ZIPS=regex — только эти zip (например «888|chico»); SKIP_ZIPS — пропустить (по умолчанию Winamax)
   const onlyZ = process.env.ONLY_ZIPS ? new RegExp(process.env.ONLY_ZIPS, 'i') : null, skipZ = new RegExp(process.env.SKIP_ZIPS || 'winamax', 'i');
