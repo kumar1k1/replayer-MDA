@@ -7,13 +7,15 @@ const BACKING = process.env.BACKING_DIR || 'D:/маининг/реплеер';
 const unrar = require(require.resolve('node-unrar-js', { paths: [process.cwd(), BACKING, __dirname] }));
 const OUT = path.join(__dirname, '..', 'pipeline', 'out', 'образцы_new'); fs.mkdirSync(OUT, { recursive: true });
 const TMP = path.join(__dirname, '..', 'gto', 'tmp'); fs.mkdirSync(TMP, { recursive: true });
+// Winamax пока не берём (владелец, 20.11.2026); SKIP_ZIPS — свой список
+const SKIP = new RegExp(process.env.SKIP_ZIPS || 'winamax', 'i');
 const L = []; const log = (s) => { console.log(s); L.push(s); };
 const MB = (b) => (b / 1048576).toFixed(1) + ' МБ';
 const safe = (s) => s.replace(/[^\w.-]+/g, '_').slice(-80);
 const LIM = 300 * 1024;
 async function headOf(e) { const chunks = []; let n = 0; const r = Z.openEntry(e); for await (const ch of r) { chunks.push(ch); n += ch.length; if (n >= LIM) { r.destroy(); break; } } return Buffer.concat(chunks).subarray(0, LIM); }
 (async () => {
-  for (const d of process.argv.slice(2)) for (const zf of fs.readdirSync(d).filter(f => /\.zip$/i.test(f)).sort().map(f => path.join(d, f))) {
+  for (const d of process.argv.slice(2)) for (const zf of fs.readdirSync(d).filter(f => /\.zip$/i.test(f) && !SKIP.test(f)).sort().map(f => path.join(d, f))) {
     const zb = path.basename(zf, '.zip');
     let E; try { E = Z.walk(zf).filter(e => !e.dir); } catch (err) { log('\n' + zb + ': не читается — ' + err.message); continue; }
     const ext = {}; for (const e of E) { const x = (path.extname(e.name) || '(нет)').toLowerCase(); ext[x] = (ext[x] || 0) + 1; }
