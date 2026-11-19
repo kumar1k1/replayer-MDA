@@ -20,11 +20,13 @@ for (const z of zips) {
   const id = room + '__' + z.replace(/\.zip$/i, '').replace(/[^\w.-]+/g, '_');
   jobs.push({ z, room, id, size: sz, flag: path.join(OUTR, 'флаги', id + '.flag') });
 }
+// временные файлы прошлого запуска — один раз, до старта потоков
+{ const TMP = path.join(ROOT, 'gto', 'tmp'); if (fs.existsSync(TMP)) for (const f of fs.readdirSync(TMP)) if (/^conv/.test(f)) try { fs.rmSync(path.join(TMP, f), { recursive: true, force: true }); } catch (e) {} }
 const left = jobs.filter(j => !fs.existsSync(j.flag)).sort((a, b) => b.size - a.size); // большие — первыми
 log(`zip всего ${jobs.length}, готово ${jobs.length - left.length}, осталось ${left.length}, потоков ${N}`);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const runOne = (j) => new Promise((res) => {
-  const env = Object.assign({}, process.env, { CONV_IDS_BITS: '24', OUT_ROOMS: path.join(OUTR, j.id), ONLY_ZIPS: '^' + esc(j.z) + '$', SKIP_ZIPS: '^$', DONE_FLAG: j.flag });
+  const env = Object.assign({}, process.env, { CONV_NO_CLEAN: '1', CONV_IDS_BITS: '24', OUT_ROOMS: path.join(OUTR, j.id), ONLY_ZIPS: '^' + esc(j.z) + '$', SKIP_ZIPS: '^$', DONE_FLAG: j.flag });
   delete env.CONV_TAG;
   const ch = spawn(process.execPath, ['--max-old-space-size=' + (process.env.MEM || 4096), path.join(ROOT, 'tools', 'convert_rooms.cjs'), SRC], { env, cwd: ROOT });
   try { if (process.env.PRIO !== 'max') os.setPriority(ch.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (e) {}
@@ -34,7 +36,9 @@ const runOne = (j) => new Promise((res) => {
 });
 (async () => {
   const q = left.slice(); let bad = 0;
-  await Promise.all(Array.from({ length: Math.min(N, q.length) }, async () => { while (q.length) { const j = q.shift(); if (!(await runOne(j))) bad++; } }));
+  // zip, где архив не прошёл, — ещё до двух попыток (переведённые архивы не повторяются)
+  const tries = {};
+  await Promise.all(Array.from({ length: Math.min(N, q.length) }, async () => { while (q.length) { const j = q.shift(); if (await runOne(j)) continue; tries[j.id] = (tries[j.id] || 0) + 1; if (tries[j.id] < 3) { log(j.z + ': повторю'); q.push(j); } else bad++; } }));
   // итог по всем zip: сколько раздач и брака
   const sum = {};
   for (const j of jobs) { const f = path.join(OUTR, j.id, 'конвертация_готово.json'); if (!fs.existsSync(f)) continue; const o = JSON.parse(fs.readFileSync(f, 'utf8')); const s = sum[j.room] = sum[j.room] || { архивов: 0, раздач: 0, повторов: 0, брак: 0, чужих: 0 }; for (const v of Object.values(o)) { s.архивов++; s.раздач += v.hands || 0; s.повторов += v.dup || 0; s.брак += v.bad || 0; s.чужих += v.notRoom || 0; } }

@@ -25,7 +25,8 @@ const CHUNK = 150 * 1024 * 1024;
 
 // остатки прерванного запуска
 for (const d of ['wpn', 'ipoker', '888', 'chico', 'ps', 'pses', 'coin', TAG].filter(Boolean)) { const p = path.join(OUTR, d); if (fs.existsSync(p)) for (const f of fs.readdirSync(p)) if (f.endsWith('.part')) fs.unlinkSync(path.join(p, f)); }
-for (const f of fs.readdirSync(TMP)) if (/^conv_/.test(f)) try { fs.unlinkSync(path.join(TMP, f)); } catch (e) {}
+// при параллельном переводе (tools/convert_new.cjs) временную папку чистит родитель — иначе новый поток стирает файлы соседей
+if (!process.env.CONV_NO_CLEAN) for (const f of fs.readdirSync(TMP)) if (/^conv/.test(f)) try { fs.rmSync(path.join(TMP, f), { recursive: true, force: true }); } catch (e) {}
 
 function writerFor(room, base) {
   const dir = path.join(OUTR, room); fs.mkdirSync(dir, { recursive: true });

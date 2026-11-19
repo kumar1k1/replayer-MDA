@@ -54,11 +54,11 @@ if %NS% LSS 2 set "NS=2"
 set "NC=6"
 if "%PRIO%"=="low" set /a NS=%NS%/2
 if "%PRIO%"=="low" set "NC=3"
-rem по памяти: поток статов - до 3 ГБ, перевод архива - до 4 ГБ; запас 6 ГБ системе и программам
+rem по памяти: поток статов - до 3 ГБ, перевод архива - до 6 ГБ: большой rar целиком в памяти; запас 6 ГБ системе и программам
 set "RAMGB=16"
 for /f %%M in ('powershell -NoProfile -Command "[math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB)"') do set "RAMGB=%%M"
 set /a MAXS=(%RAMGB%-6)/3
-set /a MAXC=(%RAMGB%-6)/4
+set /a MAXC=(%RAMGB%-6)/6
 if %MAXS% LSS 2 set "MAXS=2"
 if %MAXC% LSS 1 set "MAXC=1"
 if %NS% GTR %MAXS% set "NS=%MAXS%"
