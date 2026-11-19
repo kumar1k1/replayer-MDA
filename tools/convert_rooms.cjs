@@ -24,7 +24,7 @@ const seen = fs.existsSync(IDS_F) ? C.loadIds(IDS_F) : new C.IdSet(27); // но�
 const CHUNK = 150 * 1024 * 1024;
 
 // остатки прерванного запуска
-for (const d of ['wpn', 'ipoker', TAG].filter(Boolean)) { const p = path.join(OUTR, d); if (fs.existsSync(p)) for (const f of fs.readdirSync(p)) if (f.endsWith('.part')) fs.unlinkSync(path.join(p, f)); }
+for (const d of ['wpn', 'ipoker', '888', 'chico', TAG].filter(Boolean)) { const p = path.join(OUTR, d); if (fs.existsSync(p)) for (const f of fs.readdirSync(p)) if (f.endsWith('.part')) fs.unlinkSync(path.join(p, f)); }
 for (const f of fs.readdirSync(TMP)) if (/^conv_/.test(f)) try { fs.unlinkSync(path.join(TMP, f)); } catch (e) {}
 
 function writerFor(room, base) {
@@ -47,7 +47,7 @@ function* pieces(buf, isXml) {
   for (let o = 0; o < buf.length; o += STEP) {
     const s = carry + buf.subarray(o, Math.min(buf.length, o + STEP)).toString('utf8');
     if (o + STEP >= buf.length) { yield s; return; }
-    const cut = isXml ? s.lastIndexOf('</game>') + 7 : s.lastIndexOf('\nGame Hand #');
+    const cut = isXml ? s.lastIndexOf('</game>') + 7 : Math.max(s.lastIndexOf('\nGame Hand #'), s.lastIndexOf('\n#Game No'), s.lastIndexOf('\nPokerStars Hand #'));
     if (cut <= 7) { carry = s; continue; }
     // в XML заголовок сессии перед следующей игрой должен остаться с ней: режем после </game>, хвост переносим
     yield s.slice(0, cut); carry = s.slice(cut);
@@ -78,6 +78,9 @@ async function doRar(ent, key, room) {
             st.hands++; W.add(t);
           };
           if (isXml) V.ipokerXmlToPS(s, put, sess);
+          // формат текста — по содержимому: WPN «Game Hand #», 888 «#Game No», Chico — «PokerStars Hand #» со столами CHC_
+          else if (/#Game No :/.test(s.slice(0, 4096))) { for (const h of s.split(/\r?\n(?=#Game No)/)) { if (!/^\s*#Game No/.test(h)) continue; const t = V.e888ToPS(h, fh.name); if (t) put(t); else st.bad++; } }
+          else if (/PokerStars Hand #/.test(s.slice(0, 4096))) { for (const h of s.split(/\r?\n(?=PokerStars Hand #)/)) { if (!/^\s*PokerStars Hand #/.test(h)) continue; const t = V.chicoToPS(h, fh.name); if (t) put(t); else if (/^Table 'CHC_/m.test(h)) st.bad++; else st.notRoom = (st.notRoom || 0) + 1; } }
           else for (const h of s.split(/\r?\n(?=Game Hand #)/)) { if (!/^\s*Game Hand #/.test(h)) continue; const t = V.wpnToPS(h, fh.name); if (t) put(t); else st.bad++; }
         }
       }
@@ -92,7 +95,10 @@ async function doRar(ent, key, room) {
   const zips = []; for (const d of dirs) if (fs.existsSync(d)) for (const f of fs.readdirSync(d).sort()) if (/\.zip$/i.test(f)) zips.push(path.join(d, f));
   const jobs = [];
   for (const zf of zips) for (const e of Z.entries(zf)) if (!e.dir && /\.rar$/i.test(e.name)) jobs.push({ zf, e, key: path.basename(zf, '.zip') + '__' + path.basename(e.name) });
-  const room = (j) => TAG || (/wpn/i.test(j.key) ? 'wpn' : 'ipoker');
+  const room = (j) => TAG || (/wpn/i.test(j.key) ? 'wpn' : /888/.test(j.key) ? '888' : /chico/i.test(j.key) ? 'chico' : 'ipoker');
+  // ONLY_ZIPS=regex — только эти zip (например «888|chico»); SKIP_ZIPS — пропустить (по умолчанию Winamax)
+  const onlyZ = process.env.ONLY_ZIPS ? new RegExp(process.env.ONLY_ZIPS, 'i') : null, skipZ = new RegExp(process.env.SKIP_ZIPS || 'winamax', 'i');
+  for (let q = jobs.length - 1; q >= 0; q--) { const zb = path.basename(jobs[q].zf); if ((onlyZ && !onlyZ.test(zb)) || skipZ.test(zb)) jobs.splice(q, 1); }
   // SKIP_KEYS_FROM=файл.json — пропустить архивы, которые в прошлом переводе целиком оказались повторами других (0 новых раздач)
   const skipK = new Set(); if (process.env.SKIP_KEYS_FROM && fs.existsSync(process.env.SKIP_KEYS_FROM)) { const o = JSON.parse(fs.readFileSync(process.env.SKIP_KEYS_FROM, 'utf8')); for (const [k, v] of Object.entries(o)) if (v.hands === 0 && v.dup > 0) skipK.add(k); }
   if (skipK.size) log('пропускаю архивы-повторы: ' + [...skipK].join(', '));
@@ -107,7 +113,7 @@ async function doRar(ent, key, room) {
       done[j.key] = Object.assign({ room: room(j), at: new Date().toISOString() }, st);
       C.saveIds(seen, IDS_F);
       fs.writeFileSync(DONE_F, JSON.stringify(done, null, 1));
-      log(`   готово за ${Math.round((Date.now() - t0) / 60000)} мин: файлов ${st.files}, раздач ${st.hands}, повторов ${st.dup}, не переведено ${st.bad}`);
+      log(`   готово за ${Math.round((Date.now() - t0) / 60000)} мин: файлов ${st.files}, раздач ${st.hands}, повторов ${st.dup}, не переведено ${st.bad}` + (st.notRoom ? `, чужих столов (не Chico) ${st.notRoom}` : ''));
     } catch (err) {
       log(`   ОШИБКА: ${err && err.message} — архив пропущен, будет повторён при следующем запуске`);
     }

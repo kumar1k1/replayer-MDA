@@ -18,7 +18,7 @@ function normalizeHand(t) {
           .replace(/^(.+?: folds) \[[^\]]*\][ \t]*$/gm, '$1');
 }
 // рум по заголовку
-function roomOf(t) { return /^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*WPN Hand #/.test(t) ? 'wpn' : /^\s*iPoker Hand #/.test(t) ? 'ipoker' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other'; }
+function roomOf(t) { return /^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*WPN Hand #/.test(t) ? 'wpn' : /^\s*iPoker Hand #/.test(t) ? 'ipoker' : /^\s*Chico Hand #/.test(t) ? 'chico' : /^\s*888 Hand #/.test(t) ? '888' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other'; }
 // CoinPoker в экспорте показывает у ПОБЕДИТЕЛЯ только карты, которые играют (одна карта вместо двух) —
 // вскрытия CoinPoker смещены (12% вскрытий, все — победители). Их нельзя брать в диапазоны и поправку на олл-ин.
 const SHOWDOWN_TRUSTED = (room) => room !== 'coin';
