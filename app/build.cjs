@@ -61,6 +61,7 @@ const sz = {};
   if (!hcMin || !evMin) { // 1-й проход: сколько байт дают ячейки с n не меньше порога
     const hcB = new Array(HCG.length).fill(0), evB = new Array(EVG.length).fill(0); let other = 0;
     C8.loadModel(mf, (sec, k, v) => {
+      if (sec === 'EV' && k.charCodeAt(0) === 89 && k[1] === '|') return false;
       const b = k.length + JSON.stringify(v).length + 4;
       if (sec === 'HC') { for (let i = 0; i < HCG.length; i++) if (v[0] >= HCG[i]) hcB[i] += b; }
       else if (sec === 'EV') { for (let i = 0; i < EVG.length; i++) if (v[0] >= EVG[i]) evB[i] += b; }
@@ -78,6 +79,7 @@ const sz = {};
   const RG = { T: {}, F: {}, R: {} }; const reH = /^(T|F|greg)\|(~.*)\|([^|]+)\|h(\d+)$/;
   const M = C8.loadModel(mf, (sec, k, v) => {
     if (sec === 'HC') { const m = reH.exec(k); if (m) { const o = RG[m[1] === 'greg' ? 'R' : m[1]], key = m[2] + '|' + m[3]; (o[key] || (o[key] = {}))[m[4]] = v[0]; } }
+    if (sec === 'EV' && k.charCodeAt(0) === 89 && k[1] === '|') { cut++; return false; } // «Y|год|…» — только для отчёта по годам, в реплеер не нужны
     if ((sec === 'HC' && v[0] < hcMin) || (sec === 'EV' && v[0] < evMin)) { cut++; return false; } return true;
   });
   { const pack = (o) => { const r = {}; for (const k in o) { const e = Object.entries(o[k]); if (e.reduce((s, x) => s + x[1], 0) >= 20) r[k] = e.map(([h, n]) => h + ':' + n).join(','); } return r; };

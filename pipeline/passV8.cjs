@@ -39,7 +39,7 @@ const grpOfK = (room, nick) => { const c = CL[C.playerKey(room, nick)]; return c
 // топ для раздачи половины h — отобран по другой половине
 const isTop = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; return (h === 'A' ? T.B : T.A).has(C.playerKey(room, nick)); };
 const isTop5 = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; if (!T.A5) return false; return (h === 'A' ? T.B5 : T.A5).has(C.playerKey(room, nick)); };
-const ROOM_LAYER = new Set((process.env.ROOM_LAYER || 'wpn,ipoker').split(',').filter(Boolean));
+const ROOM_LAYER = new Set((process.env.ROOM_LAYER || 'wpn,ipoker,chico,888,pses').split(',').filter(Boolean));
 const actClass = (d) => (d.act === 'shove' || d.aiEff ? 'shove' : d.act.split(':')[0]);
 C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, '| по формату:', Object.keys(TOPSF).join(',') || 'нет (общие)', '| турниров', Object.keys(TOURN).length, '| игроков с кластером', Object.keys(CL).length);
 
@@ -126,6 +126,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       if (Object.keys(SD).length) stats.sd++;
       const A = C.netAdjusted(rp, fin, SD); if (A.adj) stats.adj++;
       // стадия турнира: точная (места вылета) или оценка (если разрешено STAGE_EST)
+      // год раздачи (2025 / 2026): ячейки «Y|год|…» — для сравнения игры топов и регов по годам (движок их не читает)
+      const year = (/(20\d\d)[\/.-]\d\d[\/.-]\d\d/.exec(String(rp.date || '')) || [])[1] || null;
       let stage = null;
       { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]];
         const sa = T ? STG.stageAt(T, STG.tsOf(rp.date), rp.n) : null;
@@ -159,6 +161,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
         if (rp.hero === i && rp.hc && rp.hc[i]) { const hc = K.parseCards(String(rp.hc[i])); if (hc && hc.length === 2) { const dh = K.h169(hc[0], hc[1]); addHC('D' + (coh === 'T' ? 'T' : g === 'greg' ? 'R' : 'O') + '|' + Sb + '|' + act + '|h' + dh, rel); stats.dealt = (stats.dealt || 0) + 1; } }
         if (g === 'greg') addEV('greg|' + Sb + '|' + act + '|*', rel, fa); // реги по семейству позиций — для поправки весов рук
         // стадия — слой поверх (план C9): отдельные ячейки «Z|стадия|…»; в движке стягиваются к общим, если данных мало
+        if (year) for (const c of [...CO, g === 'greg' ? 'greg' : null]) if (c && c !== 'F') { addEV('Y|' + year + '|' + c + '|' + Sb + '|' + act + '|*', rel, fa); if (d.sz && (act === 'open' || act === 'iso' || act === '3bet' || act === '4bet')) addEV('Y|' + year + '|' + c + '|' + Sb + '|' + act + '@' + d.sz + '|*', rel, fa); }
         if (stage) for (const c of CO) { addEV('Z|' + stage + '|' + c + '|' + S + '|' + act + '|*', rel, fa); addEV('Z|' + stage + '|' + c + '|' + Sb + '|' + act + '|*', rel, fa); }
         // размеры (п.6 → п.8): EV и частоты по корзине сайза — «3bet@3x», чтобы выбирать размер по EV, а не только по частоте
         const sizedA = d.sz && (act === 'open' || act === 'iso' || act === '3bet' || act === '4bet') ? act + '@' + d.sz : null;
@@ -204,7 +207,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   // ---------- сериализация ----------
   // Порог — на СПОТ (сумма по действиям), а не на ячейку: иначе редкие действия выпадают и частоты
   // смещаются к частым (в v6 колл пуша мог исчезнуть, и выходило «все фолдят»). Малые ячейки — только счётчик.
-  const thrEV = (k) => (k[0] === 'T' || k[0] === 'U' ? 8 : k[0] === 'Z' ? 10 : k[0] === 'g' ? 25 : 30);
+  const thrEV = (k) => (k[0] === 'T' || k[0] === 'U' || k[0] === 'Y' ? 8 : k[0] === 'Z' ? 10 : k[0] === 'g' ? 25 : 30);
   const r3 = (v) => Math.round(v * 1000) / 1000;
   const spotOf = (k) => { const a = k.lastIndexOf('|'), b = k.lastIndexOf('|', a - 1); return k.slice(0, b) + k.slice(a); };
   const tot = new Map();
