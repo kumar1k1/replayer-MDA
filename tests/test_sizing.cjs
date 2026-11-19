@@ -49,15 +49,16 @@ ok(sb.aiEff === true && sb.aiAct === false && sb.sz === null, 'SB 60bb став�
 console.log('— рекомендация');
 const T = { tops: {
   'ps|open|36-59|BTN': { n: 9000, mode: 2, rec: 2, share: 80 },
-  'ps|3bet|60+|blinds': { n: 5000, mode: 4, rec: 5, recShare: 34 },
+  'ps|3bet|60+|BB': { n: 5000, mode: 4, rec: 5, recShare: 34 },
+  'ps|3bet|60+|SB': { n: 5000, mode: 4, rec: 4, recShare: 30 },
   'ps|iso|36-59|L1': { n: 4000, mode: 2.5, rec: 2.5 } }, pool: {
   'ps|iso|36-59|L2': { n: 800, mode: 3, rec: 3 } } };
 let r = SZ.recommend({ room: 'ps', action: 'open', band: '36-59', pos: 'BTN', eff: 45 }, T);
 ok(r.to === 2 && !r.allin && /^tops:/.test(r.src), 'BTN 45bb: опен 2 bb по топам');
 r = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'BB', refTo: 2.2, eff: 120 }, T);
 ok(r.to === 11 && r.bucket === '5x+', 'BB 120bb против опена 2.2: 3-бет 5x → 11 bb (корзина топов, а не общая мода 4x)');
-r = SZ.recommend({ room: 'ps', action: 'iso', band: '36-59', pos: 'BTN', nLimp: 2, eff: 50 }, T);
-ok(r.to === 5 && /^pool:ps\|iso\|36-59\|L2/.test(r.src), 'изо над двумя лимперами: +3 → 5 bb (L2 из пула, у топов мало)');
+r = SZ.recommend({ room: 'ps', action: '3bet', band: '150+', pos: 'SB', opp: 'EP', refTo: 3, eff: 160 }, T);
+ok(r.bucket === '4x' && /\|SB$/.test(r.src), 'SB 160bb против опена EP: размер SB, а не BB (никаких BB)');
 r = SZ.recommend({ room: 'ps', action: '3bet', band: '20-35', pos: 'BB', refTo: 2.5, eff: 22 }, T);
 ok(r.allin && r.to === 22, '3-бет ~7.5 bb при эфф. стеке 22 bb (≥30%) → олл-ин');
 r = SZ.recommend({ room: 'ps', action: '4bet', band: '60+', pos: 'CO', refTo: 7, prevTo: 2.2, eff: 100 }, { tops: { 'ps|4bet|60+|*': { n: 500, rec: 1.5 } } });

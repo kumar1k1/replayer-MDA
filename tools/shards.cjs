@@ -8,14 +8,15 @@
 const fs = require('fs'), path = require('path'), os = require('os'), { spawn } = require('child_process'), crypto = require('crypto');
 const [kind, MAIN, NS, MEMS, MEMM] = process.argv.slice(2);
 const N = +NS || 4, ROOT = path.join(__dirname, '..');
-const script = kind === 'v8' ? 'pipeline/passV8.cjs' : 'pipeline/passStats.cjs';
-const STATE = path.join(MAIN, kind === 'v8' ? 'v8_state.ndjson' : 'stats_state.ndjson');
+const script = kind === 'v8' ? 'pipeline/passV8.cjs' : kind === 'sizes' ? 'pipeline/sizes.cjs' : 'pipeline/passStats.cjs';
+const STATE = path.join(MAIN, kind === 'v8' ? 'v8_state.ndjson' : kind === 'sizes' ? 'sizes_state.json' : 'stats_state.ndjson');
 const log = (s) => { const line = new Date().toTimeString().slice(0, 8) + ' ' + s; console.log(line); fs.appendFileSync(path.join(MAIN, 'потоки.log'), new Date().toISOString().slice(0, 19) + ' ' + s + '\n'); };
 fs.mkdirSync(MAIN, { recursive: true });
 
 // список уже пройденных источников главного состояния — первая строка файла состояния
 function mainDone() {
   if (!fs.existsSync(STATE)) return [];
+  if (kind === 'sizes') { const fd = fs.openSync(STATE, 'r'), b = Buffer.alloc(4 << 20), n = fs.readSync(fd, b, 0, b.length, 0); fs.closeSync(fd); const m = /"done":(\[[^\]]*\])/.exec(b.subarray(0, n).toString('utf8')); return m ? JSON.parse(m[1]) : []; }
   const r = JSON.parse(require('../pipeline/common.cjs').firstLine(STATE)); const st = kind === 'v8' ? r[2] : r[1]; return st.done || [];
 }
 function allSources() {

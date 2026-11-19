@@ -11,6 +11,9 @@ const TOPS = process.env.TOPS || path.join(C.OUT, 'tops_v8.json');
 let tops = new Set();
 if (fs.existsSync(TOPS)) { const t = JSON.parse(fs.readFileSync(TOPS, 'utf8')); tops = new Set([...Object.keys(t.A || {}), ...Object.keys(t.B || {})]); }
 C.log('sizes: топов', tops.size);
+const STG = require('../lib/stage.js');
+const tournFile = process.env.TOURN || path.join(C.OUT, 'tourn_v8.json');
+const TOURN = fs.existsSync(tournFile) ? JSON.parse(fs.readFileSync(tournFile, 'utf8')) : {};
 
 // гистограммы значений с точностью 0,01 (а не все значения подряд): на полной базе — десятки миллионов рейзов
 let H = { pool: {}, tops: {} };
@@ -24,19 +27,35 @@ let nDec = 0, nAiEff = 0, nRaise = 0, done = [];
 let seen = new C.IdSet();
 // чекпоинт после каждого архива (RESUME=1 — продолжить, MAX_SOURCES=N — часть)
 const STATE = path.join(C.OUT, 'sizes_state.json'), IDSF = path.join(C.OUT, 'sizes_ids.bin');
-const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ H, HA, commit, nDec, nAiEff, nRaise, done })); fs.renameSync(tmp, STATE); C.saveIds(seen, IDSF); };
+let shardTag = process.env.SHARD_TAG || null, mergedTags = [];
+const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ shardTag, mergedTags, done, nDec, nAiEff, nRaise, commit, H, HA })); fs.renameSync(tmp, STATE); C.saveIds(seen, IDSF); };
+// сложение гистограмм параллельного потока
+const addH = (A, B) => { for (const L in B) for (const k in B[L]) { const a = A[L][k] = A[L][k] || {}; for (const q in B[L][k]) a[q] = (a[q] || 0) + B[L][k][q]; } };
+const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { const a = A[L][k] = A[L][k] || {}; for (const r in B[L][k]) { const g = a[r] = a[r] || {}; for (const q in B[L][k][r]) g[q] = (g[q] || 0) + B[L][k][r][q]; } } };
 
 (async () => {
-  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { ({ H, HA = { pool: {}, tops: {} }, commit, nDec, nAiEff, nRaise, done } = JSON.parse(fs.readFileSync(STATE, 'utf8'))); seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
-  const part = C.partLimiter();
+  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { let st0; ({ H, HA = { pool: {}, tops: {} }, commit, nDec, nAiEff, nRaise, done, mergedTags = [] } = st0 = JSON.parse(fs.readFileSync(STATE, 'utf8'))); if (st0.shardTag) shardTag = st0.shardTag; seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
+  if (process.env.SHARD_TAG) shardTag = process.env.SHARD_TAG;
+  let merged = false;
+  for (const dir of (process.env.MERGE_SHARDS || '').split(';').filter(Boolean)) {
+    const SF = path.join(dir, 'sizes_state.json'); if (!fs.existsSync(SF)) continue;
+    const o = JSON.parse(fs.readFileSync(SF, 'utf8')); if (!o.shardTag || mergedTags.includes(o.shardTag)) { C.log('sizes: поток ' + dir + ' уже сложен — пропускаю'); continue; }
+    addH(H, o.H); addHA(HA, o.HA || {}); for (const L in o.commit) for (const k in o.commit[L]) { const c = commit[L][k] = commit[L][k] || [0, 0]; c[0] += o.commit[L][k][0]; c[1] += o.commit[L][k][1]; }
+    nDec += o.nDec; nAiEff += o.nAiEff; nRaise += o.nRaise; done.push(...o.done); mergedTags.push(o.shardTag); merged = true;
+    C.log('sizes: сложен поток', dir, '— рейзов всего', nRaise);
+  }
+  if (merged) saveState();
+  const part = C.partLimiter(); let unsaved = false;
   for await (const x of C.iterHands(C.sourceFiles(), new Set(done))) {
-    if (x.end) { done.push(x.end); saveState(); C.progress('sizes', done.length); C.log('sizes: пройден', x.end, '(чекпоинт)'); if (part.hit()) { C.log('sizes: часть готова'); process.exit(C.PART_EXIT); } continue; }
+    if (x.end) { done.push(x.end); const ck = done.length % C.CK_EVERY === 0, hit = part.hit(); if (ck || hit) saveState(); unsaved = !(ck || hit); C.progress('sizes', done.length); C.log('sizes: пройден', x.end, ck || hit ? '(чекпоинт)' : ''); if (hit) { C.log('sizes: часть готова'); process.exit(C.PART_EXIT); } continue; }
     let rp; try { rp = parse(x.hand); } catch (e) { continue; }
     if (!rp || !rp.n || !rp.bb) continue;
     const room = C.roomOf(x.hand);
     if (!seen.add(room, rp.handId)) continue;
     const fr = frames(rp); if (!C.handIntact(rp, fr[fr.length - 1], x.hand)) continue;
     const kd = C.kindOf(rp, x.hand, x.fp);
+    // Mystery Bounty в призовых (и без данных о стадии) — не учитываем (как в модели)
+    if (kd === 'm') { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; if (!T || !STG.preITM(T, STG.tsOf(rp.date), rp.n)) continue; }
     for (const d of SP.preflopDecisions(rp, () => '')) {
       nDec++;
       if (d.act === 'shove' || (d.to && !d.aiAct && d.tbl !== 'AI')) {
@@ -56,13 +75,15 @@ const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON
       const v = SZ.measure(a, d.to, d.refTo, d.nLimp);
       const top = tops.has(C.playerKey(room, rp.nm[d.i]));
       // ключи: с форматом турнира (фризаут / PKO) и общие
-      for (const k of SZ.keysFor(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd).slice(0, a === 'open' ? 3 : 2)) {
+      for (const k of SZ.ownKeys(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd, d.oppPos ? SP.posBand(d.oppPos) : null)) {
         add('pool', k, v); if (top) add('tops', k, v);
         if (a !== 'open' && a !== 'iso' && d.refTo > 0) { addA('pool', k, d.refTo, d.to); if (top) addA('tops', k, d.refTo, d.to); }
         const kk = '*' + k.slice(k.indexOf('|')); add('pool', kk, v); if (top) add('tops', kk, v);
       }
     }
   }
+  if (unsaved) saveState();
+  if (process.env.STATE_ONLY === '1') { C.log('sizes: поток готов — состояние сохранено'); return; }
   const table = { built: new Date().toISOString().slice(0, 10), tops: {}, pool: {} };
   for (const L of ['pool', 'tops']) for (const [k, hg] of Object.entries(H[L])) {
     const v = Object.entries(hg).map(([q, c]) => [+q / 100, c]).sort((a, b) => a[0] - b[0]); // [значение, сколько раз]
