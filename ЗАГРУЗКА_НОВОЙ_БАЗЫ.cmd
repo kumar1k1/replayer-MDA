@@ -27,6 +27,8 @@ set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "LAUNCH=%STARTUP%\РЕПЛЕЕР_ЗАГРУЗКА.cmd"
 if not exist "%OUT2%" mkdir "%OUT2%"
 if not exist "%ROOMS2%" mkdir "%ROOMS2%"
+rem служебные списки номеров прошлого перевода WPN и iPoker - перевод закончен, больше не нужны, 4 ГБ
+for %%F in ("%ROOMS%\конвертация_номера*.bin") do del /q "%%F"
 where node >nul 2>nul
 if errorlevel 1 goto :nonode
 if /i "%~2"=="auto" goto :automode
