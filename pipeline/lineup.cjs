@@ -17,7 +17,8 @@ const STG = require('../lib/stage.js');
 const TOURN = fs.existsSync(path.join(OUT, 'tourn_v8.json')) ? JSON.parse(fs.readFileSync(path.join(OUT, 'tourn_v8.json'), 'utf8')) : {};
 const STAGE_EST = process.env.STAGE_EST === '1';
 const NS = ST.PF_SLOTS;
-const players = fs.readFileSync(path.join(OUT, 'players_v8.ndjson'), 'utf8').trim().split('\n').map(JSON.parse);
+// построчно: на полной базе файл больше предела строки Node (512 МБ)
+const players = []; require('./common.cjs').ndForEachSync(path.join(OUT, 'players_v8.ndjson'), (r) => players.push(r));
 const CLS = JSON.parse(fs.readFileSync(path.join(OUT, 'players_cl_v8.json'), 'utf8'));
 const PF = new Map(), CLOF = new Map();
 const pool = new Float64Array(NS), cl = {};

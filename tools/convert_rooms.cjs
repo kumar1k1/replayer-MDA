@@ -20,7 +20,7 @@ const LOG_F = path.join(OUTR, 'конвертация' + (TAG ? '_' + TAG : '') 
 const log = (s) => { console.log(s); fs.appendFileSync(LOG_F, new Date().toISOString().slice(0, 19) + ' ' + s + '\n'); };
 const C = require('../pipeline/common.cjs');
 const done = fs.existsSync(DONE_F) ? JSON.parse(fs.readFileSync(DONE_F, 'utf8')) : {};
-const seen = fs.existsSync(IDS_F) ? C.loadIds(IDS_F) : new C.IdSet(27); // номера раздач (рум + номер), ~1 ГБ
+const seen = fs.existsSync(IDS_F) ? C.loadIds(IDS_F) : new C.IdSet(+(process.env.CONV_IDS_BITS || 27)); // номера раздач (рум + номер), ~1 ГБ
 const CHUNK = 150 * 1024 * 1024;
 
 // остатки прерванного запуска
@@ -82,7 +82,8 @@ async function doRar(ent, key, room) {
   const tmp = path.join(TMP, 'conv_' + process.pid + (is7 ? '.7z' : '.rar'));
   await new Promise((res, rej) => { const o = fs.createWriteStream(tmp); const r = Z.openEntry(ent); r.on('error', rej); o.on('error', rej); o.on('finish', res); r.pipe(o); });
   const st = { files: 0, hands: 0, dup: 0, bad: 0 };
-  const base = key.replace(/[\\/:*?"<>|\s]+/g, '_').replace(/\.(rar|7z)$/i, '');
+  // «h2n3» в имени конвейер пропускает (повторы h2n3/h2n4) — у переведённых файлов метку убираем, повторы отсеются по номерам раздач
+  const base = key.replace(/[\\/:*?"<>|\s]+/g, '_').replace(/\.(rar|7z)$/i, '').replace(/h2n[-_]?3/ig, 'h2nv3');
   const W = writerFor(room, base);
   const put = (t) => {
     const id = /Hand #(\d+)/.exec(t)[1];

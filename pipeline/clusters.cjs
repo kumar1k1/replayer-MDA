@@ -20,7 +20,8 @@ const K = CLU.create(MODEL);
 const NCL = ST.CL.length;
 const MERGE_MIN = +(process.env.MERGE_MIN || 500);
 const pool = JSON.parse(fs.readFileSync(path.join(OUT, 'pool_v8.json'), 'utf8'));
-const players = fs.readFileSync(path.join(OUT, 'players_v8.ndjson'), 'utf8').trim().split('\n').map(JSON.parse);
+// построчно: на полной базе файл больше предела строки Node (512 МБ)
+const players = []; require('./common.cjs').ndForEachSync(path.join(OUT, 'players_v8.ndjson'), (r) => players.push(r));
 // счётчики статов кластера игрока: [половина][формат][стат] → [возможности, попадания]
 const cnt = (p, h, f, s) => { const o = ((h * 2 + f) * NCL + s) * 2; return [p.cl[o], p.cl[o + 1]]; };
 const sumH = (p, f, s, halves) => { let a = 0, b = 0; for (const h of halves) { const [o, x] = cnt(p, h, f, s); a += o; b += x; } return [a, b]; };

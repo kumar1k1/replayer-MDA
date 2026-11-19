@@ -51,7 +51,7 @@ function handIntact(rp, fin, text) {
 // 100 млн номеров ≈ 1 ГБ при ёмкости 2^27. Номер раздачи у PS/CoinPoker — до ~3e11; рум кодируется сдвигом 1e12.
 class IdSet {
   constructor(bits) { this.cap = 2 ** (bits || +(process.env.IDSET_BITS || 27)); this.mask = this.cap - 1; this.t = new Float64Array(this.cap); this.n = 0; }
-  key(room, id) { return ({ ps: 1, coin: 2, gg: 3, wpn: 5, ipoker: 6 }[room] || 4) * 1e12 + (+id % 1e12) + 1; }
+  key(room, id) { return ({ ps: 1, coin: 2, gg: 3, wpn: 5, ipoker: 6, chico: 7, '888': 8, pses: 9 }[room] || 4) * 1e12 + (+id % 1e12) + 1; }
   // вставить готовый ключ (слияние множеств из параллельных потоков)
   addRaw(k) {
     if (this.n > this.cap * 0.85) this.grow();
