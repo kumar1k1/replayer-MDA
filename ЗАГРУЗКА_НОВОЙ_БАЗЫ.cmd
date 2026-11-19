@@ -67,6 +67,13 @@ echo Памяти %RAMGB% ГБ, ядер %NUMBER_OF_PROCESSORS%, потоков %NS%, перевод - %NC
 rem автозапуск: пока загрузка не закончена, после включения компьютера она продолжится сама
 > "%LAUNCH%" echo @start "" "%~f0" auto
 
+rem 888: в выгрузках с конца 2025 collected включает возврат ставки - перевод исправлен 20.11, переведённое раньше 888 переделать
+if exist "%ROOMS2%\888_v2.flag" goto :p888
+for /d %%D in ("%ROOMS2%\888__*") do rmdir /s /q "%%D"
+if exist "%ROOMS2%\флаги\888__*.flag" del /q "%ROOMS2%\флаги\888__*.flag"
+if exist "%ROOMS2%\перевод_готов.flag" del /q "%ROOMS2%\перевод_готов.flag"
+echo %date% %time% > "%ROOMS2%\888_v2.flag"
+:p888
 if exist "%ROOMS2%\перевод_готов.flag" goto :s2
 echo.
 echo [1] Перевод архивов - начало %date% %time%

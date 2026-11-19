@@ -276,11 +276,18 @@ function e888ToPS(t, fp) {
   }
   // неуравненная часть: вложено больше всех и выше второго
   const order = pl.slice().sort((x, y) => inv[y] - inv[x]);
-  if (inv[order[0]] > inv[order[1]] + 1e-9) { const d = inv[order[0]] - inv[order[1]]; out.push(`Uncalled bet (${fmt(d)}) returned to ${order[0]}`); inv[order[0]] -= d; }
+  let unc = 0;
+  if (inv[order[0]] > inv[order[1]] + 1e-9) { unc = inv[order[0]] - inv[order[1]]; out.push(`Uncalled bet (${fmt(unc)}) returned to ${order[0]}`); inv[order[0]] -= unc; }
   if (shows.length) { out.push('*** SHOW DOWN ***'); out.push(...shows); }
   let pot = 0; for (const p of pl) pot += inv[p];
-  const won = coll.reduce((s2, x) => s2 + x[1], 0);
-  if (!coll.length || Math.abs(won - pot) > Math.max(2, pot * 0.001)) return why888('банк не сходится'); // банк не сходится — раздачу не берём
+  let won = coll.reduce((s2, x) => s2 + x[1], 0);
+  const tol = Math.max(2, pot * 0.001);
+  // выгрузки 888 с конца 2025: «collected» включает возврат неуравненной ставки — вычитаем его у того, кому вернули
+  if (unc > 0 && Math.abs(won - pot) > tol && Math.abs(won - pot - unc) <= tol) {
+    const c = coll.find(x => x[0] === order[0]); if (c && c[1] >= unc - 1e-9) { c[1] -= unc; won -= unc; }
+    for (let q = coll.length - 1; q >= 0; q--) if (coll[q][1] <= 1e-9) coll.splice(q, 1);
+  }
+  if (!coll.length || Math.abs(won - pot) > tol) return why888('банк не сходится'); // банк не сходится — раздачу не берём
   for (const [p2, x] of coll) out.push(`${p2} collected ${fmt(x)} from pot`);
   out.push('*** SUMMARY ***', `Total pot ${fmt(pot)} | Rake 0`);
   if (board.length) out.push(`Board [${board.join(' ')}]`);
