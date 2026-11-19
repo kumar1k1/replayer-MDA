@@ -529,7 +529,8 @@
         if (act === 'fold') return Object.assign(row, { ev: 0, se: 0, src: 'точно', n: null, evBase: 0 });
         let size = sizeFor(sp, act);
         const vars = sizeVariants(sp, act, cards, h, info);
-        if (vars && vars.length) {
+        if (size && size.none) { row.size = size; row.ru = RU[act] + ' (размер: нет данных)'; if (vars && vars.length) row.sizes = vars; }
+        else if (vars && vars.length) {
           row.sizes = vars;
           const pk = pickSize(sp, act, vars);
           // размер — как ставят топы (самая частая корзина, реальная сумма); EV по размерам — только подсказка
@@ -541,12 +542,12 @@
           const ch = vars.find(v => v.bucket === (size && size.bucket));
           if (ch && ch.oppFold) row.oppFold = ch.oppFold;
         }
-        if (size) { row.size = size; row.ru = RU[act] + ' до ' + size.to + ' bb'; if (size.allin) row.asShove = true; }
+        if (size && !size.none) { row.size = size; row.ru = RU[act] + ' до ' + size.to + ' bb'; if (size.allin) row.asShove = true; }
         if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold, bounty: r.bounty, sd: r.sd, risk: r.risk, pMulti: r.pMulti }); }
         if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq, bounty: r.bounty }); }
         const sl = spotLevel('T', sp, act);
         let pfa = sl.pfa, mfa = sl.mfa, pfaSrc = 'спот';
-        const fa = foldAllFor(sp, act, sl, info, size && size.bucket);
+        const fa = foldAllFor(sp, act, sl, info, size && !size.none ? size.bucket : null);
         if (fa) { pfa = fa.p; pfaSrc = fa.src; row.lineup = fa.each || null; if (act === 'open') mfa = sp.potBefore; }
         row.pFold = pfa; row.pFoldSrc = pfaSrc;
         if (cards) {
@@ -637,9 +638,9 @@
       }
       const recRow2 = rowOf(rec.act);
       rec.size = recRow2 && recRow2.size && !recRow2.asShove ? recRow2.size : null;
-      rec.ru = rec.size ? RU[rec.act] + ' до ' + rec.size.to + ' bb' : RU[rec.act] || rec.act;
+      rec.ru = rec.size && !rec.size.none ? RU[rec.act] + ' до ' + rec.size.to + ' bb' : rec.size && rec.size.none ? RU[rec.act] + ' (размер: нет данных)' : RU[rec.act] || rec.act;
       let compare = null;
-      const callR = rowOf('call'), raiseR = ['3bet', 'iso', '4bet', 'open'].map(rowOf).find(r => r && r.size);
+      const callR = rowOf('call'), raiseR = ['3bet', 'iso', '4bet', 'open'].map(rowOf).find(r => r && r.size && !r.size.none);
       if (callR && raiseR && callR.ev != null) {
         const v = raiseR.sizes && raiseR.sizes.find(x => x.bucket === raiseR.size.bucket);
         const rev = v && v.ev != null ? v.ev : raiseR.ev, rn = v && v.ev != null ? v.n : raiseR.n;
@@ -656,7 +657,7 @@
     // вердикт фактическому действию: act — метка из разметки (open:x2.2 / shove / …), sz — корзина сайза (d.sz)
     function verdict(adv, act, sz) {
       const a = actClass(act);
-      const sizeNote = () => (adv.rec.size && sz && sz !== adv.rec.size.bucket ? '; сайз: у вас ' + sz + ', у топов ' + adv.rec.size.bucket + ' (до ' + adv.rec.size.to + ' bb)' : '');
+      const sizeNote = () => (adv.rec.size && !adv.rec.size.none && sz && sz !== adv.rec.size.bucket ? '; сайз: у вас ' + sz + ', у топов ' + adv.rec.size.bucket + ' (до ' + adv.rec.size.to + ' bb)' : '');
       if (adv.rec && /^частоты/.test(adv.rec.why)) {
         if (a === adv.rec.act) return { kind: 'лучшее', d: 0, text: 'совпадает с базой (' + adv.rec.why + ')' + sizeNote() };
         return { kind: 'отклонение', text: 'по базе здесь «' + adv.rec.ru + '» (' + adv.rec.why + ')' };

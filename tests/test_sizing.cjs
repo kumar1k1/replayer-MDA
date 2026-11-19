@@ -60,12 +60,12 @@ ok(r.to === 11 && r.bucket === '5x+', 'BB 120bb против опена 2.2: 3-�
 r = SZ.recommend({ room: 'ps', action: '3bet', band: '150+', pos: 'SB', opp: 'EP', refTo: 3, eff: 160 }, T);
 ok(r.bucket === '4x' && /100-149\|SB$/.test(r.src), 'SB 160bb против опена EP: нет данных 150+ → соседний глубокий 100-149, и только SB');
 r = SZ.recommend({ room: 'ps', action: '3bet', band: '36-59', pos: 'SB', refTo: 2.2, eff: 45 }, T);
-ok(r.src === 'default', 'средний стек: только свой стек — нет данных 36-59 → запасное значение, без глубоких стеков');
-r = SZ.recommend({ room: 'ps', action: '3bet', band: '20-35', pos: 'BB', refTo: 2.5, eff: 22 }, T);
+ok(r.none === true && r.to === null, 'средний стек: только свой стек — нет данных 36-59 → «нет данных», без глубоких стеков и без запасного значения');
+r = SZ.recommend({ room: 'ps', action: '3bet', band: '20-35', pos: 'BB', refTo: 2.5, eff: 22, allowDefault: true }, T);
 ok(r.allin && r.to === 22, '3-бет ~7.5 bb при эфф. стеке 22 bb (≥30%) → олл-ин');
-r = SZ.recommend({ room: 'ps', action: '4bet', band: '60+', pos: 'CO', refTo: 7, prevTo: 2.2, eff: 100 }, { tops: { 'ps|4bet|60+|*': { n: 500, rec: 1.5 } } });
+r = SZ.recommend({ room: 'ps', action: '4bet', band: '60+', pos: 'CO', refTo: 7, prevTo: 2.2, eff: 100, allowDefault: true }, { tops: { 'ps|4bet|60+|*': { n: 500, rec: 1.5 } } });
 ok(r.to >= 11.8, '4-бет не меньше минимального рейза (7 + 4.8 = 11.8 bb), даже если таблица даёт 1.5x');
-ok(SZ.recommend({ room: 'coin', action: 'open', band: '<12', pos: 'EP', eff: 10 }, {}).src === 'default', 'нет таблицы — запасное значение');
+ok(SZ.recommend({ room: 'coin', action: 'open', band: '<12', pos: 'EP', eff: 10 }, {}).none === true, 'нет данных — «нет данных», а не запасное значение');
 
 console.log('— класс соперника');
 {
@@ -83,7 +83,9 @@ console.log('— класс соперника');
   let rv = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2, eff: 120, v: 'n' }, TV);
   ok(rv.vs === 'n' && rv.bucket === '≤2.5x', 'против нита берётся размер топов против нитов, а не общий');
   rv = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2, eff: 120, v: 'f' }, TV);
-  ok(rv.vs === null && rv.bucket === '3x', 'против фиша данных нет → общий размер');
+  ok(rv.none === true && rv.vs === 'f' && /против фиша/.test(rv.why), 'против фиша у топов < 100 рук → «нет данных по размеру против фиша», общий размер не подставляется');
+  rv = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2, eff: 120, v: null }, TV);
+  ok(!rv.none && rv.bucket === '3x', 'класс соперника неизвестен → размер топов в этом споте против всех');
 }
 
 if (!fails) console.log('\nВсе проверки сайзингов пройдены');
