@@ -328,6 +328,7 @@
     // Возвращает и разброс результата (σ, bb) — для проверки «стоит ли дисперсия такого перевеса».
     const SHOVE_MIN_EDGE = (opts && opts.shoveMinEdge != null) ? opts.shoveMinEdge : 0.5, SHOVE_MIN_EDGE_PCT = (opts && opts.shoveMinEdgePct != null) ? opts.shoveMinEdgePct : 0.02;
     const CALL_MIN_EDGE = (opts && opts.callMinEdge != null) ? opts.callMinEdge : 0.5, CALL_MIN_EDGE_PCT = (opts && opts.callMinEdgePct != null) ? opts.callMinEdgePct : 0.02;
+    const TABLE_SOFT = (opts && opts.tableSoft != null) ? opts.tableSoft : 0.34; // доля фишей среди известных за столом — «слабый стол»
     function shoveEV(sp, cards, info) {
       const h = K.h169(cards[0], cards[1]), tk = sp.tb + sp.kd;
       let nR = 0, noData = []; const bounties = [];
@@ -570,7 +571,7 @@
         }
         if (size && !size.none) { row.size = size; row.ru = RU[act] + ' до ' + size.to + ' bb'; if (size.allin) row.asShove = true; }
         if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold, bounty: r.bounty, sd: r.sd, risk: r.risk, pMulti: r.pMulti }); }
-        if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq, bounty: r.bounty }); }
+        if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq, bounty: r.bounty, bountyBB: r.bountyBB }); }
         const sl = spotLevel('T', sp, act);
         let pfa = sl.pfa, mfa = sl.mfa, pfaSrc = 'спот';
         const fa = foldAllFor(sp, act, sl, info, size && !size.none ? size.bucket : null);
@@ -667,8 +668,18 @@
       if (rec.act === 'call' && sp.tbl === 'AI') {
         const cr = rowOf('call'), risk = sp.toCall > 0 ? Math.min(sp.toCall, sp.behind != null ? sp.behind : sp.toCall) : 0;
         if (cr && cr.ev != null && risk > 0) {
-          const need = Math.max(CALL_MIN_EDGE, CALL_MIN_EDGE_PCT * risk), r2 = (v) => Math.round(v * 100) / 100;
-          if (cr.ev < need) { rec = { act: 'fold', why: 'колл олл-ина в плюс всего на ' + r2(cr.ev) + ' bb при доплате ' + r2(risk) + ' bb — микроплюс не стоит дисперсии, нужно хотя бы ' + r2(need) + ' bb' }; best = rowOf('fold') || best; }
+          // состав стола (владелец, 20.11.2026): за слабым столом стек дороже — выигрываем у фишей и без риска, запас ×2;
+          // за сильным (фишей нет, регов и нитов ≥ 4) — запас вдвое меньше, а в PKO с баунти соперника хватает «чуть в плюс»
+          const T = sp.table || {}, fish = (T.fish || 0) + (T.superfish || 0), solid = (T.reg || 0) + (T.nit || 0), known = fish + solid;
+          const soft = known >= 3 && fish / known >= TABLE_SOFT, hard = known >= 4 && fish === 0;
+          const bnt = (cr.bountyBB || 0) > 0;
+          let need = Math.max(CALL_MIN_EDGE, CALL_MIN_EDGE_PCT * risk), tw = '';
+          if (soft) { need *= 2; tw = '; стол слабый (фишей ' + fish + ' из ' + known + ') — стек дороже, запас вдвое больше'; }
+          else if (hard && bnt) { need = 0.05; tw = '; стол сильный, PKO — за баунти достаточно небольшого плюса'; }
+          else if (hard) { need /= 2; tw = '; стол сильный (фишей нет) — запас вдвое меньше'; }
+          const r2 = (v) => Math.round(v * 100) / 100;
+          if (cr.ev < need) { rec = { act: 'fold', why: 'колл олл-ина в плюс всего на ' + r2(cr.ev) + ' bb при доплате ' + r2(risk) + ' bb — нужно хотя бы ' + r2(need) + ' bb' + tw }; best = rowOf('fold') || best; }
+          else if (tw) rec.why = (rec.why ? rec.why + '; ' : '') + 'запас для колла: ' + r2(need) + ' bb' + tw;
         }
       }
       const recRow2 = rowOf(rec.act);
