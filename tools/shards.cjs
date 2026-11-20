@@ -7,13 +7,15 @@
 // Каждый поток слияние берёт один раз (метка потока записывается в главное состояние); после слияния папки потоков удаляются.
 const fs = require('fs'), path = require('path'), os = require('os'), { spawn } = require('child_process'), crypto = require('crypto');
 const [kind, MAIN, NS, MEMS, MEMM] = process.argv.slice(2);
-const N = +NS || 4, ROOT = path.join(__dirname, '..');
+const ROOT = path.join(__dirname, '..');
 const script = kind === 'v8' ? 'pipeline/passV8.cjs' : kind === 'sizes' ? 'pipeline/sizes.cjs' : kind === 'winq' ? 'pipeline/winq.cjs' : 'pipeline/passStats.cjs';
 const STATE = path.join(MAIN, kind === 'v8' ? 'v8_state.ndjson' : kind === 'sizes' ? 'sizes_state.json' : kind === 'winq' ? 'winq_state.json' : 'stats_state.ndjson');
 // память потока: из командной строки, но не меньше, чем в <главная папка>/память_потока.txt (можно поднять без правки .cmd:
 // поток статов с большим архивом старой базы упирался в 3 ГБ — код 134)
-const memMerge = () => { let m = +MEMM || 12288; try { const f = path.join(MAIN, 'память_слияния.txt'); if (fs.existsSync(f)) m = Math.max(m, +fs.readFileSync(f, 'utf8').trim() || 0); } catch (e) {} return m; };
-const memShard = () => { let m = +MEMS || 4096; try { const f = path.join(MAIN, 'память_потока.txt'); if (fs.existsSync(f)) m = Math.max(m, +fs.readFileSync(f, 'utf8').trim() || 0); } catch (e) {} return m; };
+// настройки шага из файлов в главной папке: сначала «<имя>.<шаг>.txt» (например «потоков.winq.txt»), иначе «<имя>.txt» — только для статов
+const knob = (name) => { for (const f of [name + '.' + kind + '.txt'].concat(kind === 'stats' ? [name + '.txt'] : [])) { try { const p = path.join(MAIN, f); if (fs.existsSync(p)) { const v = +fs.readFileSync(p, 'utf8').trim(); if (v > 0) return v; } } catch (e) {} } return 0; };
+const memMerge = () => Math.max(+MEMM || 12288, knob('память_слияния'));
+const memShard = () => { const k = knob('память_потока'); return k || +MEMS || 4096; };
 const log = (s) => { const line = new Date().toTimeString().slice(0, 8) + ' ' + s; console.log(line); fs.appendFileSync(path.join(MAIN, 'потоки.log'), new Date().toISOString().slice(0, 19) + ' ' + s + '\n'); };
 fs.mkdirSync(MAIN, { recursive: true });
 
@@ -27,6 +29,7 @@ function allSources() {
   delete process.env.SOURCE_LIST; return require('../pipeline/common.cjs').sourceFiles();
 }
 
+const N = knob('потоков') || +NS || 4;
 (async () => {
   const shardDir = (i) => path.join(MAIN, 'shard_' + i);
   const planF = path.join(MAIN, 'потоки_план.json');
@@ -61,7 +64,7 @@ function allSources() {
       ch.on('close', (code) => { log(`поток ${i + 1}: ${code === 0 ? 'готов' : 'ОСТАНОВИЛСЯ, код ' + code + ' — ' + last.slice(0, 200)}`); res(code); });
     });
     // сколько потоков одновременно: все, или не больше, чем в <главная папка>/потоков_одновременно.txt (при большой памяти на поток)
-    let par = plan.n; try { const f = path.join(MAIN, 'потоков_одновременно.txt'); if (fs.existsSync(f)) par = Math.max(1, Math.min(par, +fs.readFileSync(f, 'utf8').trim() || par)); } catch (e) {}
+    let par = plan.n; { const k = knob('потоков_одновременно'); if (k) par = Math.max(1, Math.min(par, k)); }
     if (par < plan.n) log(`одновременно не больше ${par} потоков из ${plan.n}`);
     const codes = new Array(plan.n), q = plan.lists.map((_, i) => i);
     await Promise.all(Array.from({ length: par }, async () => { while (q.length) { const i = q.shift(); codes[i] = await runOne(i); } }));
