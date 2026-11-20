@@ -8,8 +8,8 @@
 const fs = require('fs'), path = require('path'), os = require('os'), { spawn } = require('child_process'), crypto = require('crypto');
 const [kind, MAIN, NS, MEMS, MEMM] = process.argv.slice(2);
 const ROOT = path.join(__dirname, '..');
-const script = kind === 'v8' ? 'pipeline/passV8.cjs' : kind === 'sizes' ? 'pipeline/sizes.cjs' : kind === 'winq' ? 'pipeline/winq.cjs' : 'pipeline/passStats.cjs';
-const STATE = path.join(MAIN, kind === 'v8' ? 'v8_state.ndjson' : kind === 'sizes' ? 'sizes_state.json' : kind === 'winq' ? 'winq_state.json' : 'stats_state.ndjson');
+const script = kind === 'v8' ? 'pipeline/passV8.cjs' : kind === 'sizes' ? 'pipeline/sizes.cjs' : kind === 'winq' ? 'pipeline/winq.cjs' : kind === 'stages' ? 'pipeline/stages.cjs' : 'pipeline/passStats.cjs';
+const STATE = path.join(MAIN, kind === 'v8' ? 'v8_state.ndjson' : kind === 'sizes' ? 'sizes_state.json' : kind === 'winq' ? 'winq_state.json' : kind === 'stages' ? 'stages_state.json' : 'stats_state.ndjson');
 // память потока: из командной строки, но не меньше, чем в <главная папка>/память_потока.txt (можно поднять без правки .cmd:
 // поток статов с большим архивом старой базы упирался в 3 ГБ — код 134)
 // настройки шага из файлов в главной папке: сначала «<имя>.<шаг>.txt» (например «потоков.winq.txt»), иначе «<имя>.txt» — только для статов
@@ -22,7 +22,7 @@ fs.mkdirSync(MAIN, { recursive: true });
 // список уже пройденных источников главного состояния — первая строка файла состояния
 function mainDone() {
   if (!fs.existsSync(STATE)) return [];
-  if (kind === 'sizes' || kind === 'winq') { const fd = fs.openSync(STATE, 'r'), b = Buffer.alloc(4 << 20), n = fs.readSync(fd, b, 0, b.length, 0); fs.closeSync(fd); const m = /"done":(\[[^\]]*\])/.exec(b.subarray(0, n).toString('utf8')); return m ? JSON.parse(m[1]) : []; }
+  if (kind === 'sizes' || kind === 'winq' || kind === 'stages') { const fd = fs.openSync(STATE, 'r'), b = Buffer.alloc(4 << 20), n = fs.readSync(fd, b, 0, b.length, 0); fs.closeSync(fd); const m = /"done":(\[[^\]]*\])/.exec(b.subarray(0, n).toString('utf8')); return m ? JSON.parse(m[1]) : []; }
   const r = JSON.parse(require('../pipeline/common.cjs').firstLine(STATE)); const st = kind === 'v8' ? r[2] : r[1]; return st.done || [];
 }
 function allSources() {
