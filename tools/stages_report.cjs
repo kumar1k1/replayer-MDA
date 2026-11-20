@@ -62,6 +62,21 @@ for (const s of ST) {
 }
 lines.push('');
 
+// ---- хватает ли данных для подсказок: последние столы (владелец, 20.11.2026) ----
+const LT = ['T4-6', 'T3', 'T2', 'T1'], LT_RU = { 'T4-6': '4–6 столов', T3: '3 стола', T2: '2 стола', T1: 'финальный стол' };
+const MINS = +(process.env.MIN_SPOT || 300);
+lines.push('## Хватит ли данных для подсказок: последние столы', '', 'Только турниры с местами вылета. «Ячеек с данными» — сколько пар «метрика × полоса стека», где у регов не меньше ' + MINS + ' решений (это грубая метка: в реальном споте ещё делится по позициям, размерам и классу соперника — нужно больше).', '',
+  '| Сколько осталось | раздач | решений регов | ячеек с данными (из ' + metrics.length * BANDS.length + ') |', '|---|---|---|---|');
+const covRow = (lb, ru) => { let dec = 0, cells = 0; for (const m of metrics) for (const b of BANDS) { const A = get(lb, m, 'reg', b); const n = A ? A[0] : 0; dec += n; if (n >= MINS) cells++; } lines.push('| ' + ru + ' | ' + (S.H[lb] || 0).toLocaleString('ru') + ' | ' + dec.toLocaleString('ru') + ' | ' + cells + ' |'); J.coverage = J.coverage || []; J.coverage.push({ stage: lb, hands: S.H[lb] || 0, regDecisions: dec, cells }); };
+for (const s of ST) covRow(s, ST_RU[s]);
+for (const t of LT) covRow(t, LT_RU[t]);
+lines.push('', '### Последние столы против пузыря: насколько отличается игра', '', '| Метрика | группа | стек | ' + ['bub'].concat(LT).map(x => x === 'bub' ? 'пузырь' : LT_RU[x]).join(' | ') + ' |', '|---|---|---|' + ['bub'].concat(LT).map(() => '---').join('|') + '|');
+for (const m of ['open:BTN', 'open:CO', 'shove1', 'stealFold', 'vso3b', 'aiCall1']) for (const g of ['reg', 'fish']) for (const b of ['<12', '12-20', '20-30']) {
+  const cells = ['bub'].concat(LT).map(s => { const A = get(s, m, g, b); if (!A || A[0] < 50) return A ? '(' + A[0] + ')' : '—'; return fmt(m, val(A)) + ' (' + A[0] + ')'; });
+  lines.push('| ' + (MET_RU[m] || m) + ' | ' + GR_RU[g] + ' | ' + b + ' | ' + cells.join(' | ') + ' |');
+}
+lines.push('');
+
 lines.push('## Подробно: реги и фиши, стеки 12–50 bb', '');
 for (const g of ['reg', 'fish']) for (const b of ['12-20', '20-30', '30-50']) {
   lines.push('### ' + GR_RU[g] + ', ' + b + ' bb', '', '| Метрика | ' + ST.map(s => ST_RU[s]).join(' | ') + ' |', '|---|' + ST.map(() => '---').join('|') + '|');

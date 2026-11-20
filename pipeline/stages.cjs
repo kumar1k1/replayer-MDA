@@ -39,7 +39,11 @@ function stage6(T, t, tmax) {
   else { N = 1000; R = Math.round(sa.r * N); paid = 150; if (sa.stage === 'ft') R = Math.min(R, ftN); }
   const out = 1 - R / N;
   const s = R <= ftN ? 'ft' : R <= paid ? 'itm' : R <= paid * 1.3 ? 'bub' : out < 0.25 ? 's1' : out < 0.5 ? 's2' : 's3';
-  return sa.exact ? s : 'e:' + s;
+  // сколько столов осталось (только точно, по местам вылета): 6 и меньше — отдельно, чтобы понять, с какого момента
+  // данных для подсказок уже не хватает (владелец, 20.11.2026)
+  let lt = null;
+  if (sa.exact) { const t = Math.ceil(R / (tmax || 9)); lt = t <= 1 ? 'T1' : t === 2 ? 'T2' : t === 3 ? 'T3' : t <= 6 ? 'T4-6' : null; }
+  return { s: sa.exact ? s : 'e:' + s, lt };
 }
 
 let M = {}, H = {}, done = [], hands = 0, shardTag = process.env.SHARD_TAG || null, mergedTags = [];
@@ -83,12 +87,14 @@ const LP = new Set(['CO', 'BTN', 'SB', 'BTN/SB']);
         for (let i = 0; i < rp.n; i++) { if (!WANT.has(keys[i])) continue; const a = W[keys[i]] || (W[keys[i]] = new Array(NW).fill(0)), b = net[i] / rp.bb; a[o]++; a[o + 1] += b; a[o + 2] += b * b; } }
     }
     const T = TOURN[room + ':' + tm[1]]; if (!T) { H.none = (H.none || 0) + 1; continue; }
-    const st = stage6(T, STG.tsOf(rp.date), rp.n); if (!st) { H.none = (H.none || 0) + 1; continue; }
+    const s6 = stage6(T, STG.tsOf(rp.date), rp.n); if (!s6) { H.none = (H.none || 0) + 1; continue; }
+    const st = s6.s, LBL = s6.lt ? [st, s6.lt] : [st]; if (s6.lt) H[s6.lt] = (H[s6.lt] || 0) + 1;
     H[st] = (H[st] || 0) + 1; hands++;
     const G = keys.map(grpOf);
     const ds = SP.preflopDecisions(rp, () => '', false);
     for (const d of ds) {
-      const g = G[d.i], b = BAND(d.eff), pre = st + '|', suf = '|' + g + '|' + b, a = d.act || '';
+      for (const lb of LBL) {
+      const g = G[d.i], b = BAND(d.eff), pre = lb + '|', suf = '|' + g + '|' + b, a = d.act || '';
       const raise = a === 'shove' || /^(open|iso|3bet)/.test(a) || a === '4bet' || a === 'raise';
       if (d.tbl === 'RFI' && d.pos !== 'BB') {
         const pb = SP.posBand(d.pos);
@@ -104,6 +110,7 @@ const LP = new Set(['CO', 'BTN', 'SB', 'BTN/SB']);
       }
       if (d.tbl === 'VS3' && d.openI === d.i && d.C === 'C0') add(pre + 'vs3Fold' + suf, a === 'fold' ? 1 : 0);
       if (d.tbl === 'AI' && d.C === 'C0' && (d.L === 'R1' || d.L === 'R2')) add(pre + (d.L === 'R1' ? 'aiCall1' : 'aiCall2') + suf, a === 'call' ? 1 : 0);
+      }
     }
   }
   if (unsaved || process.env.KEEP_STATE === '1') saveState();
