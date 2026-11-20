@@ -666,7 +666,9 @@
           const alts = rows.filter(r => r.act !== 'shove' && !r.asShove && (r.act === 'fold' || (evHand(r) != null && evHand(r) > 0)));
           const alt = alts.sort((x, y) => (x.act === 'fold' ? 0 : evHand(x)) < (y.act === 'fold' ? 0 : evHand(y)) ? 1 : -1)[0];
           const aEV = alt ? (alt.act === 'fold' ? 0 : evHand(alt)) : 0, edge = sh.ev - aEV;
-          const { need, tw } = tableNeed(sp, Math.max(SHOVE_MIN_EDGE, SHOVE_MIN_EDGE_PCT * sh.risk), !!sh.bounty);
+          // пуш — по фолд-эквити конкретных соперников (кластер + личные статы, лайнап), без поправки на состав стола
+          // (владелец, 20.11.2026): переброс у соперника = активно пушим и рестилим; запас — только на погрешность оценки
+          const need = Math.max(SHOVE_MIN_EDGE, SHOVE_MIN_EDGE_PCT * sh.risk), tw = '';
           const r2 = (v) => Math.round(v * 100) / 100;
           if (alt && edge < need) { rec = { act: alt.act, why: 'олл-ин лучше ' + (RU[alt.act] || alt.act) + ' всего на ' + r2(edge) + ' bb при риске ' + r2(sh.risk) + ' bb (разброс ±' + r2(sh.sd || 0) + ' bb) — не стоит дисперсии, нужно хотя бы ' + r2(need) + ' bb' + tw }; best = alt; }
           else if (tw) rec.why = (rec.why ? rec.why + '; ' : '') + 'запас для олл-ина: ' + r2(need) + ' bb' + tw;
