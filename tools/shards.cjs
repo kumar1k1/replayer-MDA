@@ -12,6 +12,7 @@ const script = kind === 'v8' ? 'pipeline/passV8.cjs' : kind === 'sizes' ? 'pipel
 const STATE = path.join(MAIN, kind === 'v8' ? 'v8_state.ndjson' : kind === 'sizes' ? 'sizes_state.json' : kind === 'winq' ? 'winq_state.json' : 'stats_state.ndjson');
 // память потока: из командной строки, но не меньше, чем в <главная папка>/память_потока.txt (можно поднять без правки .cmd:
 // поток статов с большим архивом старой базы упирался в 3 ГБ — код 134)
+const memMerge = () => { let m = +MEMM || 12288; try { const f = path.join(MAIN, 'память_слияния.txt'); if (fs.existsSync(f)) m = Math.max(m, +fs.readFileSync(f, 'utf8').trim() || 0); } catch (e) {} return m; };
 const memShard = () => { let m = +MEMS || 4096; try { const f = path.join(MAIN, 'память_потока.txt'); if (fs.existsSync(f)) m = Math.max(m, +fs.readFileSync(f, 'utf8').trim() || 0); } catch (e) {} return m; };
 const log = (s) => { const line = new Date().toTimeString().slice(0, 8) + ' ' + s; console.log(line); fs.appendFileSync(path.join(MAIN, 'потоки.log'), new Date().toISOString().slice(0, 19) + ' ' + s + '\n'); };
 fs.mkdirSync(MAIN, { recursive: true });
@@ -72,7 +73,7 @@ function allSources() {
   log(`слияние ${dirs.length} потоков в главное состояние и итоги — начало`);
   const env = Object.assign({}, process.env, { OUT_DIR: MAIN, SOURCE_LIST: empty, RESUME: '1', KEEP_STATE: '1', MERGE_SHARDS: dirs.join(';') });
   delete env.SHARD_TAG; delete env.STATE_ONLY; delete env.IDSET_BITS;
-  const code = await new Promise((res) => { const ch = spawn(process.execPath, ['--max-old-space-size=' + (+MEMM || 12288), path.join(ROOT, script)], { env, cwd: ROOT, stdio: 'inherit' }); ch.on('close', res); });
+  const code = await new Promise((res) => { const ch = spawn(process.execPath, ['--max-old-space-size=' + memMerge(), path.join(ROOT, script)], { env, cwd: ROOT, stdio: 'inherit' }); ch.on('close', res); });
   if (code !== 0) { log('слияние остановилось, код ' + code + ' — запустите снова'); process.exit(1); }
   for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
   fs.rmSync(planF, { force: true });
