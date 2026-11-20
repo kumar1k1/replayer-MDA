@@ -327,6 +327,7 @@
     // доколлировать (частота — из спотов, где перед ним уже есть коллер, эквити на троих — произведение двух эквити, с запасом).
     // Возвращает и разброс результата (σ, bb) — для проверки «стоит ли дисперсия такого перевеса».
     const SHOVE_MIN_EDGE = (opts && opts.shoveMinEdge != null) ? opts.shoveMinEdge : 0.5, SHOVE_MIN_EDGE_PCT = (opts && opts.shoveMinEdgePct != null) ? opts.shoveMinEdgePct : 0.02;
+    const CALL_MIN_EDGE = (opts && opts.callMinEdge != null) ? opts.callMinEdge : 0.5, CALL_MIN_EDGE_PCT = (opts && opts.callMinEdgePct != null) ? opts.callMinEdgePct : 0.02;
     function shoveEV(sp, cards, info) {
       const h = K.h169(cards[0], cards[1]), tk = sp.tb + sp.kd;
       let nR = 0, noData = []; const bounties = [];
@@ -659,6 +660,15 @@
           const r2 = (v) => Math.round(v * 100) / 100;
           if (alt && edge < need) { rec = { act: alt.act, why: 'олл-ин лучше ' + (RU[alt.act] || alt.act) + ' всего на ' + r2(edge) + ' bb при риске ' + r2(sh.risk) + ' bb (разброс ±' + r2(sh.sd || 0) + ' bb) — не стоит дисперсии, нужно хотя бы ' + r2(need) + ' bb' }; best = alt; }
           else if (sh.pMulti > 0.02) rec.why += '; учтены доколлы: с вероятностью ' + Math.round(sh.pMulti * 100) + '% в игре трое';
+        }
+      }
+      // ---- запас для колла олл-ина (владелец, 20.11.2026): микроплюс не советуем — колл, только если он выгоднее фолда
+      // не меньше CALL_MIN_EDGE bb и не меньше CALL_MIN_EDGE_PCT от суммы, которую доплачиваем ----
+      if (rec.act === 'call' && sp.tbl === 'AI') {
+        const cr = rowOf('call'), risk = sp.toCall > 0 ? Math.min(sp.toCall, sp.behind != null ? sp.behind : sp.toCall) : 0;
+        if (cr && cr.ev != null && risk > 0) {
+          const need = Math.max(CALL_MIN_EDGE, CALL_MIN_EDGE_PCT * risk), r2 = (v) => Math.round(v * 100) / 100;
+          if (cr.ev < need) { rec = { act: 'fold', why: 'колл олл-ина в плюс всего на ' + r2(cr.ev) + ' bb при доплате ' + r2(risk) + ' bb — микроплюс не стоит дисперсии, нужно хотя бы ' + r2(need) + ' bb' }; best = rowOf('fold') || best; }
         }
       }
       const recRow2 = rowOf(rec.act);
