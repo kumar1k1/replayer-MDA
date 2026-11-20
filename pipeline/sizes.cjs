@@ -11,7 +11,11 @@ const TOPS = process.env.TOPS || path.join(C.OUT, 'tops_v8.json');
 let tops = new Set();
 let tops5 = new Set(); // топы-2 (≥ 5 bb/100, с топами-1) — запасной слой, если у топов-1 в ключе мало рук
 if (fs.existsSync(TOPS)) { const t = JSON.parse(fs.readFileSync(TOPS, 'utf8')); tops = new Set([...Object.keys(t.A || {}), ...Object.keys(t.B || {})]); tops5 = new Set([...Object.keys(t.A5 || {}), ...Object.keys(t.B5 || {})]); }
-C.log('sizes: топов-1', tops.size, 'топов-2 (с топами-1)', tops5.size);
+// топы по лимиту (владелец, 20.11.2026): у каждого бай-ина свой порог винрейта; лимит без своих топов — общие
+const topsSt = {};
+if (fs.existsSync(TOPS)) { const t = JSON.parse(fs.readFileSync(TOPS, 'utf8')); for (const st in t.bySt || {}) { const b = t.bySt[st]; if (Object.keys(b.A).length >= 30 && Object.keys(b.B).length >= 30) topsSt[st] = { t1: new Set([...Object.keys(b.A), ...Object.keys(b.B)]), t2: new Set([...Object.keys(b.A5 || {}), ...Object.keys(b.B5 || {})]) }; } }
+const isT1 = (k, st) => (topsSt[st] ? topsSt[st].t1 : tops).has(k), isT2 = (k, st) => (topsSt[st] ? topsSt[st].t2 : tops5).has(k);
+C.log('sizes: топов-1', tops.size, 'топов-2 (с топами-1)', tops5.size, '| по лимитам:', Object.keys(topsSt).join(',') || 'нет');
 const STG = require('../lib/stage.js');
 // классы игроков (кластеры): размер против рега, нита и фиша считается отдельно
 const CLU = require('../lib/clusters.js');
@@ -60,7 +64,7 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L]
     const room = C.roomOf(x.hand);
     if (!seen.add(room, rp.handId)) continue;
     const fr = frames(rp); if (!C.handIntact(rp, fr[fr.length - 1], x.hand)) continue;
-    const kd = C.kindOf(rp, x.hand, x.fp);
+    const kd = C.kindOf(rp, x.hand, x.fp), stH = C.stratumOf(x.fp, rp.title);
     // Mystery Bounty в призовых (и без данных о стадии) — не учитываем (как в модели)
     if (kd === 'm') { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; if (!T || !STG.preITM(T, STG.tsOf(rp.date), rp.n)) continue; }
     const grpOf = (nick) => { const k = C.playerKey(room, nick), c = CL[k]; if (!c || (TIGHT && !TIGHT[k])) return 'unk'; return CLU.GROUP[c[0]] || 'unk'; };
@@ -72,7 +76,7 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L]
         if (a && a !== 'open' && d.eff > 0 && d.refTo > 0) {
           const sz = SZ.DEFAULT[a] * d.refTo / d.eff, b = Math.min(10, Math.floor(sz * 10)) / 10;
           const sh = d.act === 'shove' || d.aiEff ? 0 : 1;
-          const pk0 = C.playerKey(room, rp.nm[d.i]), LS = ['pool'].concat(tops.has(pk0) ? ['tops'] : [], tops5.has(pk0) ? ['tops5'] : []);
+          const pk0 = C.playerKey(room, rp.nm[d.i]), LS = ['pool'].concat(isT1(pk0, stH) ? ['tops'] : [], isT2(pk0, stH) ? ['tops5'] : []);
           for (const L of LS) { const c = commit[L][a + '|' + b] = commit[L][a + '|' + b] || [0, 0]; c[sh]++; }
         }
       }
@@ -81,7 +85,7 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L]
       if (d.aiEff) { nAiEff++; continue; }
       const a = d.szAct; if (!a) continue;
       const v = SZ.measure(a, d.to, d.refTo, d.nLimp);
-      const pk1 = C.playerKey(room, rp.nm[d.i]), top = tops.has(pk1), top5 = tops5.has(pk1), reg = d.grp === 'reg';
+      const pk1 = C.playerKey(room, rp.nm[d.i]), top = isT1(pk1, stH), top5 = isT2(pk1, stH), reg = d.grp === 'reg';
       // ключи: с форматом турнира (фризаут / PKO) и общие
       for (const k of SZ.ownKeys(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd, d.oppPos ? SP.posBand(d.oppPos) : null, { C: d.C, tb: C.tableOf(rp.n), v: SZ.vsOf(a, d) })) {
         // все румы вместе (владелец, 20.11.2026): только ключи «*|…»

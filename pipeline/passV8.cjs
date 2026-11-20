@@ -40,11 +40,15 @@ const CL = fs.existsSync(clFile) ? readJ(clFile) : {};
 const TIGHT = process.env.TIGHT_FILE && fs.existsSync(process.env.TIGHT_FILE) ? readJ(process.env.TIGHT_FILE) : null;
 const grpOfK = (room, nick) => { const k = C.playerKey(room, nick), c = CL[k]; if (!c || (TIGHT && !TIGHT[k])) return 'unk'; return CLU.GROUP[c[0]] || 'unk'; };
 // топ для раздачи половины h — отобран по другой половине
-const isTop = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; return (h === 'A' ? T.B : T.A).has(C.playerKey(room, nick)); };
-const isTop5 = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; if (!T.A5) return false; return (h === 'A' ? T.B5 : T.A5).has(C.playerKey(room, nick)); };
+// топы по лимиту (владелец, 20.11.2026: порог винрейта свой у каждого бай-ина): свои, если их не меньше MIN_TOPS_ST
+// в обеих половинах; иначе — по формату / общие
+const MIN_TOPS_ST = +(process.env.MIN_TOPS_ST || 30), TOPSS = {};
+for (const st of ['micro', 'low', 'mid', 'high']) { const t = (TJ.bySt || {})[st]; if (t && Object.keys(t.A).length >= MIN_TOPS_ST && Object.keys(t.B).length >= MIN_TOPS_ST) TOPSS[st] = { A: new Set(Object.keys(t.A)), B: new Set(Object.keys(t.B)), A5: new Set(Object.keys(t.A5 || {})), B5: new Set(Object.keys(t.B5 || {})) }; }
+const isTop = (room, nick, h, kd, st) => { const T = TOPSS[st] || TOPSF[kd] || TOPS; return (h === 'A' ? T.B : T.A).has(C.playerKey(room, nick)); };
+const isTop5 = (room, nick, h, kd, st) => { const T = TOPSS[st] || TOPSF[kd] || TOPS; if (!T.A5) return false; return (h === 'A' ? T.B5 : T.A5).has(C.playerKey(room, nick)); };
 const ROOM_LAYER = new Set((process.env.ROOM_LAYER || 'wpn,ipoker,chico,888,pses').split(',').filter(Boolean));
 const actClass = (d) => (d.act === 'shove' || d.aiEff ? 'shove' : d.act.split(':')[0]);
-C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, '| по формату:', Object.keys(TOPSF).join(',') || 'нет (общие)', '| турниров', Object.keys(TOURN).length, '| игроков с кластером', Object.keys(CL).length);
+C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, '| по формату:', Object.keys(TOPSF).join(',') || 'нет (общие)', '| по лимитам:', Object.keys(TOPSS).join(',') || 'нет', '| турниров', Object.keys(TOURN).length, '| игроков с кластером', Object.keys(CL).length);
 
 // ---------- накопители ----------
 // EV:  ключ → [n, Σrel, Σrel², nFA, ΣrelFA]   (FA — все сфолдили после действия)
@@ -142,8 +146,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       const decs = C.preflopDecisions(rp, grpOf);
       for (const d of decs) {
         const i = d.i, nick = rp.nm[i], act = actClass(d), bnd = C.bandOf(d.eff);
-        const coh = isTop(room, nick, half, kd) ? 'T' : 'F', g = 'g' + grpOf(nick);
-        const CO = coh === 'T' || isTop5(room, nick, half, kd) ? [coh, 'U'] : [coh]; // U — топы ≥ 5 (с топами-1)
+        const coh = isTop(room, nick, half, kd, st) ? 'T' : 'F', g = 'g' + grpOf(nick);
+        const CO = coh === 'T' || isTop5(room, nick, half, kd, st) ? [coh, 'U'] : [coh]; // U — топы ≥ 5 (с топами-1)
         const rel = A.net[i] / bb + d.inv; // относительно фолда в этой точке
         const fa = act !== 'fold' && act !== 'check' && C.foldedAround(rp, d.k, i);
         // ключ спота: TBL|страта|стол|баунти|поз|поз.опп|стек|лимперы|коллеры  (+ |действие|группа.опп)

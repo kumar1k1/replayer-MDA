@@ -8,6 +8,8 @@
 // Метрики (по группе игрока reg/nit/fish/unk × полосе стека): опен первым, лимп первым, пуш первым,
 // фолд на стил (SB/BB против CO/BTN/SB), фолд и 3-бет против опена, фолд на 3-бет, колл пуша первым,
 // колл ре-пуша, размер опена.
+// Попутно (владелец, 20.11.2026: хороший винрейт зависит от лимита) — винрейт регов по лимитам и четвертям базы:
+// out/winq_st.json { "рум:ник": [ micro low mid high ] × 4 четверти × (n, Σbb, Σbb²) } — 48 чисел (как winq.cjs).
 // Выход: out/stages.json { hands: {стадия: n}, M: { "стадия|метрика|группа|полоса": [n, x, x²] } }
 // Потоки: tools/shards.cjs stages (SHARD_TAG / STATE_ONLY / MERGE_SHARDS / RESUME — как у winq.cjs).
 // ============================================================================
@@ -19,7 +21,12 @@ const CL = fs.existsSync(clFile) ? JSON.parse(fs.readFileSync(clFile, 'utf8')) :
 const tournFile = process.env.TOURN || path.join(C.OUT, 'tourn_v8.json');
 const TOURN = fs.existsSync(tournFile) ? JSON.parse(fs.readFileSync(tournFile, 'utf8')) : {};
 const CALIB = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'stage_calib.json'), 'utf8')); } catch (e) { return null; } })();
-const SAMPLE = +(process.env.SAMPLE || 1); // 1 — все раздачи; 2 — каждая вторая (по хэшу) и т. д.
+const SAMPLE = +(process.env.SAMPLE || 1);
+const K = require('../lib/cards.js');
+const MIN_HANDS = +(process.env.MIN_HANDS_TOP || 10000);
+const WANT = new Set(Object.keys(CL).filter(k => CLU.GROUP[CL[k][0]] === 'reg' && CL[k][4] >= MIN_HANDS * 0.9));
+const STI = { micro: 0, low: 1, mid: 2, high: 3 };
+let W = {}; // 1 — все раздачи; 2 — каждая вторая (по хэшу) и т. д.
 C.log('стадии: игроков с кластером', Object.keys(CL).length, 'турниров', Object.keys(TOURN).length);
 
 const BAND = (bb) => bb < 12 ? '<12' : bb < 20 ? '12-20' : bb < 30 ? '20-30' : bb < 50 ? '30-50' : '50+';
@@ -38,12 +45,12 @@ function stage6(T, t, tmax) {
 let M = {}, H = {}, done = [], hands = 0, shardTag = process.env.SHARD_TAG || null, mergedTags = [];
 let seen = new C.IdSet();
 const STATE = path.join(C.OUT, 'stages_state.json'), IDSF = path.join(C.OUT, 'stages_ids.bin');
-const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ shardTag, mergedTags, done, hands, H, M })); fs.renameSync(tmp, STATE); C.saveIds(seen, IDSF); };
+const saveState = () => { const tmp = STATE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify({ shardTag, mergedTags, done, hands, H, M, W })); fs.renameSync(tmp, STATE); C.saveIds(seen, IDSF); };
 const add = (k, x) => { const a = M[k] || (M[k] = [0, 0, 0]); a[0]++; a[1] += x; a[2] += x * x; };
 const LP = new Set(['CO', 'BTN', 'SB', 'BTN/SB']);
 
 (async () => {
-  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { let o; ({ M, H, done, hands, mergedTags = [] } = o = JSON.parse(fs.readFileSync(STATE, 'utf8'))); if (o.shardTag) shardTag = o.shardTag; seen = C.loadIds(IDSF); C.log('стадии: продолжаю, архивов', done.length); }
+  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { let o; ({ M, H, W = {}, done, hands, mergedTags = [] } = o = JSON.parse(fs.readFileSync(STATE, 'utf8'))); if (o.shardTag) shardTag = o.shardTag; seen = C.loadIds(IDSF); C.log('стадии: продолжаю, архивов', done.length); }
   if (process.env.SHARD_TAG) shardTag = process.env.SHARD_TAG;
   let merged = false;
   for (const dir of (process.env.MERGE_SHARDS || '').split(';').filter(Boolean)) {
@@ -51,6 +58,7 @@ const LP = new Set(['CO', 'BTN', 'SB', 'BTN/SB']);
     const o = JSON.parse(fs.readFileSync(SF, 'utf8')); if (!o.shardTag || mergedTags.includes(o.shardTag)) { C.log('стадии: поток ' + dir + ' уже сложен'); continue; }
     for (const k in o.M) { const a = M[k] || (M[k] = [0, 0, 0]); for (let i = 0; i < 3; i++) a[i] += o.M[k][i]; }
     for (const k in o.H) H[k] = (H[k] || 0) + o.H[k];
+    for (const k in o.W || {}) { const a = W[k] || (W[k] = new Array(48).fill(0)); for (let i = 0; i < 48; i++) a[i] += o.W[k][i]; }
     hands += o.hands; done.push(...o.done); mergedTags.push(o.shardTag); merged = true;
     C.log('стадии: сложен поток', dir, '— рук', hands);
   }
@@ -64,11 +72,20 @@ const LP = new Set(['CO', 'BTN', 'SB', 'BTN/SB']);
     if (SAMPLE > 1 && (C.quarterOf(rp.handId) + (rp.handId % SAMPLE)) % SAMPLE) continue;
     const room = C.roomOf(x.hand);
     if (!seen.add(room, rp.handId)) continue;
+    const fr = frames(rp), fin = fr[fr.length - 1]; if (!C.handIntact(rp, fin, x.hand)) continue;
+    const keys = rp.nm.map(nk => C.playerKey(room, nk));
+    if (SAMPLE === 1 && keys.some(k => WANT.has(k))) { // винрейт по лимитам — по всем раздачам (без выборки)
+      const SD = {};
+      if (C.SHOWDOWN_TRUSTED(room)) for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c }; }
+      let net = null; try { net = C.netAdjusted(rp, fin, SD).net; } catch (e) {}
+      const si = STI[C.stratumOf(x.fp, rp.title)];
+      if (net && si != null) { const q = C.quarterOf(rp.handId), o = si * 12 + q * 3;
+        for (let i = 0; i < rp.n; i++) { if (!WANT.has(keys[i])) continue; const a = W[keys[i]] || (W[keys[i]] = new Array(48).fill(0)), b = net[i] / rp.bb; a[o]++; a[o + 1] += b; a[o + 2] += b * b; } }
+    }
     const T = TOURN[room + ':' + tm[1]]; if (!T) { H.none = (H.none || 0) + 1; continue; }
     const st = stage6(T, STG.tsOf(rp.date), rp.n); if (!st) { H.none = (H.none || 0) + 1; continue; }
-    const fr = frames(rp); if (!C.handIntact(rp, fr[fr.length - 1], x.hand)) continue;
     H[st] = (H[st] || 0) + 1; hands++;
-    const keys = rp.nm.map(nk => C.playerKey(room, nk)), G = keys.map(grpOf);
+    const G = keys.map(grpOf);
     const ds = SP.preflopDecisions(rp, () => '', false);
     for (const d of ds) {
       const g = G[d.i], b = BAND(d.eff), pre = st + '|', suf = '|' + g + '|' + b, a = d.act || '';
@@ -91,6 +108,7 @@ const LP = new Set(['CO', 'BTN', 'SB', 'BTN/SB']);
   }
   if (unsaved || process.env.KEEP_STATE === '1') saveState();
   if (process.env.STATE_ONLY === '1') { C.log('стадии: поток готов'); return; }
+  { const out = {}; for (const k in W) out[k] = W[k].map(v => Math.round(v * 100) / 100); fs.writeFileSync(path.join(C.OUT, 'winq_st.json'), JSON.stringify(out)); C.log('стадии: винрейт по лимитам — игроков', Object.keys(out).length); }
   fs.writeFileSync(path.join(C.OUT, 'stages.json'), JSON.stringify({ built: new Date().toISOString().slice(0, 10), hands, H, M }));
   C.log('стадии: готово — рук', hands, JSON.stringify(H));
 })();

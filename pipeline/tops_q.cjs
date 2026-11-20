@@ -34,6 +34,29 @@ for (const k in W) {
   pick(tops, k, a, FB.all, c[0], c[4]);
   for (const f of ['n', 'k', 'm']) { const nf = a[FB[f]] + a[FB[f] + 3] + a[FB[f] + 6] + a[FB[f] + 9]; if (nf >= MIN_HANDS_FMT) pick(tops.byFmt[f], k, a, FB[f], c[0], nf); }
 }
+// ---- по лимитам (владелец, 20.11.2026): хороший винрейт зависит от бай-ина — на $5 средний рег ~10 bb/100, топы ~15;
+// на $50–100 хороший — от 8; на $500 — 4–5. Топ лимита: ≥ MIN_HANDS рук всего, ≥ MIN_HANDS_ST рук на этом лимите и
+// винрейт на нём в обеих четвертях половины отбора ≥ порога лимита. Вход: out/winq_st.json (pipeline/stages.cjs).
+const STS = ['micro', 'low', 'mid', 'high'], ST_RU = { micro: 'до $11', low: '$11–55', mid: '$55–200', high: 'от $200' };
+const envT = (n, d) => (process.env[n] || d).split(',').map(Number);
+const T1S = envT('TOP1_ST', '15,10,8,5'), T2S = envT('TOP2_ST', '10,7,5,3'), MIN_HANDS_ST = +(process.env.MIN_HANDS_ST || 5000);
+const WSf = path.join(OUT, 'winq_st.json'), WS = fs.existsSync(WSf) ? JSON.parse(fs.readFileSync(WSf, 'utf8')) : null;
+if (WS) {
+  tops.bySt = {}; tops.rule.bySt = { top1: T1S, top2: T2S, minHandsSt: MIN_HANDS_ST };
+  STS.forEach((st, si) => {
+    const D = tops.bySt[st] = empty();
+    for (const k in WS) {
+      const c = CL[k]; if (!c || CLU.GROUP[c[0]] !== 'reg' || c[4] < MIN_HANDS) continue;
+      const a = WS[k], o = si * 12, ns = a[o] + a[o + 3] + a[o + 6] + a[o + 9]; if (ns < MIN_HANDS_ST) continue;
+      for (const [H, q0] of [['A', 0], ['B', 2]]) {
+        const w1 = wr(a, o + q0 * 3), w2 = wr(a, o + (q0 + 1) * 3); if (w1 == null || w2 == null) continue;
+        const rec = { cl: c[0], n: ns, wr: [Math.round(w1 * 10) / 10, Math.round(w2 * 10) / 10] };
+        if (w1 >= T2S[si] && w2 >= T2S[si]) D[H + '5'][k] = rec;
+        if (w1 >= T1S[si] && w2 >= T1S[si]) D[H][k] = rec;
+      }
+    }
+  });
+}
 const byRoom = (o) => { const r = {}; for (const k in o) { const m = k.split(':')[0]; r[m] = (r[m] || 0) + 1; } return r; };
 const sumN = (o) => Object.values(o).reduce((s, x) => s + x.n, 0);
 const both = (X, Y) => Object.keys(X).filter(k => Y[k]).length;
@@ -53,6 +76,17 @@ for (const mh of [5000, 10000, 20000, 30000]) for (const th of [3, 5, 8, 10]) {
   grid.push({ минимум_рук: mh, винрейт_от: th, игроков: n, их_рук: h, по_румам: r });
 }
 rep.сетка_порогов = grid;
+if (WS) {
+  rep.по_лимитам = Object.fromEntries(STS.map(st => [ST_RU[st], { порог_топ1: T1S[STS.indexOf(st)], порог_топ2: T2S[STS.indexOf(st)], топ1: [Object.keys(tops.bySt[st].A).length, Object.keys(tops.bySt[st].B).length], топ2: [Object.keys(tops.bySt[st].A5).length, Object.keys(tops.bySt[st].B5).length], рук_топ1_A: sumN(tops.bySt[st].A) }]));
+  // сетка по лимитам: минимум рук на лимите × порог → игроков и их рук на этом лимите (половина A)
+  const gs = [];
+  STS.forEach((st, si) => { for (const mh of [3000, 5000, 10000]) for (const th of [3, 5, 8, 10, 12, 15, 20]) {
+    let n = 0, h = 0;
+    for (const k in WS) { const c = CL[k]; if (!c || CLU.GROUP[c[0]] !== 'reg' || c[4] < MIN_HANDS) continue; const a = WS[k], o = si * 12, ns = a[o] + a[o + 3] + a[o + 6] + a[o + 9]; if (ns < mh) continue; const w1 = wr(a, o), w2 = wr(a, o + 3); if (w1 == null || w2 == null || w1 < th || w2 < th) continue; n++; h += ns; }
+    gs.push({ лимит: ST_RU[st], минимум_рук_на_лимите: mh, винрейт_от: th, игроков: n, их_рук_на_лимите: h });
+  } });
+  rep.сетка_по_лимитам = gs;
+}
 if (process.env.REPORT_ONLY === '1') { fs.writeFileSync(path.join(OUT, 'топы_сетка.json'), JSON.stringify(rep, null, 1)); console.log(JSON.stringify(rep, null, 1)); process.exit(0); }
 const dst = path.join(OUT, 'tops_all.json');
 if (fs.existsSync(dst)) { const bak = path.join(OUT, 'tops_all_до_8_5.json'); if (!fs.existsSync(bak)) fs.copyFileSync(dst, bak); }
