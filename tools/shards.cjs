@@ -10,6 +10,9 @@ const [kind, MAIN, NS, MEMS, MEMM] = process.argv.slice(2);
 const N = +NS || 4, ROOT = path.join(__dirname, '..');
 const script = kind === 'v8' ? 'pipeline/passV8.cjs' : kind === 'sizes' ? 'pipeline/sizes.cjs' : kind === 'winq' ? 'pipeline/winq.cjs' : 'pipeline/passStats.cjs';
 const STATE = path.join(MAIN, kind === 'v8' ? 'v8_state.ndjson' : kind === 'sizes' ? 'sizes_state.json' : kind === 'winq' ? 'winq_state.json' : 'stats_state.ndjson');
+// память потока: из командной строки, но не меньше, чем в <главная папка>/память_потока.txt (можно поднять без правки .cmd:
+// поток статов с большим архивом старой базы упирался в 3 ГБ — код 134)
+const memShard = () => { let m = +MEMS || 4096; try { const f = path.join(MAIN, 'память_потока.txt'); if (fs.existsSync(f)) m = Math.max(m, +fs.readFileSync(f, 'utf8').trim() || 0); } catch (e) {} return m; };
 const log = (s) => { const line = new Date().toTimeString().slice(0, 8) + ' ' + s; console.log(line); fs.appendFileSync(path.join(MAIN, 'потоки.log'), new Date().toISOString().slice(0, 19) + ' ' + s + '\n'); };
 fs.mkdirSync(MAIN, { recursive: true });
 
@@ -49,7 +52,7 @@ function allSources() {
       const lf = path.join(dir, 'список.json'); fs.writeFileSync(lf, JSON.stringify(plan.lists[i]));
       const env = Object.assign({}, process.env, { OUT_DIR: dir, SOURCE_LIST: lf, RESUME: '1', SHARD_TAG: plan.tags[i], KEEP_STATE: '1', STATE_ONLY: '1', IDSET_BITS: '24', CK_EVERY: process.env.CK_EVERY || '10' });
       delete env.MERGE_SHARDS; delete env.MAX_SOURCES;
-      const ch = spawn(process.execPath, ['--max-old-space-size=' + (+MEMS || 4096), path.join(ROOT, script)], { env, cwd: ROOT });
+      const ch = spawn(process.execPath, ['--max-old-space-size=' + memShard(), path.join(ROOT, script)], { env, cwd: ROOT });
       try { if (process.env.PRIO !== 'max') os.setPriority(ch.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (e) {}
       let last = '';
       const onData = (d) => { for (const l of String(d).split(/\r?\n/)) if (l.trim()) { last = l; if (/пройден|ГОТОВО|готов|ERR|Error|ОШИБКА|продолжаю/.test(l)) console.log('[' + (i + 1) + '/' + plan.n + '] ' + l.slice(0, 160)); } };
