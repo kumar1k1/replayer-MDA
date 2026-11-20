@@ -59,7 +59,11 @@ function allSources() {
       ch.stdout.on('data', onData); ch.stderr.on('data', onData);
       ch.on('close', (code) => { log(`поток ${i + 1}: ${code === 0 ? 'готов' : 'ОСТАНОВИЛСЯ, код ' + code + ' — ' + last.slice(0, 200)}`); res(code); });
     });
-    const codes = await Promise.all(plan.lists.map((_, i) => runOne(i)));
+    // сколько потоков одновременно: все, или не больше, чем в <главная папка>/потоков_одновременно.txt (при большой памяти на поток)
+    let par = plan.n; try { const f = path.join(MAIN, 'потоков_одновременно.txt'); if (fs.existsSync(f)) par = Math.max(1, Math.min(par, +fs.readFileSync(f, 'utf8').trim() || par)); } catch (e) {}
+    if (par < plan.n) log(`одновременно не больше ${par} потоков из ${plan.n}`);
+    const codes = new Array(plan.n), q = plan.lists.map((_, i) => i);
+    await Promise.all(Array.from({ length: par }, async () => { while (q.length) { const i = q.shift(); codes[i] = await runOne(i); } }));
     if (codes.some(c => c !== 0)) { log('не все потоки дошли до конца — запустите снова, продолжат с чекпоинтов'); process.exit(1); }
   }
   // ---- слияние в главное состояние и итоги ----
