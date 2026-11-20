@@ -123,15 +123,15 @@ for (const [nk, keys] of byNick) {
 // расстояний в этом кластере + до второго кластера заметно дальше (d2 ≥ TIGHT_GAP × d).
 // Отчёт: по каждому кластеру и руму — сколько игроков и плотных, медиана расстояния и средние 11 статов плотных
 // игроков рума против всех румов (в долях разброса): если румы близки — кластер можно брать со всех румов вместе.
-const TIGHT_GAP = +(process.env.TIGHT_GAP || 1.15), TIGHT_Q = +(process.env.TIGHT_Q || 0.75);
-const dq = {}; for (const k in out) if (out[k][5]) (dq[out[k][0]] = dq[out[k][0]] || []).push(out[k][1]);
+const TIGHT_GAP = +(process.env.TIGHT_GAP || 1.15), TIGHT_Q = +(process.env.TIGHT_Q || 0.75), TIGHT_MIN = +(process.env.TIGHT_MIN_HANDS || 1000);
+const dq = {}; for (const k in out) if (out[k][4] >= TIGHT_MIN) (dq[out[k][0]] = dq[out[k][0]] || []).push(out[k][1]);
 const dLim = {}; for (const c in dq) { const v = dq[c].sort((a, b) => a - b); dLim[c] = v[Math.min(v.length - 1, Math.floor(v.length * TIGHT_Q))]; }
-const tight = {}; for (const k in out) { const o = out[k]; if (o[5] && o[1] <= dLim[o[0]] && o[3] >= TIGHT_GAP * o[1]) tight[k] = 1; }
+const tight = {}; for (const k in out) { const o = out[k]; if (o[4] >= TIGHT_MIN && o[1] <= dLim[o[0]] && o[3] >= TIGHT_GAP * o[1]) tight[k] = 1; }
 fs.writeFileSync(path.join(OUT, 'players_tight.json'), JSON.stringify(tight));
 const roomOfK = (k) => k.slice(0, k.indexOf(':'));
 const prof = {}; // кластер → рум → {n, tight, d[], sum[11], sq[11]}
 for (const [k, { p, r }] of byKey) {
-  const o = out[k]; if (!o[5]) continue;
+  const o = out[k]; if (o[4] < TIGHT_MIN) continue;
   const rm = roomOfK(k), P = (prof[r.cl] = prof[r.cl] || {}), x = P[rm] = P[rm] || { n: 0, t: 0, d: [], sum: new Array(NCL).fill(0), sq: new Array(NCL).fill(0) };
   const all = P['*'] = P['*'] || { n: 0, t: 0, d: [], sum: new Array(NCL).fill(0), sq: new Array(NCL).fill(0) };
   for (const z of [x, all]) { z.n++; z.d.push(o[1]); }
@@ -146,7 +146,7 @@ for (const c in prof) {
   const mA = A.sum.map(v => v / A.t), sdA = A.sq.map((v, s) => Math.sqrt(Math.max(1e-9, v / A.t - mA[s] ** 2)));
   for (const rm in prof[c]) {
     if (rm === '*') continue; const x = prof[c][rm];
-    const row = { кластер: +c, группа: CLU.GROUP[c], рум: rm, надёжных: x.n, плотных: x.t, медиана_расстояния: med(x.d) };
+    const row = { кластер: +c, группа: CLU.GROUP[c], рум: rm, игроков_от_порога: x.n, плотных: x.t, медиана_расстояния: med(x.d) };
     if (x.t >= 20) { const dev = x.sum.map((v, s) => (v / x.t - mA[s]) / sdA[s]); const w = dev.reduce((b, v, s) => (Math.abs(v) > Math.abs(dev[b]) ? s : b), 0); row.макс_отклонение_sd = Math.round(dev[w] * 100) / 100; row.стат = ST.CL[w]; row.среднее_отклонение_sd = Math.round(dev.reduce((a, v) => a + Math.abs(v), 0) / NCL * 100) / 100; }
     roomsReport.push(row);
   }
@@ -163,7 +163,7 @@ const report = {
   fmtStats: fmtStats.map((F, f) => F.map((x, s) => ({ fmt: f ? 'full' : 'short', stat: ST.CL[s], m: Math.round(x.m * 10) / 10, sd: Math.round(x.sd * 10) / 10, n: x.n }))),
   agreement: agree.map(b => ({ hands_each_half: b.lo + '–' + (b.hi > 1e11 ? '∞' : b.hi), players: b.n, same: b.n ? Math.round(b.same / b.n * 1000) / 10 : null, sameOrNeighbor: b.n ? Math.round(b.near / b.n * 1000) / 10 : null, sameGroup: b.n ? Math.round(b.sameGroup / b.n * 1000) / 10 : null })),
   sixmax, merges: merges.length, mergeExamples: merges.slice(0, 15), notMerged: notMerged.length, notMergedExamples: notMerged.filter(x => x.why !== 'мало рук').slice(0, 15),
-  tight: { gap: TIGHT_GAP, q: TIGHT_Q, players: Object.keys(tight).length, dLimit: dLim }, clustersByRoom: roomsReport,
+  tight: { minHands: TIGHT_MIN, gap: TIGHT_GAP, q: TIGHT_Q, players: Object.keys(tight).length, dLimit: dLim }, clustersByRoom: roomsReport,
   distributionReliable: distAll.map((v, c) => ({ cl: c, group: CLU.GROUP[c], share: nRel ? Math.round(v / nRel * 1000) / 10 : 0 }))
 };
 fs.writeFileSync(path.join(OUT, 'clusters_report.json'), JSON.stringify(report, null, 1));
