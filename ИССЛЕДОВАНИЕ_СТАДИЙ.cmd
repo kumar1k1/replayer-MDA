@@ -25,9 +25,9 @@ if errorlevel 1 goto :nonode
 if not exist "%OUT2%\топы_сетка.json" goto :notyet
 rem память: поток держит ход турниров - около 3 ГБ, большие архивы старой базы - ещё до 5 ГБ
 if not exist "%OUT2%\потоков.stages.txt" > "%OUT2%\потоков.stages.txt" echo 10
-if not exist "%OUT2%\память_потока.stages.txt" > "%OUT2%\память_потока.stages.txt" echo 8192
-if not exist "%OUT2%\потоков_одновременно.stages.txt" > "%OUT2%\потоков_одновременно.stages.txt" echo 3
-if not exist "%OUT2%\память_слияния.stages.txt" > "%OUT2%\память_слияния.stages.txt" echo 8192
+if not exist "%OUT2%\память_потока.stages.txt" > "%OUT2%\память_потока.stages.txt" echo 11264
+if not exist "%OUT2%\потоков_одновременно.stages.txt" > "%OUT2%\потоков_одновременно.stages.txt" echo 2
+if not exist "%OUT2%\память_слияния.stages.txt" > "%OUT2%\память_слияния.stages.txt" echo 11264
 > "%LAUNCH%" echo @start "" "%~f0" auto
 set "PRIO=max"
 if exist "%OUT2%\stages.json" goto :s2
