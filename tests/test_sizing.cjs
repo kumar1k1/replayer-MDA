@@ -48,11 +48,11 @@ ok(sb.aiEff === true && sb.aiAct === false && sb.sz === null, 'SB 60bb став�
 
 console.log('— рекомендация');
 const T = { tops: {
-  'ps|open|36-59|BTN': { n: 9000, mode: 2, rec: 2, share: 80 },
-  'ps|3bet|100-149|BB': { n: 5000, mode: 4, rec: 5, recShare: 34 },
-  'ps|3bet|100-149|SB': { n: 5000, mode: 4, rec: 4, recShare: 30 },
-  'ps|iso|36-59|BTN|L1': { n: 4000, mode: 2.5, rec: 2.5 } }, pool: {
-  'ps|iso|36-59|BTN|L2': { n: 800, mode: 3, rec: 3 } } };
+  '*|open|36-59|BTN': { n: 9000, mode: 2, rec: 2, share: 80 },
+  '*|3bet|100-149|BB': { n: 5000, mode: 4, rec: 5, recShare: 34 },
+  '*|3bet|100-149|SB': { n: 5000, mode: 4, rec: 4, recShare: 30 },
+  '*|iso|36-59|BTN|L1': { n: 4000, mode: 2.5, rec: 2.5 } }, pool: {
+  '*|iso|36-59|BTN|L2': { n: 800, mode: 3, rec: 3 } } };
 let r = SZ.recommend({ room: 'ps', action: 'open', band: '36-59', pos: 'BTN', eff: 45 }, T);
 ok(r.to === 2 && !r.allin && /^tops:/.test(r.src), 'BTN 45bb: опен 2 bb по топам');
 r = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'BB', refTo: 2.2, eff: 120 }, T);
@@ -63,7 +63,7 @@ r = SZ.recommend({ room: 'ps', action: '3bet', band: '36-59', pos: 'SB', refTo: 
 ok(r.none === true && r.to === null, 'средний стек: только свой стек — нет данных 36-59 → «нет данных», без глубоких стеков и без запасного значения');
 r = SZ.recommend({ room: 'ps', action: '3bet', band: '20-35', pos: 'BB', refTo: 2.5, eff: 22, allowDefault: true }, T);
 ok(r.allin && r.to === 22, '3-бет ~7.5 bb при эфф. стеке 22 bb (≥30%) → олл-ин');
-r = SZ.recommend({ room: 'ps', action: '4bet', band: '60+', pos: 'CO', refTo: 7, prevTo: 2.2, eff: 100, allowDefault: true }, { tops: { 'ps|4bet|60+|*': { n: 500, rec: 1.5 } } });
+r = SZ.recommend({ room: 'ps', action: '4bet', band: '60+', pos: 'CO', refTo: 7, prevTo: 2.2, eff: 100, allowDefault: true }, { tops: { '*|4bet|60+|*': { n: 500, rec: 1.5 } } });
 ok(r.to >= 11.8, '4-бет не меньше минимального рейза (7 + 4.8 = 11.8 bb), даже если таблица даёт 1.5x');
 ok(SZ.recommend({ room: 'coin', action: 'open', band: '<12', pos: 'EP', eff: 10 }, {}).none === true, 'нет данных — «нет данных», а не запасное значение');
 
@@ -79,13 +79,29 @@ console.log('— класс соперника');
   const rp3 = parse(hand(['UTGp: folds', 'MPp: raises 20 to 40', 'COp: raises 80 to 120', 'BTNp: folds', 'SBp: folds', 'BBp: folds', 'MPp: folds', 'Uncalled bet (80) returned to COp', 'COp collected 110 from pot', '*** SUMMARY ***', 'Total pot 110 | Rake 0']));
   const tb = SP.preflopDecisions(rp3, gf).find(x => rp3.nm[x.i] === 'COp');
   ok(SZ.vsOf('3bet', tb) === 'n', '3-бет против опена нита → против нита');
-  const TV = { tops: { 'ps|3bet|100-149|CO|vn': { n: 500, rec: 2.5, recBucket: '≤2.5x', buckets: { '≤2.5x': 70, '3x': 30 } }, 'ps|3bet|100-149|CO': { n: 9000, rec: 3, recBucket: '3x', buckets: { '3x': 100 } } } };
+  const TV = { tops: { '*|3bet|100-149|CO|vn': { n: 500, rec: 2.5, recBucket: '≤2.5x', buckets: { '≤2.5x': 70, '3x': 30 } }, '*|3bet|100-149|CO': { n: 9000, rec: 3, recBucket: '3x', buckets: { '3x': 100 } } } };
   let rv = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2, eff: 120, v: 'n' }, TV);
   ok(rv.vs === 'n' && rv.bucket === '≤2.5x', 'против нита берётся размер топов против нитов, а не общий');
   rv = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2, eff: 120, v: 'f' }, TV);
   ok(rv.none === true && rv.vs === 'f' && /против фиша/.test(rv.why), 'против фиша у топов < 100 рук → «нет данных по размеру против фиша», общий размер не подставляется');
   rv = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2, eff: 120, v: null }, TV);
   ok(!rv.none && rv.bucket === '3x', 'класс соперника неизвестен → размер топов в этом споте против всех');
+}
+
+console.log('— размер против конкретного рейза и число лимперов (20.11.2026)');
+{
+  const TA = { tops: { '*|3bet|100-149|CO': { n: 900, rec: 3, recBucket: '3x', buckets: { '3x': 100 }, abs: { '2.2': [400, [[7, 250], [6.6, 100], [8, 50]]], '2.5': [40, [[8.5, 30], [7.5, 10]]] } } },
+    tops5: {}, regs: { '*|iso|36-59|BTN|L3': { n: 300, rec: 3, recBucket: '+3', bmode: { '+3': 3 }, buckets: { '+3': 100 } } } };
+  let r = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 2.2, eff: 120 }, TA);
+  ok(r.to === 7 && r.vsRef === 2.2 && r.n === 400 && r.dist.length === 3, '3-бет против опена 2,2: самый частый «до» у топов именно против 2,2 — 7 bb (а не мода корзины)');
+  r = SZ.recommend({ room: 'wpn', action: '3bet', band: '100-149', pos: 'CO', refTo: 2.5, eff: 120 }, TA);
+  ok(r.to === 8.5, 'против опена 2,5 (40 раздач ≥ 30) — 8,5 bb; рум не важен — все румы вместе');
+  r = SZ.recommend({ room: 'ps', action: '3bet', band: '100-149', pos: 'CO', refTo: 3, eff: 120 }, TA);
+  ok(r.bucket === '3x' && r.vsRef === undefined, 'против опена 3 bb данных нет — самая частая корзина спота');
+  r = SZ.recommend({ room: 'ps', action: 'iso', band: '36-59', pos: 'BTN', nLimp: 3, eff: 45 }, TA);
+  ok(!r.none && /regs:/.test(r.src) && /L3$/.test(r.src), 'изо над 3 лимперами: по регам, ключ L3 (строго 3 лимпера)');
+  r = SZ.recommend({ room: 'ps', action: 'iso', band: '36-59', pos: 'BTN', nLimp: 2, eff: 45 }, TA);
+  ok(r.none === true, 'изо над 2 лимперами — данных нет, другое число лимперов не подставляется');
 }
 
 if (!fails) console.log('\nВсе проверки сайзингов пройдены');

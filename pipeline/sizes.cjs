@@ -23,13 +23,13 @@ const tournFile = process.env.TOURN || path.join(C.OUT, 'tourn_v8.json');
 const TOURN = fs.existsSync(tournFile) ? JSON.parse(fs.readFileSync(tournFile, 'utf8')) : {};
 
 // гистограммы значений с точностью 0,01 (а не все значения подряд): на полной базе — десятки миллионов рейзов
-let H = { pool: {}, tops: {}, tops5: {} };
+let H = { pool: {}, tops: {}, tops5: {}, regs: {} };
 const add = (L, k, v) => { const h = H[L][k] = H[L][k] || {}, q = Math.round(v * 100); h[q] = (h[q] || 0) + 1; };
 // реальные суммы 3-бета / сквиза / 4-бета в bb (шаг 0,1) при данном размере предыдущего рейза: «до сколько ставят на опен 2,8»
-let HA = { pool: {}, tops: {}, tops5: {} };
+let HA = { pool: {}, tops: {}, tops5: {}, regs: {} };
 const addA = (L, k, ref, to) => { const h = HA[L][k] = HA[L][k] || {}, r = (Math.round(ref * 10) / 10).toFixed(1), g = h[r] = h[r] || {}, q = Math.round(to * 10); g[q] = (g[q] || 0) + 1; };
 // проверка порога COMMIT: x = (мода пула для спота) / eff, корзины по 0.1; [пуш, рейз]
-let commit = { pool: {}, tops: {}, tops5: {} };
+let commit = { pool: {}, tops: {}, tops5: {}, regs: {} };
 let nDec = 0, nAiEff = 0, nRaise = 0, done = [];
 let seen = new C.IdSet();
 // чекпоинт после каждого архива (RESUME=1 — продолжить, MAX_SOURCES=N — часть)
@@ -41,7 +41,7 @@ const addH = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L] 
 const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L] || {}; const a = A[L][k] = A[L][k] || {}; for (const r in B[L][k]) { const g = a[r] = a[r] || {}; for (const q in B[L][k][r]) g[q] = (g[q] || 0) + B[L][k][r][q]; } } };
 
 (async () => {
-  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { let st0; ({ H, HA = { pool: {}, tops: {}, tops5: {} }, commit, nDec, nAiEff, nRaise, done, mergedTags = [] } = st0 = JSON.parse(fs.readFileSync(STATE, 'utf8'))); if (st0.shardTag) shardTag = st0.shardTag; seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
+  if (process.env.RESUME === '1' && fs.existsSync(STATE) && fs.existsSync(IDSF)) { let st0; ({ H, HA = { pool: {}, tops: {}, tops5: {}, regs: {} }, commit, nDec, nAiEff, nRaise, done, mergedTags = [] } = st0 = JSON.parse(fs.readFileSync(STATE, 'utf8'))); if (st0.shardTag) shardTag = st0.shardTag; seen = C.loadIds(IDSF); C.log('sizes: продолжаю с чекпоинта, архивов', done.length); }
   if (process.env.SHARD_TAG) shardTag = process.env.SHARD_TAG;
   let merged = false;
   for (const dir of (process.env.MERGE_SHARDS || '').split(';').filter(Boolean)) {
@@ -81,19 +81,20 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L]
       if (d.aiEff) { nAiEff++; continue; }
       const a = d.szAct; if (!a) continue;
       const v = SZ.measure(a, d.to, d.refTo, d.nLimp);
-      const pk1 = C.playerKey(room, rp.nm[d.i]), top = tops.has(pk1), top5 = tops5.has(pk1);
+      const pk1 = C.playerKey(room, rp.nm[d.i]), top = tops.has(pk1), top5 = tops5.has(pk1), reg = d.grp === 'reg';
       // ключи: с форматом турнира (фризаут / PKO) и общие
       for (const k of SZ.ownKeys(room, a, SP.bandOf(d.eff), SP.posBand(d.pos), d.nLimp, kd, d.oppPos ? SP.posBand(d.oppPos) : null, { C: d.C, tb: C.tableOf(rp.n), v: SZ.vsOf(a, d) })) {
-        add('pool', k, v); if (top) add('tops', k, v); if (top5) add('tops5', k, v);
-        if (a !== 'open' && a !== 'iso' && d.refTo > 0) { addA('pool', k, d.refTo, d.to); if (top) addA('tops', k, d.refTo, d.to); if (top5) addA('tops5', k, d.refTo, d.to); }
-        const kk = '*' + k.slice(k.indexOf('|')); add('pool', kk, v); if (top) add('tops', kk, v); if (top5) add('tops5', kk, v);
+        // все румы вместе (владелец, 20.11.2026): только ключи «*|…»
+        const kk = '*' + k.slice(k.indexOf('|'));
+        if (top) add('tops', kk, v); if (top5) add('tops5', kk, v); if (reg) add('regs', kk, v);
+        if (a !== 'open' && a !== 'iso' && d.refTo > 0) { if (top) addA('tops', kk, d.refTo, d.to); if (top5) addA('tops5', kk, d.refTo, d.to); if (reg) addA('regs', kk, d.refTo, d.to); }
       }
     }
   }
   if (unsaved) saveState();
   if (process.env.STATE_ONLY === '1') { C.log('sizes: поток готов — состояние сохранено'); return; }
-  const table = { built: new Date().toISOString().slice(0, 10), tops: {}, tops5: {}, pool: {} };
-  for (const L of ['pool', 'tops', 'tops5']) for (const [k, hg] of Object.entries(H[L] || {})) {
+  const table = { built: new Date().toISOString().slice(0, 10), tops: {}, tops5: {}, regs: {}, pool: {} };
+  for (const L of ['tops', 'tops5', 'regs']) for (const [k, hg] of Object.entries(H[L] || {})) {
     const v = Object.entries(hg).map(([q, c]) => [+q / 100, c]).sort((a, b) => a[0] - b[0]); // [значение, сколько раз]
     const N = v.reduce((s, x) => s + x[1], 0); if (N < 50) continue;
     const act = k.split('|')[1], step = act === 'open' || act === 'iso' ? 0.05 : 0.1;
@@ -110,12 +111,15 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L]
     const bmode = {}; { const hh = {}; for (const [x, c] of v) { const b = SZ.bucketOf(act, x), t = (Math.round(x / step) * step).toFixed(2); (hh[b] = hh[b] || {})[t] = ((hh[b] || {})[t] || 0) + c; } for (const b in hh) bmode[b] = +Object.entries(hh[b]).sort((a, b2) => b2[1] - a[1])[0][0]; }
     let babs = null;
     if (HA[L][k]) { babs = {}; for (const [r, g] of Object.entries(HA[L][k])) { const byB = {}; for (const [q, c] of Object.entries(g)) { const to = +q / 10, b = SZ.bucketOf(act, to / +r); (byB[b] = byB[b] || {})[to.toFixed(1)] = ((byB[b] || {})[to.toFixed(1)] || 0) + c; } for (const b in byB) { const e = Object.entries(byB[b]), tot = e.reduce((s2, x) => s2 + x[1], 0); if (tot < 20) continue; (babs[b] = babs[b] || {})[r] = +e.sort((a, b2) => b2[1] - a[1])[0][0]; } } }
-    table[L][k] = { n: N, bmode, babs, mode: +mb, share: Math.round(mc / N * 1000) / 10, rec, recBucket: topB, recShare: buckets[topB], p10: q(.1), p50: q(.5), p90: q(.9), buckets };
+    // abs: против конкретного предыдущего рейза (шаг 0,1 bb) — сколько раздач и 5 самых частых сумм «до» [до, раз]
+    let abs = null;
+    if (HA[L][k]) { abs = {}; for (const [r, g] of Object.entries(HA[L][k])) { const e = Object.entries(g).map(([q, c]) => [+q / 10, c]), n = e.reduce((s2, x) => s2 + x[1], 0); if (n < 20) continue; abs[r] = [n, e.sort((a, b2) => b2[1] - a[1]).slice(0, 5)]; } }
+    table[L][k] = { n: N, abs, bmode, babs, mode: +mb, share: Math.round(mc / N * 1000) / 10, rec, recBucket: topB, recShare: buckets[topB], p10: q(.1), p50: q(.5), p90: q(.9), buckets };
   }
   const outT = path.join(__dirname, '..', 'data', 'sizes_v8.json');
   fs.writeFileSync(outT, JSON.stringify(table));
   const cm = {}; for (const L of ['pool', 'tops', 'tops5']) for (const [k, [sh, r]] of Object.entries(commit[L] || {}).sort()) if (sh + r >= 30) (cm[L] = cm[L] || {})[k] = { n: sh + r, shove: Math.round(sh / (sh + r) * 100) };
-  const rep = { decisions: nDec, raises: nRaise, aiEffRaises: nAiEff, keysPool: Object.keys(table.pool).length, keysTops: Object.keys(table.tops).length, keysTops5: Object.keys(table.tops5).length, tops: tops.size, commit: cm };
+  const rep = { decisions: nDec, raises: nRaise, aiEffRaises: nAiEff, keysPool: Object.keys(table.pool).length, keysTops: Object.keys(table.tops).length, keysTops5: Object.keys(table.tops5).length, keysRegs: Object.keys(table.regs).length, tops: tops.size, commit: cm };
   fs.writeFileSync(path.join(C.OUT, 'sizes_report.json'), JSON.stringify(rep, null, 1));
   C.log('sizes: решений', nDec, 'рейзов', nRaise, 'эфф. олл-инов', nAiEff, 'ключей пул/топы', rep.keysPool, rep.keysTops);
 })();
