@@ -17,6 +17,7 @@ const STG = require('../lib/stage.js');
 const CLU = require('../lib/clusters.js');
 const clFile = process.env.PLAYERS_CL || path.join(C.OUT, 'players_cl_all.json');
 const CL = fs.existsSync(clFile) ? JSON.parse(fs.readFileSync(clFile, 'utf8')) : {};
+const TIGHT = process.env.TIGHT_FILE && fs.existsSync(process.env.TIGHT_FILE) ? JSON.parse(fs.readFileSync(process.env.TIGHT_FILE, 'utf8')) : null; // см. passV8
 C.log('sizes: игроков с классом', Object.keys(CL).length, '(' + path.basename(clFile) + ')');
 const tournFile = process.env.TOURN || path.join(C.OUT, 'tourn_v8.json');
 const TOURN = fs.existsSync(tournFile) ? JSON.parse(fs.readFileSync(tournFile, 'utf8')) : {};
@@ -62,7 +63,7 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L]
     const kd = C.kindOf(rp, x.hand, x.fp);
     // Mystery Bounty в призовых (и без данных о стадии) — не учитываем (как в модели)
     if (kd === 'm') { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; if (!T || !STG.preITM(T, STG.tsOf(rp.date), rp.n)) continue; }
-    const grpOf = (nick) => { const c = CL[C.playerKey(room, nick)]; return c ? CLU.GROUP[c[0]] || 'unk' : 'unk'; };
+    const grpOf = (nick) => { const k = C.playerKey(room, nick), c = CL[k]; if (!c || (TIGHT && !TIGHT[k])) return 'unk'; return CLU.GROUP[c[0]] || 'unk'; };
     for (const d of SP.preflopDecisions(rp, grpOf)) {
       nDec++;
       if (d.act === 'shove' || (d.to && !d.aiAct && d.tbl !== 'AI')) {

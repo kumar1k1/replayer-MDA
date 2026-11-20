@@ -117,6 +117,42 @@ for (const [nk, keys] of byNick) {
   if (maxZ < 3 && near) { merges.push(rec); out[k1].push(k2); out[k2].push(k1); } else notMerged.push(Object.assign(rec, { why: maxZ >= 3 ? 'статы различаются' : 'разные кластеры' }));
 }
 
+// ---------- 7. «плотные» члены кластера и одинаковость кластеров в разных румах (владелец, 20.11.2026) ----------
+// Идея: не делить данные по румам, а брать один и тот же кластер со всех румов — но только игроков, которые ему
+// подходят чётко. Плотный = надёжный (рук ≥ порога) + расстояние до своего кластера не больше 75-го перцентиля
+// расстояний в этом кластере + до второго кластера заметно дальше (d2 ≥ TIGHT_GAP × d).
+// Отчёт: по каждому кластеру и руму — сколько игроков и плотных, медиана расстояния и средние 11 статов плотных
+// игроков рума против всех румов (в долях разброса): если румы близки — кластер можно брать со всех румов вместе.
+const TIGHT_GAP = +(process.env.TIGHT_GAP || 1.15), TIGHT_Q = +(process.env.TIGHT_Q || 0.75);
+const dq = {}; for (const k in out) if (out[k][5]) (dq[out[k][0]] = dq[out[k][0]] || []).push(out[k][1]);
+const dLim = {}; for (const c in dq) { const v = dq[c].sort((a, b) => a - b); dLim[c] = v[Math.min(v.length - 1, Math.floor(v.length * TIGHT_Q))]; }
+const tight = {}; for (const k in out) { const o = out[k]; if (o[5] && o[1] <= dLim[o[0]] && o[3] >= TIGHT_GAP * o[1]) tight[k] = 1; }
+fs.writeFileSync(path.join(OUT, 'players_tight.json'), JSON.stringify(tight));
+const roomOfK = (k) => k.slice(0, k.indexOf(':'));
+const prof = {}; // кластер → рум → {n, tight, d[], sum[11], sq[11]}
+for (const [k, { p, r }] of byKey) {
+  const o = out[k]; if (!o[5]) continue;
+  const rm = roomOfK(k), P = (prof[r.cl] = prof[r.cl] || {}), x = P[rm] = P[rm] || { n: 0, t: 0, d: [], sum: new Array(NCL).fill(0), sq: new Array(NCL).fill(0) };
+  const all = P['*'] = P['*'] || { n: 0, t: 0, d: [], sum: new Array(NCL).fill(0), sq: new Array(NCL).fill(0) };
+  for (const z of [x, all]) { z.n++; z.d.push(o[1]); }
+  if (!tight[k]) continue;
+  const rt = ratesOf(p, [0, 1]);
+  for (const z of [x, all]) { z.t++; for (let s = 0; s < NCL; s++) { z.sum[s] += rt[s]; z.sq[s] += rt[s] * rt[s]; } }
+}
+const med = (v) => { const a = v.slice().sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; };
+const roomsReport = [];
+for (const c in prof) {
+  const A = prof[c]['*']; if (!A || A.t < 20) continue;
+  const mA = A.sum.map(v => v / A.t), sdA = A.sq.map((v, s) => Math.sqrt(Math.max(1e-9, v / A.t - mA[s] ** 2)));
+  for (const rm in prof[c]) {
+    if (rm === '*') continue; const x = prof[c][rm];
+    const row = { кластер: +c, группа: CLU.GROUP[c], рум: rm, надёжных: x.n, плотных: x.t, медиана_расстояния: med(x.d) };
+    if (x.t >= 20) { const dev = x.sum.map((v, s) => (v / x.t - mA[s]) / sdA[s]); const w = dev.reduce((b, v, s) => (Math.abs(v) > Math.abs(dev[b]) ? s : b), 0); row.макс_отклонение_sd = Math.round(dev[w] * 100) / 100; row.стат = ST.CL[w]; row.среднее_отклонение_sd = Math.round(dev.reduce((a, v) => a + Math.abs(v), 0) / NCL * 100) / 100; }
+    roomsReport.push(row);
+  }
+}
+roomsReport.sort((a, b) => a.кластер - b.кластер || b.плотных - a.плотных);
+
 // ---------- выгрузка и отчёт ----------
 fs.writeFileSync(path.join(OUT, 'players_cl_v8.json'), JSON.stringify(out));
 const distAll = new Array(20).fill(0); let nRel = 0;
@@ -127,6 +163,7 @@ const report = {
   fmtStats: fmtStats.map((F, f) => F.map((x, s) => ({ fmt: f ? 'full' : 'short', stat: ST.CL[s], m: Math.round(x.m * 10) / 10, sd: Math.round(x.sd * 10) / 10, n: x.n }))),
   agreement: agree.map(b => ({ hands_each_half: b.lo + '–' + (b.hi > 1e11 ? '∞' : b.hi), players: b.n, same: b.n ? Math.round(b.same / b.n * 1000) / 10 : null, sameOrNeighbor: b.n ? Math.round(b.near / b.n * 1000) / 10 : null, sameGroup: b.n ? Math.round(b.sameGroup / b.n * 1000) / 10 : null })),
   sixmax, merges: merges.length, mergeExamples: merges.slice(0, 15), notMerged: notMerged.length, notMergedExamples: notMerged.filter(x => x.why !== 'мало рук').slice(0, 15),
+  tight: { gap: TIGHT_GAP, q: TIGHT_Q, players: Object.keys(tight).length, dLimit: dLim }, clustersByRoom: roomsReport,
   distributionReliable: distAll.map((v, c) => ({ cl: c, group: CLU.GROUP[c], share: nRel ? Math.round(v / nRel * 1000) / 10 : 0 }))
 };
 fs.writeFileSync(path.join(OUT, 'clusters_report.json'), JSON.stringify(report, null, 1));

@@ -20,6 +20,8 @@ rem ---- пороги топов - согласованы с владельцем ----
 set "MIN_HANDS_TOP=10000"
 set "TOP1_BB100=8"
 set "TOP2_BB100=5"
+rem класс игрока - только у чётко подходящих своему кластеру: 1 - да, пусто - у всех
+set "TIGHT_ONLY="
 rem ---------------------------------------------------
 cd /d "%~dp0"
 if "%BACKING_DIR%"=="" set "BACKING_DIR=D:/маининг/реплеер"
@@ -49,6 +51,7 @@ set "PLAYERS_CL=%OUT2%\players_cl_all.json"
 set "TOPS=%OUT2%\tops_all.json"
 set "TOURN=%OUT2%\tourn_all.json"
 set "ROOM_LAYER=wpn,ipoker,chico,888,pses"
+if "%TIGHT_ONLY%"=="1" set "TIGHT_FILE=%OUT2%\players_tight.json"
 set "PRIO=max"
 
 if exist "%OUT2%\topsdone.flag" goto :s2

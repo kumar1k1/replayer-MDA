@@ -35,7 +35,10 @@ const TOURN = fs.existsSync(tournFile) ? readJ(tournFile) : {};
 const STAGE_EST = process.env.STAGE_EST === '1';
 const clFile = process.env.PLAYERS_CL || path.join(C.OUT, 'players_cl_v8.json');
 const CL = fs.existsSync(clFile) ? readJ(clFile) : {};
-const grpOfK = (room, nick) => { const c = CL[C.playerKey(room, nick)]; return c ? CLU.GROUP[c[0]] || 'unk' : 'unk'; };
+// TIGHT_FILE=…/players_tight.json — класс (рег / нит / фиш) только у игроков, чётко подходящих своему кластеру
+// (pipeline/clusters.cjs, п.7); остальные — «unk». Так один и тот же кластер берётся со всех румов без размытия.
+const TIGHT = process.env.TIGHT_FILE && fs.existsSync(process.env.TIGHT_FILE) ? readJ(process.env.TIGHT_FILE) : null;
+const grpOfK = (room, nick) => { const k = C.playerKey(room, nick), c = CL[k]; if (!c || (TIGHT && !TIGHT[k])) return 'unk'; return CLU.GROUP[c[0]] || 'unk'; };
 // топ для раздачи половины h — отобран по другой половине
 const isTop = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; return (h === 'A' ? T.B : T.A).has(C.playerKey(room, nick)); };
 const isTop5 = (room, nick, h, kd) => { const T = TOPSF[kd] || TOPS; if (!T.A5) return false; return (h === 'A' ? T.B5 : T.A5).has(C.playerKey(room, nick)); };
