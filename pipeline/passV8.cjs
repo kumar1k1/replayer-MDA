@@ -43,7 +43,7 @@ const grpOfK = (room, nick) => { const k = C.playerKey(room, nick), c = CL[k]; i
 // топы по лимиту (владелец, 20.11.2026: порог винрейта свой у каждого бай-ина): свои, если их не меньше MIN_TOPS_ST
 // в обеих половинах; иначе — по формату / общие
 const MIN_TOPS_ST = +(process.env.MIN_TOPS_ST || 30), TOPSS = {};
-for (const st of ['micro', 'low', 'mid', 'high']) { const t = (TJ.bySt || {})[st]; if (t && Object.keys(t.A).length >= MIN_TOPS_ST && Object.keys(t.B).length >= MIN_TOPS_ST) TOPSS[st] = { A: new Set(Object.keys(t.A)), B: new Set(Object.keys(t.B)), A5: new Set(Object.keys(t.A5 || {})), B5: new Set(Object.keys(t.B5 || {})) }; }
+for (const st of C.TBANDS) { const t = (TJ.bySt || {})[st]; if (t && Object.keys(t.A).length >= MIN_TOPS_ST && Object.keys(t.B).length >= MIN_TOPS_ST) TOPSS[st] = { A: new Set(Object.keys(t.A)), B: new Set(Object.keys(t.B)), A5: new Set(Object.keys(t.A5 || {})), B5: new Set(Object.keys(t.B5 || {})) }; }
 const isTop = (room, nick, h, kd, st) => { const T = TOPSS[st] || TOPSF[kd] || TOPS; return (h === 'A' ? T.B : T.A).has(C.playerKey(room, nick)); };
 const isTop5 = (room, nick, h, kd, st) => { const T = TOPSS[st] || TOPSF[kd] || TOPS; if (!T.A5) return false; return (h === 'A' ? T.B5 : T.A5).has(C.playerKey(room, nick)); };
 const ROOM_LAYER = new Set((process.env.ROOM_LAYER || 'wpn,ipoker,chico,888,pses').split(',').filter(Boolean));
@@ -127,7 +127,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       const fr = frames(rp); if (!fr.length) continue;
       const fin = fr[fr.length - 1], bb = rp.bb;
       if (!C.handIntact(rp, fin, x.hand)) { stats_broken++; continue; } // повреждённая история (банк не сходится)
-      const st = C.stratumOf(x.fp, rp.title), tb = C.tableOf(rp.n), kd = C.kindOf(rp, x.hand, x.fp), half = C.halfOf(rp.handId);
+      const st = C.stratumOf(x.fp, rp.title), tbH = C.tbandOf(C.buyinOf(x.fp, rp.title)), tb = C.tableOf(rp.n), kd = C.kindOf(rp, x.hand, x.fp), half = C.halfOf(rp.handId);
       const SD = {};
       if (C.SHOWDOWN_TRUSTED(room)) for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c, h: K.h169(c[0], c[1]) }; }
       if (Object.keys(SD).length) stats.sd++;
@@ -146,8 +146,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       const decs = C.preflopDecisions(rp, grpOf);
       for (const d of decs) {
         const i = d.i, nick = rp.nm[i], act = actClass(d), bnd = C.bandOf(d.eff);
-        const coh = isTop(room, nick, half, kd, st) ? 'T' : 'F', g = 'g' + grpOf(nick);
-        const CO = coh === 'T' || isTop5(room, nick, half, kd, st) ? [coh, 'U'] : [coh]; // U — топы ≥ 5 (с топами-1)
+        const coh = isTop(room, nick, half, kd, tbH) ? 'T' : 'F', g = 'g' + grpOf(nick);
+        const CO = coh === 'T' || isTop5(room, nick, half, kd, tbH) ? [coh, 'U'] : [coh]; // U — топы ≥ 5 (с топами-1)
         const rel = A.net[i] / bb + d.inv; // относительно фолда в этой точке
         const fa = act !== 'fold' && act !== 'check' && C.foldedAround(rp, d.k, i);
         // ключ спота: TBL|страта|стол|баунти|поз|поз.опп|стек|лимперы|коллеры  (+ |действие|группа.опп)

@@ -64,7 +64,7 @@ const addHA = (A, B) => { for (const L in B) for (const k in B[L]) { A[L] = A[L]
     const room = C.roomOf(x.hand);
     if (!seen.add(room, rp.handId)) continue;
     const fr = frames(rp); if (!C.handIntact(rp, fr[fr.length - 1], x.hand)) continue;
-    const kd = C.kindOf(rp, x.hand, x.fp), stH = C.stratumOf(x.fp, rp.title);
+    const kd = C.kindOf(rp, x.hand, x.fp), stH = C.tbandOf(C.buyinOf(x.fp, rp.title));
     // Mystery Bounty в призовых (и без данных о стадии) — не учитываем (как в модели)
     if (kd === 'm') { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; if (!T || !STG.preITM(T, STG.tsOf(rp.date), rp.n)) continue; }
     const grpOf = (nick) => { const k = C.playerKey(room, nick), c = CL[k]; if (!c || (TIGHT && !TIGHT[k])) return 'unk'; return CLU.GROUP[c[0]] || 'unk'; };

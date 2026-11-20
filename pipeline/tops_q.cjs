@@ -35,11 +35,11 @@ for (const k in W) {
   for (const f of ['n', 'k', 'm']) { const nf = a[FB[f]] + a[FB[f] + 3] + a[FB[f] + 6] + a[FB[f] + 9]; if (nf >= MIN_HANDS_FMT) pick(tops.byFmt[f], k, a, FB[f], c[0], nf); }
 }
 // ---- по лимитам (владелец, 20.11.2026): хороший винрейт зависит от бай-ина — на $5 средний рег ~10 bb/100, топы ~15;
-// на $50–100 хороший — от 8; на $500 — 4–5. Топ лимита: ≥ MIN_HANDS рук всего, ≥ MIN_HANDS_ST рук на этом лимите и
+// на $50–100 хороший — от 8; на $250+ — от 5. Топ лимита: ≥ MIN_HANDS рук всего, ≥ MIN_HANDS_ST рук на этом лимите и
 // винрейт на нём в обеих четвертях половины отбора ≥ порога лимита. Вход: out/winq_st.json (pipeline/stages.cjs).
-const STS = ['micro', 'low', 'mid', 'high'], ST_RU = { micro: 'до $11', low: '$11–55', mid: '$55–200', high: 'от $200' };
+const STS = ['b20', 'b50', 'b100', 'b250', 'b250p'], ST_RU = { b20: 'до $20', b50: '$20–50', b100: '$50–100', b250: '$100–250', b250p: 'от $250' };
 const envT = (n, d) => (process.env[n] || d).split(',').map(Number);
-const T1S = envT('TOP1_ST', '15,10,8,5'), T2S = envT('TOP2_ST', '10,7,5,3'), MIN_HANDS_ST = +(process.env.MIN_HANDS_ST || 5000);
+const T1S = envT('TOP1_ST', '12,10,8,6,5'), T2S = envT('TOP2_ST', '8,6,5,4,3'), MIN_HANDS_ST = +(process.env.MIN_HANDS_ST || 5000);
 const WSf = path.join(OUT, 'winq_st.json'), WS = fs.existsSync(WSf) ? JSON.parse(fs.readFileSync(WSf, 'utf8')) : null;
 if (WS) {
   tops.bySt = {}; tops.rule.bySt = { top1: T1S, top2: T2S, minHandsSt: MIN_HANDS_ST };
