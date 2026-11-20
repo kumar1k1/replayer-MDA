@@ -337,6 +337,29 @@
       if (known >= 4 && fish === 0) return bnt ? { need: 0.05, tw: '; стол сильный, PKO — за баунти достаточно небольшого плюса' } : { need: base / 2, tw: '; стол сильный (фишей нет) — запас вдвое меньше' };
       return { need: base, tw: '' };
     }
+    // запас пуша (владелец, 20.11.2026): минимум по стеку + погрешность оценки в этом споте, не выше потолка
+    const SHOVE_BANDS = [[12, 0.10, 0.4], [20, 0.15, 0.5], [30, 0.20, 0.6], [50, 0.25, 0.8], [1e9, 0.30, 1.0]];
+    function shoveNeed(eff, estErr) {
+      const b = SHOVE_BANDS.find(x => (eff || 0) <= x[0]);
+      return { need: Math.min(b[2], b[1] + (estErr || 0)), floor: b[1], cap: b[2] };
+    }
+    // рука на границе ГТО-диапазона пуша: следующая по силе рука того же типа ГТО пушит
+    function gtoShoveEdge(sp, h) {
+      const g = gtoFreq(sp, h); if (!g) return null;
+      const fs = g.f.shove || 0; if (fs >= 0.02) return { inGto: true };
+      const H = K.H169[h]; let nb = null;
+      if (H.s === 'p') nb = H.hi < 12 ? K.RK[H.hi + 1] + K.RK[H.hi + 1] : null;
+      else nb = H.lo + 1 < H.hi ? K.RK[H.hi] + K.RK[H.lo + 1] + H.s : null;
+      if (!nb) return { inGto: false, border: true };
+      const gn = gtoFreq(sp, K.IDX[nb]);
+      return { inGto: false, border: !!(gn && (gn.f.shove || 0) >= 0.1), nb };
+    }
+    // запас колла олл-ина — так же: минимум по доплате + погрешность эквити, потолок; потом поправка по составу стола
+    const CALL_BANDS = [[12, 0.10, 0.5], [20, 0.15, 0.6], [30, 0.20, 0.75], [50, 0.25, 1.0], [1e9, 0.30, 1.25]];
+    function callNeed(risk, estErr) {
+      const b = CALL_BANDS.find(x => (risk || 0) <= x[0]);
+      return { need: Math.min(b[2], b[1] + (estErr || 0)), floor: b[1], cap: b[2] };
+    }
     function shoveEV(sp, cards, info) {
       const h = K.h169(cards[0], cards[1]), tk = sp.tb + sp.kd;
       let nR = 0, noData = []; const bounties = [];
@@ -367,11 +390,14 @@
         const eq = K.eqVsRange(EQ, cards, R.r);
         const cH = eff - sp.inv, cO = eff - (o.inv || 0);
         const bt = bountyBB(sp, o.j), bAdd = bt ? bt.bb : 0; if (bt && bt.bb > 0) bounties.push(o.pos + ': +' + (Math.round(bt.bb * 10) / 10) + ' bb (' + bt.why + ')');
-        opp.push({ pos: o.pos, pc, pcOver, pcSrc, eq, cH, cO, bAdd, rsrc: R.src });
+        // погрешность частоты колла (владелец, 20.11.2026): по личным статам ±2,5 п.п., по кластеру ±6 п.п. (плавно по весу личного)
+        const wP = LM && b.pf ? ((LM.prob('ai', b.band, o.pos, b.pf, b.cl) || {}).w || 0) : 0;
+        const sPc = (0.06 * (1 - wP) + 0.025 * wP) * Math.min(1, 2 * Math.sqrt(pc * (1 - pc)));
+        opp.push({ pos: o.pos, pc, pcOver, pcSrc, eq, cH, cO, bAdd, rsrc: R.src, sPc });
       }
       if (noData.length) return { m: null, n: 0, se: null, src: 'нет данных: как ' + noData.join(', ') + ' отвечают на олл-ин', pFold: null, h };
       // проход по игрокам в порядке хода: P(все до него сбросили) × P(колл) × [он один / ещё кто-то доколлировал]
-      let pAll = 1, ev = 0, m2 = 0, pMulti = 0;
+      let pAll = 1, ev = 0, m2 = 0, pMulti = 0, vFe = 0, sEq = 0;
       for (let j = 0; j < opp.length; j++) {
         const o = opp[j]; let qNone = 1, w3 = 0, w3sq = 0;
         for (let k = j + 1; k < opp.length; k++) {
@@ -383,6 +409,7 @@
         ev += pj * (qNone * win + w3);
         m2 += pj * (qNone * (o.eq * (P2 - o.cH) ** 2 + (1 - o.eq) * o.cH * o.cH) + w3sq);
         pMulti += pj * (1 - qNone);
+        vFe += (pAll * (win - pot) * o.sPc) ** 2; sEq += pj * 0.02 * P2; // ±2 п.п. эквити против диапазона колла
         if (DEBUG) DEBUG.push({ pos: o.pos, pc: +o.pc.toFixed(3), pcOver: +o.pcOver.toFixed(3), pcSrc: o.pcSrc, eq: +o.eq.toFixed(3), win: +win.toFixed(2), bounty: o.bAdd, rsrc: o.rsrc });
         pAll *= 1 - o.pc;
       }
@@ -396,7 +423,7 @@
       }
       ev += pAll * pot; m2 += pAll * pot * pot;
       const sd = Math.sqrt(Math.max(0, m2 - ev * ev));
-      return { m: ev, n: nR, se: null, sd, risk: cH0, pMulti, src: 'эквити', pFold: pAll, h, bounty: bounties.length ? bounties.join('; ') : null };
+      return { m: ev, n: nR, se: null, sd, estErr: Math.sqrt(vFe + sEq * sEq), risk: cH0, pMulti, src: 'эквити', pFold: pAll, h, bounty: bounties.length ? bounties.join('; ') : null };
     }
     function callAllinEV(sp, cards) {
       const tk = sp.tb + sp.kd, g = 'g' + (sp.oppGrp || 'unk');
@@ -410,7 +437,9 @@
       const excess = Math.max(0, sp.toCall - callAmt);
       const P = sp.potBefore - excess * (1 + nc) + callAmt;
       const bt = sp.refI >= 0 ? bountyBB(sp, sp.refI) : null, bAdd = bt ? bt.bb : 0;
-      return { bounty: bt ? bt.why : null, bountyBB: bAdd, m: eq * (P + bAdd) - callAmt, n: R.n, se: null, src: nc ? 'эквити (мультивей, приближённо)' : 'эквити', eq, rangeSrc: R.src };
+      // погрешность (владелец, 20.11.2026): эквити против диапазона пуша известно с точностью ±1–4 п.п. — тем хуже, чем меньше вскрытий
+      const sEq = 0.01 + 0.03 * Math.sqrt(100 / ((R.n || 0) + 100)) + 0.01 * nc;
+      return { bounty: bt ? bt.why : null, bountyBB: bAdd, m: eq * (P + bAdd) - callAmt, n: R.n, estErr: sEq * (P + bAdd), se: null, src: nc ? 'эквити (мультивей, приближённо)' : 'эквити', eq, rangeSrc: R.src };
     }
 
     // ---------- «что топы делают с этой рукой» ----------
@@ -578,8 +607,8 @@
           if (ch && ch.oppFold) row.oppFold = ch.oppFold;
         }
         if (size && !size.none) { row.size = size; row.ru = RU[act] + ' до ' + size.to + ' bb'; if (size.allin) row.asShove = true; }
-        if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold, bounty: r.bounty, sd: r.sd, risk: r.risk, pMulti: r.pMulti }); }
-        if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq, bounty: r.bounty, bountyBB: r.bountyBB }); }
+        if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold, bounty: r.bounty, sd: r.sd, risk: r.risk, pMulti: r.pMulti, estErr: r.estErr }); }
+        if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq, bounty: r.bounty, bountyBB: r.bountyBB, estErr: r.estErr }); }
         const sl = spotLevel('T', sp, act);
         let pfa = sl.pfa, mfa = sl.mfa, pfaSrc = 'спот';
         const fa = foldAllFor(sp, act, sl, info, size && !size.none ? size.bucket : null);
@@ -668,9 +697,15 @@
           const aEV = alt ? (alt.act === 'fold' ? 0 : evHand(alt)) : 0, edge = sh.ev - aEV;
           // пуш — по фолд-эквити конкретных соперников (кластер + личные статы, лайнап), без поправки на состав стола
           // (владелец, 20.11.2026): переброс у соперника = активно пушим и рестилим; запас — только на погрешность оценки
-          const need = Math.max(SHOVE_MIN_EDGE, SHOVE_MIN_EDGE_PCT * sh.risk), tw = '';
           const r2 = (v) => Math.round(v * 100) / 100;
-          if (alt && edge < need) { rec = { act: alt.act, why: 'олл-ин лучше ' + (RU[alt.act] || alt.act) + ' всего на ' + r2(edge) + ' bb при риске ' + r2(sh.risk) + ' bb (разброс ±' + r2(sh.sd || 0) + ' bb) — не стоит дисперсии, нужно хотя бы ' + r2(need) + ' bb' + tw }; best = alt; }
+          const N = opts && opts.shoveMinEdge != null ? { need: Math.max(SHOVE_MIN_EDGE, SHOVE_MIN_EDGE_PCT * sh.risk) } : shoveNeed(sp.eff, sh.estErr);
+          const need = N.need, tw = '';
+          // тонкий пуш вне ГТО-диапазона — только на его границе; «жирные» пуши (перевес ≥ 2 запасов и ≥ 1 bb) не режем
+          const fat = edge >= Math.max(2 * need, 1);
+          const ge = !fat && alt && edge >= need && h != null ? gtoShoveEdge(sp, h) : null;
+          if (ge && !ge.inGto && !ge.border) { rec = { act: alt.act, why: 'олл-ин лучше ' + (RU[alt.act] || alt.act) + ' на ' + r2(edge) + ' bb — перевес тонкий, а рука вне ГТО-диапазона пуша и не на его границе (' + ge.nb + ' ГТО тоже не пушит) — похоже на погрешность оценки' }; best = alt; }
+          else if (alt && edge < need) { rec = { act: alt.act, why: 'олл-ин лучше ' + (RU[alt.act] || alt.act) + ' всего на ' + r2(edge) + ' bb при риске ' + r2(sh.risk) + ' bb (разброс ±' + r2(sh.sd || 0) + ' bb) — не стоит дисперсии, нужно хотя бы ' + r2(need) + ' bb' + (N.floor != null ? ' (минимум ' + N.floor + ' + погрешность оценки ' + r2(sh.estErr || 0) + ', потолок ' + N.cap + ')' : '') + tw }; best = alt; }
+          else if (ge && !ge.inGto) rec.why = (rec.why ? rec.why + '; ' : '') + 'шире ГТО (на границе диапазона) — соперники перебрасывают';
           else if (tw) rec.why = (rec.why ? rec.why + '; ' : '') + 'запас для олл-ина: ' + r2(need) + ' bb' + tw;
           else if (sh.pMulti > 0.02) rec.why += '; учтены доколлы: с вероятностью ' + Math.round(sh.pMulti * 100) + '% в игре трое';
         }
@@ -680,9 +715,14 @@
       if (rec.act === 'call' && sp.tbl === 'AI') {
         const cr = rowOf('call'), risk = sp.toCall > 0 ? Math.min(sp.toCall, sp.behind != null ? sp.behind : sp.toCall) : 0;
         if (cr && cr.ev != null && risk > 0) {
-          const { need, tw } = tableNeed(sp, Math.max(CALL_MIN_EDGE, CALL_MIN_EDGE_PCT * risk), (cr.bountyBB || 0) > 0);
+          const CN = opts && opts.callMinEdge != null ? { need: Math.max(CALL_MIN_EDGE, CALL_MIN_EDGE_PCT * risk) } : callNeed(risk, cr.estErr);
+          const { need, tw } = tableNeed(sp, CN.need, (cr.bountyBB || 0) > 0);
           const r2 = (v) => Math.round(v * 100) / 100;
-          if (cr.ev < need) { rec = { act: 'fold', why: 'колл олл-ина в плюс всего на ' + r2(cr.ev) + ' bb при доплате ' + r2(risk) + ' bb — нужно хотя бы ' + r2(need) + ' bb' + tw }; best = rowOf('fold') || best; }
+          const cw = CN.floor != null ? ' (минимум ' + CN.floor + ' + погрешность эквити ' + r2(cr.estErr || 0) + ', потолок ' + CN.cap + ')' : '';
+          // тонкий колл при малой выборке вскрытий соперника — не советуем (диапазон пуша известен плохо); «жирные» колы не режем
+          const thinNoData = cr.ev >= need && cr.ev < Math.max(2 * need, 1) && (cr.n || 0) < 100;
+          if (cr.ev < need) { rec = { act: 'fold', why: 'колл олл-ина в плюс всего на ' + r2(cr.ev) + ' bb при доплате ' + r2(risk) + ' bb — нужно хотя бы ' + r2(need) + ' bb' + cw + tw }; best = rowOf('fold') || best; }
+          else if (thinNoData) { rec = { act: 'fold', why: 'колл олл-ина в плюс на ' + r2(cr.ev) + ' bb — перевес тонкий, а диапазон пуша соперника известен по ' + (cr.n || 0) + ' вскрытиям (< 100) — похоже на погрешность' }; best = rowOf('fold') || best; }
           else if (tw) rec.why = (rec.why ? rec.why + '; ' : '') + 'запас для колла: ' + r2(need) + ' bb' + tw;
         }
       }
