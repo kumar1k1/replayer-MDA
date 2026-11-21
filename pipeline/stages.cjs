@@ -25,7 +25,7 @@ const SAMPLE = +(process.env.SAMPLE || 1);
 const K = require('../lib/cards.js');
 const MIN_HANDS = +(process.env.MIN_HANDS_TOP || 10000);
 const WANT = new Set(Object.keys(CL).filter(k => CLU.GROUP[CL[k][0]] === 'reg' && CL[k][4] >= MIN_HANDS * 0.9));
-const STI = { b20: 0, b50: 1, b100: 2, b250: 3, b250p: 4 }, NW = 60;
+const STI = { b20: 0, b50: 1, b100: 2, b100p: 3, b250: 3, b250p: 3 }, NW = 60; // b250/b250p — прежнее деление, сложено в b100p
 let W = {}; // 1 — все раздачи; 2 — каждая вторая (по хэшу) и т. д.
 C.log('стадии: игроков с кластером', Object.keys(CL).length, 'турниров', Object.keys(TOURN).length);
 

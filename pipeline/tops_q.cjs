@@ -37,10 +37,12 @@ for (const k in W) {
 // ---- по лимитам (владелец, 20.11.2026): хороший винрейт зависит от бай-ина — на $5 средний рег ~10 bb/100, топы ~15;
 // на $50–100 хороший — от 8; на $250+ — от 5. Топ лимита: ≥ MIN_HANDS рук всего, ≥ MIN_HANDS_ST рук на этом лимите и
 // винрейт на нём в обеих четвертях половины отбора ≥ порога лимита. Вход: out/winq_st.json (pipeline/stages.cjs).
-const STS = ['b20', 'b50', 'b100', 'b250', 'b250p'], ST_RU = { b20: 'до $20', b50: '$20–50', b100: '$50–100', b250: '$100–250', b250p: 'от $250' };
+const STS = ['b20', 'b50', 'b100', 'b100p'], ST_RU = { b20: 'до $20', b50: '$20–50', b100: '$50–100', b100p: 'от $100' };
 const envT = (n, d) => (process.env[n] || d).split(',').map(Number);
-const T1S = envT('TOP1_ST', '12,10,8,6,5'), T2S = envT('TOP2_ST', '8,6,5,4,3'), MIN_HANDS_ST = +(process.env.MIN_HANDS_ST || 5000);
+const T1S = envT('TOP1_ST', '12,10,8,5'), T2S = envT('TOP2_ST', '8,6,5,3'), MIN_HANDS_ST = +(process.env.MIN_HANDS_ST || 5000);
 const WSf = path.join(OUT, 'winq_st.json'), WS = fs.existsSync(WSf) ? JSON.parse(fs.readFileSync(WSf, 'utf8')) : null;
+// старый файл: 5 полос ($100–250 и $250+ отдельно) — складываем 5-ю в 4-ю ($100+)
+if (WS) for (const k in WS) { const a = WS[k]; for (let i = 0; i < 12; i++) { a[36 + i] += a[48 + i] || 0; a[48 + i] = 0; } }
 if (WS) {
   tops.bySt = {}; tops.rule.bySt = { top1: T1S, top2: T2S, minHandsSt: MIN_HANDS_ST };
   STS.forEach((st, si) => {
