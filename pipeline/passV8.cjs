@@ -32,7 +32,7 @@ for (const f of ['n', 'k', 'm']) { const t = (TJ.byFmt || {})[f]; if (t && Objec
 const STG = require('../lib/stage.js');
 const tournFile = process.env.TOURN || path.join(C.OUT, 'tourn_v8.json');
 const TOURN = fs.existsSync(tournFile) ? readJ(tournFile) : {};
-const STAGE_EST = process.env.STAGE_EST === '1';
+const STAGE_EST = process.env.STAGE_EST || ''; // '0' — только точные стадии; иначе точные + оценка для early/itm
 const clFile = process.env.PLAYERS_CL || path.join(C.OUT, 'players_cl_v8.json');
 const CL = fs.existsSync(clFile) ? readJ(clFile) : {};
 // TIGHT_FILE=…/players_tight.json — класс (рег / нит / фиш) только у игроков, чётко подходящих своему кластеру
@@ -138,7 +138,7 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
       let stage = null;
       { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]];
         const sa = T ? STG.stageAt(T, STG.tsOf(rp.date), rp.n) : null;
-        if (sa && (sa.exact || STAGE_EST)) stage = sa.stage;
+        if (sa && (STAGE_EST === '0' ? sa.exact : STG.trusted(sa))) stage = sa.stage;
         stats.stages = stats.stages || {}; const sk = sa ? (sa.exact ? sa.stage : 'оценка:' + sa.stage) : 'нет'; stats.stages[sk] = (stats.stages[sk] || 0) + 1; }
       // Mystery Bounty: только раздачи, доказанно сыгранные до призовой зоны; в призовых (и если стадию не узнать) — пропуск
       if (kd === 'm' && process.env.MYSTERY_ITM !== 'keep') { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; if (!T || !STG.preITM(T, STG.tsOf(rp.date), rp.n)) { stats.mysteryCut = (stats.mysteryCut || 0) + 1; continue; } }

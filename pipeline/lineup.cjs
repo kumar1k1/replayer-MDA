@@ -15,7 +15,7 @@ const C = require('./common.cjs'), SP = require('../lib/spots.js'), ST = require
 const OUT = C.OUT;
 const STG = require('../lib/stage.js');
 const TOURN = fs.existsSync(path.join(OUT, 'tourn_v8.json')) ? JSON.parse(fs.readFileSync(path.join(OUT, 'tourn_v8.json'), 'utf8')) : {};
-const STAGE_EST = process.env.STAGE_EST === '1';
+const STAGE_EST = process.env.STAGE_EST || '';
 const NS = ST.PF_SLOTS;
 // построчно: на полной базе файл больше предела строки Node (512 МБ)
 const players = []; require('./common.cjs').ndForEachSync(path.join(OUT, 'players_v8.ndjson'), (r) => players.push(r));
@@ -116,7 +116,7 @@ function loadState() {
     if (!d0 || d0.tbl !== 'RFI' || d0.pos === 'BB' || !(d0.act === 'shove' || /^open/.test(d0.act)) || d0.aiEff) continue;
     const fam = d0.act === 'shove' ? 'ai' : 'vso';
     const kd = C.kindOf(rp, x.hand, x.fp);
-    let stage = null; { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; const sa = T ? STG.stageAt(T, STG.tsOf(rp.date), rp.n) : null; if (sa && (sa.exact || STAGE_EST)) stage = sa.stage; }
+    let stage = null; { const tm = /Tournament #(\d+)/.exec(x.hand), T = tm && TOURN[room + ':' + tm[1]]; const sa = T ? STG.stageAt(T, STG.tsOf(rp.date), rp.n) : null; if (sa && (STAGE_EST === '0' ? sa.exact : STG.trusted(sa))) stage = sa.stage; }
     const ctx = { aggPos: SP.posBand(d0.pos), size: fam === 'ai' ? '*' : d0.sz || '*', fmt: kd };
     const half = C.halfOf(rp.handId) === 'A' ? 0 : 1, id = O.half.length;
     let allFold = 1;

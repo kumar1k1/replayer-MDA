@@ -7,7 +7,7 @@ const fs = require('fs'), path = require('path');
 const OUT = process.env.OUT_DIR || path.join(__dirname, 'out');
 const STG = require('../lib/stage.js');
 const TO = JSON.parse(fs.readFileSync(path.join(OUT, 'tourn_v8.json'), 'utf8'));
-const ST = ['early', 'mid', 'late', 'ft'];
+const ST = ['early', 'mid', 'bub', 'itm', 'ft'];
 const conf = {}; ST.forEach(a => { conf[a] = {}; ST.forEach(b => { conf[a][b] = 0; }); });
 let n = 0, ok = 0, near = 0, errR = [], used = 0;
 const perT = [];
