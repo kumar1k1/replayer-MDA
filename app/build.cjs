@@ -102,13 +102,29 @@ if (fs.existsSync(path.join(ROOT, 'data', 'gto_profile.json'))) sz.gto = asJs('g
 if (fs.existsSync(path.join(ROOT, 'data', 'stage_calib.json'))) asJs('stage_calib.js', path.join(ROOT, 'data', 'stage_calib.json'), 'RM_STAGE_CALIB'); else W('data/stage_calib.js', '');
 // игроки: «рум:ник» → [кластер, расстояние, второй кластер, рук, надёжен, префлоп-счётчики (разреженно «слот:число»)]
 const APP_MIN = +(process.env.APP_MIN_HANDS || 100); // в реплеер — игроки с ≥ 100 рук: у остальных кластер почти пуловый
-const pl = {}, CL = JSON.parse(R(process.env.PLAYERS_CL || path.join(OUTD, 'players_cl_v8.json')));
-for (const ln of R(process.env.PLAYERS || path.join(OUTD, 'players_v8.ndjson')).split('\n')) {
-  if (!ln) continue; const p = JSON.parse(ln), c = CL[p.k]; if (!c || p.n < APP_MIN) continue;
-  const sp = []; p.pf.forEach((v, o) => { if (v) sp.push(o + ':' + v); });
-  pl[p.k] = [c[0], c[1], c[2], c[4], c[5], sp.join(',')];
+// файл игроков на полной базе — больше 512 МБ (предел строки в Node): читается построчно, players.js пишется частями.
+// Личные счётчики — только слоты, где ситуаций не меньше MIN_PERSONAL (lib/lineup.js: меньше — реплеер их не берёт,
+// работает кластер); иначе players.js на новой базе — 569 МБ, браузер такой файл не загрузит (с отсевом — ~90 МБ).
+{
+  const C8 = require(path.join(ROOT, 'pipeline', 'common.cjs'));
+  const LU = require(path.join(ROOT, 'lib', 'lineup.js'));
+  const MINP = (JSON.parse(R(path.join(ROOT, 'data', 'lineup_v8.json'))).minPersonal) || 200;
+  const GR = []; // [слот возможности, сколько счётчиков действий после него]
+  for (const band of LU.BANDS) {
+    for (const pos of Object.keys({ EP: 0, MP: 1, CO: 2, BTN: 3, SB: 4 })) GR.push([LU.slotOf('rfi', band, pos), LU.FAM.rfi.acts.length]);
+    for (const pos of ['BB', 'SB', 'CO']) GR.push([LU.slotOf('vso', band, pos), LU.FAM.vso.acts.length]);
+    for (const fam of ['sqz', 'vs3', 'iso', 'ai']) GR.push([LU.slotOf(fam, band, ''), LU.FAM[fam].acts.length]);
+  }
+  const CL = JSON.parse(R(process.env.PLAYERS_CL || path.join(OUTD, 'players_cl_v8.json')));
+  const fd = fs.openSync(path.join(OUT, 'data', 'players.js'), 'w'); let buf = 'window.RM_PLAYERS={', n = 0;
+  C8.ndForEachSync(process.env.PLAYERS || path.join(OUTD, 'players_v8.ndjson'), (p) => {
+    const c = CL[p.k]; if (!c || p.n < APP_MIN) return;
+    const sp = []; for (const [o, k] of GR) if (p.pf[o] >= MINP) for (let j = o; j <= o + k; j++) if (p.pf[j]) sp.push(j + ':' + p.pf[j]);
+    buf += (n++ ? ',' : '') + JSON.stringify(p.k) + ':' + JSON.stringify([c[0], c[1], c[2], c[4], c[5], sp.join(',')]);
+    if (buf.length > 8e6) { fs.writeSync(fd, buf); buf = ''; }
+  });
+  fs.writeSync(fd, buf + '};\n'); fs.closeSync(fd); sz.players = n;
 }
-W('data/players.js', 'window.RM_PLAYERS=' + JSON.stringify(pl) + ';\n'); sz.players = Object.keys(pl).length;
 
 // пример раздач (необязательно): DEMO=<файл .txt> — откроется сразу при запуске
 W('js/demo.js', process.env.DEMO ? 'window.RM_DEMO=' + JSON.stringify(R(process.env.DEMO)) + ';\n' : '');

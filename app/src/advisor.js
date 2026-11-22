@@ -126,7 +126,7 @@ const SZ_VS = { r: 'против рега', n: 'против нита', f: 'пр
         const tr = el('tr', on ? 'on' : row.reliable ? '' : 'dim');
         const lab = row.ru + (row.asShove ? ' → пуш' : '') + (row.bounty ? ' 🎯' : '');
         const tdl = el('td', null, lab); if (row.pFold != null && row.act !== 'fold') tdl.title = 'сброс соперника: ' + pct(row.pFold);
-        const eb = el('td', 'num', row.evBase == null ? '—' : sgn(row.evBase)); eb.title = row.evBase != null ? 'EV базы: ' + row.evBaseWho + ', ' + row.nBase + ' раздач с этим действием' : (row.act === 'fold' ? '' : 'топы и реги здесь так почти не играют (< 1%) или мало раздач — не оцениваем');
+        const eb = el('td', 'num', row.evBase == null ? '—' : sgn(row.evBase)); eb.title = row.act === 'fold' ? 'фолд — точка отсчёта, EV 0' : row.evBase != null ? 'EV базы: ' + row.evBaseWho + ', ' + row.nBase + ' раздач с этим действием' : (row.act === 'fold' ? '' : 'топы и реги здесь так почти не играют (< 1%) или мало раздач — не оцениваем');
         tr.append(tdl, evCell(row), eb, el('td', 'num', pct(row.freqT)), el('td', 'num', row.freqReg == null ? '—' : pct(row.freqReg)), el('td', 'num', row.freqFish == null ? '—' : pct(row.freqFish)));
         if (row.bounty) tr.title = 'баунти: ' + row.bounty;
         t.append(tr);

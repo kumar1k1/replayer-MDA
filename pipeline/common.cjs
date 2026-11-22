@@ -85,9 +85,10 @@ function ndWriter(file) {
 }
 // синхронное построчное чтение больших NDJSON (без одной гигантской строки)
 function ndForEachSync(file, onRow) {
-  const fd = fs.openSync(file, 'r'), B = Buffer.alloc(1 << 24); let rest = '', pos = 0, n;
+  // StringDecoder — буква (UTF-8, несколько байт), разрезанная границей куска, не портится (ники игроков)
+  const fd = fs.openSync(file, 'r'), B = Buffer.alloc(1 << 24), dec = new (require('string_decoder').StringDecoder)('utf8'); let rest = '', pos = 0, n;
   while ((n = fs.readSync(fd, B, 0, B.length, pos)) > 0) {
-    pos += n; const s = rest + B.toString('utf8', 0, n); const parts = s.split('\n'); rest = parts.pop();
+    pos += n; const s = rest + dec.write(B.subarray(0, n)); const parts = s.split('\n'); rest = parts.pop();
     for (const ln of parts) if (ln) onRow(JSON.parse(ln));
   }
   if (rest.trim()) onRow(JSON.parse(rest));
