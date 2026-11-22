@@ -4,3 +4,15 @@ pipeline/out/
 app/dist/
 gto/out/
 gto/tmp/
+
+# база раздач и большие данные — только на ПК, на GitHub не отправлять
+новые_румы/
+новые_румы2/
+pipeline/out2/
+pipeline/out_new/
+pipeline/out*/
+app/dist_*/
+run_log.txt
+
+# папка передачи другой ИИ — копия, собирается на ПК
+ДЛЯ_ДРУГОЙ_ИИ/
