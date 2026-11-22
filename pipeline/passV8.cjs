@@ -54,7 +54,8 @@ C.log('v8: топов A', TOPS.A.size, 'B', TOPS.B.size, '| по формату:
 // EV:  ключ → [n, Σrel, Σrel², nFA, ΣrelFA]   (FA — все сфолдили после действия)
 // HC:  ключ → [n, Σrel, Σrel²]                 (рука известна, банк разыгран дальше)
 // RS/RC: ключ → Int32Array(169)               (диапазоны пуша / колла пуша по вскрытиям)
-let EV = new Map(), HC = new Map(), RS = new Map(), RC = new Map();
+// BigMap — на полной базе ячеек больше 16,7 млн (предел одной Map в Node; слияние падало 22.11.2026)
+let EV = new C.BigMap(), HC = new C.BigMap(), RS = new C.BigMap(), RC = new C.BigMap();
 let IDS = new C.IdSet(); let stats_broken = 0;
 let stats = { hands: 0, dec: 0, adj: 0, sd: 0, done: [] };
 const STATE = path.join(C.OUT, 'v8_state.ndjson'), IDSF = path.join(C.OUT, 'v8_ids.bin');
@@ -217,27 +218,30 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
   const thrEV = (k) => (k[0] === 'T' || k[0] === 'U' || k[0] === 'Y' ? 8 : k[0] === 'Z' ? 10 : k[0] === 'g' ? 25 : 30);
   const r3 = (v) => Math.round(v * 1000) / 1000;
   const spotOf = (k) => { const a = k.lastIndexOf('|'), b = k.lastIndexOf('|', a - 1); return k.slice(0, b) + k.slice(a); };
-  const tot = new Map();
+  // Пишется сразу в файл (формат C.saveModel), без копии в памяти: на полной базе ячеек десятки миллионов —
+  // объект их не вмещает (предел 8,4 млн ключей), а копия удвоила бы память слияния
+  const tot = new C.BigMap();
   for (const [k, c] of EV) { const sk = spotOf(k); tot.set(sk, (tot.get(sk) || 0) + c[0]); }
-  const EVo = {};
+  const sparse = (a) => { const o = []; for (let h = 0; h < 169; h++) if (a[h]) o.push(h + ':' + a[h]); return o.join(','); };
+  stats.broken = stats_broken;
+  const meta = { mysteryCut: stats.mysteryCut || 0, dealt: stats.dealt || 0, hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, tops5A: TOPS.A5.size, tops5B: TOPS.B5.size, topsRule: TJ.rule || null, bands: C.BAND_NAMES, built: new Date().toISOString() };
+  const outF = process.env.MODEL_OUT || path.join(C.OUT, 'model_v8.ndjson');
+  const w = C.ndWriter(outF), cnt = { EV: 0, HC: 0, RS: 0, RC: 0 };
+  const put = (sec, k, v) => { w.put([sec, k, v]); cnt[sec]++; };
+  w.put({ v: 8, meta });
   for (const [k, c] of EV) {
     const T = tot.get(spotOf(k)) || 0;
     if (T < thrEV(k)) continue;
-    if (c[0] < 3) { EVo[k] = [c[0]]; continue; }
+    if (c[0] < 3) { put('EV', k, [c[0]]); continue; }
     const m = c[1] / c[0], sd = Math.sqrt(Math.max(c[2] / c[0] - m * m, 0));
-    EVo[k] = c[3] ? [c[0], r3(m), r3(sd), c[3], r3(c[4] / c[3])] : [c[0], r3(m), r3(sd)];
+    put('EV', k, c[3] ? [c[0], r3(m), r3(sd), c[3], r3(c[4] / c[3])] : [c[0], r3(m), r3(sd)]);
   }
-  const HCo = {};
   for (const [k, c] of HC) {
     if (c[0] < 3) continue;
     const m = c[1] / c[0], sd = Math.sqrt(Math.max(c[2] / c[0] - m * m, 0));
-    HCo[k] = [c[0], r3(m), r3(sd)];
+    put('HC', k, [c[0], r3(m), r3(sd)]);
   }
-  const sparse = (a) => { const o = []; for (let h = 0; h < 169; h++) if (a[h]) o.push(h + ':' + a[h]); return o.join(','); };
-  const Ro = (M) => { const o = {}; for (const [k, a] of M) { let s = 0; for (const v of a) s += v; if (s >= 5) o[k] = sparse(a); } return o; };
-  stats.broken = stats_broken;
-  const model = { v: 8, meta: { mysteryCut: stats.mysteryCut || 0, dealt: stats.dealt || 0, hands: stats.hands, broken: stats_broken, dups: stats.dups || 0, decisions: stats.dec, allinAdjusted: stats.adj, showdownHands: stats.sd, topsA: TOPS.A.size, topsB: TOPS.B.size, tops5A: TOPS.A5.size, tops5B: TOPS.B5.size, topsRule: TJ.rule || null, bands: C.BAND_NAMES, built: new Date().toISOString() }, EV: EVo, HC: HCo, RS: Ro(RS), RC: Ro(RC) };
-  const outF = process.env.MODEL_OUT || path.join(C.OUT, 'model_v8.ndjson');
-  C.saveModel(outF, model); // построчно: на полной базе JSON целиком не помещается в одну строку (> 512 МБ)
-  C.log('v8 ГОТОВО: рук', stats.hands, 'решений', stats.dec, 'олл-ин-поправок', stats.adj, '| ячеек EV', Object.keys(EVo).length, 'HC', Object.keys(HCo).length, 'RS', Object.keys(model.RS).length, 'RC', Object.keys(model.RC).length, '|', (fs.statSync(outF).size / 1048576).toFixed(1), 'МБ', ((Date.now() - t0) / 60000).toFixed(1), 'мин');
+  for (const [sec, M] of [['RS', RS], ['RC', RC]]) for (const [k, a] of M) { let s = 0; for (const v of a) s += v; if (s >= 5) put(sec, k, sparse(a)); }
+  w.close();
+  C.log('v8 ГОТОВО: рук', stats.hands, 'решений', stats.dec, 'олл-ин-поправок', stats.adj, '| ячеек EV', cnt.EV, 'HC', cnt.HC, 'RS', cnt.RS, 'RC', cnt.RC, '|', (fs.statSync(outF).size / 1048576).toFixed(1), 'МБ', ((Date.now() - t0) / 60000).toFixed(1), 'мин');
 })();

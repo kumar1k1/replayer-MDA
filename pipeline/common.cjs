@@ -95,9 +95,28 @@ function ndForEachSync(file, onRow) {
 }
 // Модель v8 на полной базе — больше 512 МБ JSON, поэтому хранится построчно: 1-я строка {v, meta}, далее [раздел, ключ, значение]
 const MODEL_FILE = () => process.env.MODEL || path.join(OUT, 'model_v8.ndjson');
+// Большая таблица: в Node одна Map держит не больше 16,7 млн записей, обычный объект — 8,4 млн.
+// На полной базе (22.11.2026, ~440 млн раздач) ячеек больше — делим на 16 Map по хешу ключа (строки).
+class BigMap {
+  constructor(parts) { this.P = Array.from({ length: parts || 16 }, () => new Map()); }
+  _m(k) { let h = 2166136261; for (let i = 0; i < k.length; i++) h = Math.imul(h ^ k.charCodeAt(i), 16777619); return this.P[(h >>> 0) % this.P.length]; }
+  get(k) { return this._m(k).get(k); }
+  has(k) { return this._m(k).has(k); }
+  set(k, v) { this._m(k).set(k, v); return this; }
+  delete(k) { return this._m(k).delete(k); }
+  get size() { let s = 0; for (const m of this.P) s += m.size; return s; }
+  *[Symbol.iterator]() { for (const m of this.P) yield* m; }
+  entries() { return this[Symbol.iterator](); }
+  *keys() { for (const m of this.P) yield* m.keys(); }
+}
+// разделы модели — объекты или Map/BigMap (на полной базе — только Map: объект не вмещает все ячейки)
 function saveModel(file, model) {
   const w = ndWriter(file); w.put({ v: model.v, meta: model.meta });
-  for (const sec of ['EV', 'HC', 'RS', 'RC']) for (const k in model[sec]) w.put([sec, k, model[sec][k]]);
+  for (const sec of ['EV', 'HC', 'RS', 'RC']) {
+    const o = model[sec];
+    if (o instanceof Map || o instanceof BigMap) for (const [k, v] of o) w.put([sec, k, v]);
+    else for (const k in o) w.put([sec, k, o[k]]);
+  }
   w.close();
 }
 // keep(раздел, ключ, значение) → false — пропустить (для облегчённой модели реплеера)
@@ -242,4 +261,4 @@ function netAdjusted(rp, fin, SD) {
 
 
 
-module.exports = Object.assign({ firstLine, CK_EVERY, progress, ndForEachSync, saveModel, loadModel, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, quarterOf, sourceFiles, iterHands, splitHands }, SP);
+module.exports = Object.assign({ firstLine, CK_EVERY, progress, ndForEachSync, saveModel, loadModel, BigMap, MODEL_FILE, ndWriter, ndRead, saveIds, loadIds, MAX_SOURCES, PART_EXIT, partLimiter, playerKey, tableFormat, handIntact, normalizeHand, roomOf, SHOWDOWN_TRUSTED, makeParse, IdSet, netAdjusted, BACKING, loadParser, backingOut, OUT, log, halfOf, quarterOf, sourceFiles, iterHands, splitHands }, SP);
