@@ -580,8 +580,22 @@
       // фиши (кластеры «фиш» и «суперфиш») — только для показа, как они играют этот спот; в советах не участвуют
       const FI1 = freqs('gfish', sp, acts), FI2 = freqs('gsuperfish', sp, acts), nFi = FI1.n + FI2.n;
       const FI = nFi >= 30 ? acts.map((a, q) => (FI1.f[q] * FI1.n + FI2.f[q] * FI2.n) / nFi) : null;
+      // по группам для таблицы (владелец, 23.11.2026): у каждой группы — СВОЯ частота и СВОЙ EV этим действием всеми их
+      // руками (BB к фолду), на том же уровне спота, что и частота; < 1% — «не делают», EV не показываем; мало раздач — нет
+      const { S: S0, Sb: Sb0 } = keys(sp);
+      const evOfG = (cohs, pref, act) => { let n = 0, s = 0; for (const coh of cohs) { const c = evOK(cellEV(coh + '|' + pref + '|' + act + '|*')); if (c && c.n) { n += c.n; s += c.m * c.n; } } return n ? { m: s / n, n } : null; };
+      const G_MIN_EV = 50;
+      const grp = (cohs, F, f, act) => {
+        if (!F || F.n < 30) return null;
+        if (act === 'fold') return { f, ev: 0, n: null };
+        if (!(f >= 0.01)) return { f, ev: null, none: true };
+        const e = evOfG(cohs, F.lvl === 'точно' ? S0 : Sb0, act);
+        return { f, ev: e && e.n >= G_MIN_EV ? e.m : null, n: e ? e.n : 0, lvl: F.lvl };
+      };
+      const FIall = nFi >= 30 ? { n: nFi, lvl: FI1.n >= FI2.n ? FI1.lvl : FI2.lvl } : null;
       const rows = acts.map((act, q) => {
         const row = { act, ru: RU[act] || act, freqT: FB.f[q], freqTop: FT.f[q], freqReg: FR.n >= 30 ? FR.f[q] : null, freqFish: FI ? FI[q] : null, freqF: FF.f[q] };
+        row.g = { T: grp(['T'], FT, FT.f[q], act), R: grp(['greg'], FR, FR.f[q], act), F: FIall ? grp(['gfish', 'gsuperfish'], FIall, FI[q], act) : null };
         // EV действия по базе (все руки, топы → реги): сколько в среднем приносит этот колл / 3-бет в таком споте
         // источник — явно: топы в точно таком споте → реги в точно таком споте → топы по семейству позиций; от 100 раздач.
         // Действие, которое топы и реги здесь почти не делают (< 1%), не оцениваем — иначе EV был бы по редким исключениям
