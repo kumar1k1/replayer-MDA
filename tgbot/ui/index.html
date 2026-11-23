@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TG-бот · статистика игроков</title>
+<link rel="icon" href="icon.svg">
+<style>
+:root{
+  --bg:#0b141e;--bg2:#0f1b27;--panel:#16222e;--panel2:#1c2b3a;--line:#243445;--line2:#2f4256;
+  --text:#e9eef4;--soft:#b6c3d1;--muted:#7f93a8;--faint:#5b6f84;
+  --accent:#3aa0ff;--accent2:#6c5ce7;--user:#2b5278;--user2:#3a6a98;
+  --good:#3ccf8e;--bad:#ff6b6b;--warn:#ffb648;
+  --reg:#3ccf8e;--nit:#5aa9ff;--fish:#ffb648;--superfish:#ff6b6b;
+  --mono:'JetBrains Mono','Cascadia Mono',Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(1200px 700px at 85% -10%,#173250 0%,transparent 60%),radial-gradient(900px 600px at -10% 110%,#1d1f4a 0%,transparent 55%),var(--bg);
+  color:var(--text);font:14px/1.45 'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+/* ---------- шапка ---------- */
+header{display:flex;align-items:center;gap:12px;padding:12px 18px;background:rgba(15,27,39,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.logo{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#3aa0ff,#6c5ce7);display:grid;place-items:center;box-shadow:0 6px 18px rgba(58,160,255,.35);flex:none}
+.logo svg{width:22px;height:22px}
+.hd b{display:block;font-size:15.5px;letter-spacing:.2px}
+.hd span{font-size:12px;color:var(--muted)}
+.hd .on{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--good);margin-right:6px;box-shadow:0 0 8px var(--good);vertical-align:1px}
+header .sp{flex:1}
+.ctx{display:none;align-items:center;gap:8px;padding:5px 6px 5px 12px;border-radius:999px;background:var(--panel2);border:1px solid var(--line2);font-size:12.5px;color:var(--soft);max-width:46vw}
+.ctx.show{display:flex}.ctx i{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.ctx b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-weight:600}
+.ctx button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:2px 6px;border-radius:50%}
+.ctx button:hover{color:var(--text);background:var(--line)}
+/* ---------- лента ---------- */
+#feed{flex:1;overflow-y:auto;padding:22px 18px 10px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+#feed::-webkit-scrollbar{width:9px}#feed::-webkit-scrollbar-thumb{background:var(--line2);border-radius:9px}
+.msg{max-width:min(860px,94%);animation:in .22s ease-out}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.msg.me{align-self:flex-end}
+.msg.me .bub{background:linear-gradient(180deg,var(--user2),var(--user));border-radius:16px 16px 4px 16px;padding:9px 14px;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.msg.me .bub .mic{opacity:.75;margin-right:6px}
+.msg.bot{align-self:flex-start;width:min(860px,94%)}
+.bub.bot{background:rgba(22,34,46,.92);border:1px solid var(--line);border-radius:16px 16px 16px 4px;padding:14px 16px;box-shadow:0 8px 26px rgba(0,0,0,.28)}
+.time{font-size:11px;color:var(--faint);margin-top:4px;padding:0 4px}.msg.me .time{text-align:right}
+.t-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.t-h h3{margin:0;font-size:16px;font-weight:700}
+.grp{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;border:1px solid currentColor;text-transform:lowercase}
+.grp.reg{color:var(--reg)}.grp.nit{color:var(--nit)}.grp.fish{color:var(--fish)}.grp.superfish{color:var(--superfish)}.grp.me{color:var(--accent)}
+.sub{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}
+.sub span{font-size:12px;color:var(--soft);background:var(--panel2);border:1px solid var(--line);padding:2px 9px;border-radius:8px}
+.wr{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:12px 0 6px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,rgba(58,160,255,.10),rgba(108,92,231,.08));border:1px solid var(--line2)}
+.wr .big{font:700 28px/1 var(--mono)}.wr .big.p{color:var(--good)}.wr .big.m{color:var(--bad)}
+.wr .lab{font-size:11.5px;color:var(--muted);margin-top:4px}
+.wr .fmt{display:flex;gap:12px;flex-wrap:wrap}
+.wr .fmt div{font:600 13px var(--mono)}.wr .fmt small{display:block;font:11px 'Segoe UI',sans-serif;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);margin:2px 0 8px}
+table{width:100%;border-collapse:separate;border-spacing:0;margin-top:8px;font-size:13px}
+th{font-size:11px;font-weight:700;color:var(--muted);text-align:right;padding:6px 8px;border-bottom:1px solid var(--line2);text-transform:uppercase;letter-spacing:.4px}
+th:first-child{text-align:left}
+td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.04);text-align:right;font-family:var(--mono);white-space:nowrap}
+td:first-child{text-align:left;font-family:inherit;color:var(--text);font-weight:600;white-space:normal}
+td.hint{color:var(--faint);font:12px 'Segoe UI',sans-serif;text-align:left;white-space:normal}
+td.n{color:var(--muted)}
+td.pc{position:relative}
+td.pc span{position:relative;z-index:1}
+td.pc::before{content:'';position:absolute;right:6px;top:22%;height:56%;width:calc(var(--w,0%) * .72);background:var(--bar,rgba(58,160,255,.22));border-radius:4px}
+tr:hover td{background:rgba(255,255,255,.025)}
+.txt{color:var(--soft)}
+.sugg{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{border:1px solid var(--line2);background:var(--panel2);color:var(--soft);font:12.5px 'Segoe UI',sans-serif;padding:5px 11px;border-radius:999px;cursor:pointer;transition:.15s}
+.chip:hover{border-color:var(--accent);color:#fff;background:#1f3550}
+.ms{font-size:11px;color:var(--faint)}
+.welcome h2{margin:0 0 4px;font-size:18px}
+.welcome p{margin:6px 0;color:var(--soft)}
+.typing{display:flex;gap:4px;padding:4px 2px}.typing i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:b 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,60%,100%{opacity:.3;transform:none}30%{opacity:1;transform:translateY(-3px)}}
+/* ---------- ввод ---------- */
+footer{padding:10px 14px 14px;background:linear-gradient(180deg,transparent,rgba(11,20,30,.9) 30%)}
+.bar{display:flex;align-items:center;gap:8px;max-width:900px;margin:0 auto;background:var(--panel);border:1px solid var(--line2);border-radius:18px;padding:6px 6px 6px 16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.bar:focus-within{border-color:#3b6ea0}
+#q{flex:1;background:transparent;border:0;outline:0;color:var(--text);font:15px 'Segoe UI',sans-serif;padding:10px 0}
+#q::placeholder{color:var(--faint)}
+.ib{width:44px;height:44px;border-radius:50%;border:0;display:grid;place-items:center;cursor:pointer;transition:.15s;flex:none}
+.ib svg{width:21px;height:21px}
+#mic{background:var(--panel2);color:var(--soft)}#mic:hover{color:#fff;background:#24384d}
+#mic.rec{background:#e5484d;color:#fff;animation:pulse 1.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,72,77,.55)}70%{box-shadow:0 0 0 14px rgba(229,72,77,0)}100%{box-shadow:0 0 0 0 rgba(229,72,77,0)}}
+#send{background:linear-gradient(135deg,#3aa0ff,#5b7cff);color:#fff}#send:hover{filter:brightness(1.1)}
+.hint2{max-width:900px;margin:7px auto 0;font-size:11.5px;color:var(--faint);text-align:center}
+.hint2 kbd{font:11px var(--mono);background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--soft)}
+@media (max-width:640px){.ctx{max-width:40vw}.wr .big{font-size:23px}td,th{padding:6px 5px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M21.4 3.6 2.9 10.7c-1.2.5-1.2 1.2-.2 1.5l4.7 1.5 1.8 5.6c.2.6.1.9.8.9.5 0 .7-.2 1-.5l2.3-2.2 4.8 3.5c.9.5 1.5.2 1.7-.8l3.1-14.7c.3-1.3-.5-1.9-1.5-1.4zM8.9 13.5l9-5.7c.4-.3.8-.1.5.2l-7.7 7-.3 3.2z"/></svg></div>
+  <div class="hd"><b>TG-бот · статистика игроков</b><span><i class="on"></i><span id="meta">база загружается…</span></span></div>
+  <div class="sp"></div>
+  <div class="ctx" id="ctx" title="Игрок, о котором сейчас разговор: «его 3-беты», «его опены» — про него"><i id="ctxdot"></i><b id="ctxname"></b><button id="ctxx" title="Забыть игрока" aria-label="Забыть игрока">✕</button></div>
+</header>
+<main id="feed" aria-live="polite"></main>
+<footer>
+  <div class="bar">
+    <input id="q" autocomplete="off" spellcheck="false" placeholder="Ник или вопрос — «мой алиас», «покажи FFtonny», «его 3-беты по позициям до 20 бб»">
+    <button class="ib" id="mic" title="Сказать голосом (ещё раз — стоп)" aria-label="Сказать голосом"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/></svg></button>
+    <button class="ib" id="send" title="Отправить (Enter)" aria-label="Отправить"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12 2-12 2z"/></svg></button>
+  </div>
+  <div class="hint2"><kbd>Enter</kbd> — отправить · <kbd>Ctrl</kbd>+<kbd>Пробел</kbd> — голос · история запросов — стрелками <kbd>↑</kbd><kbd>↓</kbd></div>
+</footer>
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s), feed = $('#feed'), inp = $('#q');
+const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+const GR = { reg: 'рег', nit: 'нит', fish: 'фиш', superfish: 'суперфиш' };
+const BAR = { reg: 'rgba(60,207,142,.22)', nit: 'rgba(90,169,255,.22)', fish: 'rgba(255,182,72,.22)', superfish: 'rgba(255,107,107,.22)' };
+let ctx = null, ctxGroup = null; const hist = []; let hi = -1;
+const now = () => new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+const scroll = () => { feed.scrollTop = feed.scrollHeight; };
+
+function setCtx(key, name, group) {
+  ctx = key; ctxGroup = group || null;
+  $('#ctx').classList.toggle('show', !!key); $('#ctxname').textContent = name || '';
+  $('#ctxdot').style.background = group ? getComputedStyle(document.documentElement).getPropertyValue('--' + group) : 'var(--accent)';
+}
+$('#ctxx').onclick = () => setCtx(null);
+
+function me(text, voice) {
+  const m = el('div', 'msg me'), b = el('div', 'bub');
+  if (voice) b.append(el('span', 'mic', '🎤'));
+  b.append(document.createTextNode(text)); m.append(b, el('div', 'time', now())); feed.append(m); scroll();
+}
+function typing() { const m = el('div', 'msg bot'), b = el('div', 'bub bot'), t = el('div', 'typing'); t.append(el('i'), el('i'), el('i')); b.append(t); m.append(b); feed.append(m); scroll(); return m; }
+
+function tableEl(T, group) {
+  const t = el('table'), hr = el('tr'); T.head.forEach(h => hr.append(el('th', null, h))); t.append(hr);
+  for (const r of T.rows) {
+    const tr = el('tr');
+    r.forEach((c, k) => {
+      const td = el('td');
+      if (k === 0) td.textContent = c;
+      else if (/%$/.test(c)) { td.className = 'pc'; td.style.setProperty('--w', Math.min(100, parseFloat(c)) + '%'); if (group && BAR[group]) td.style.setProperty('--bar', BAR[group]); td.append(el('span', null, c.replace('.', ','))); }
+      else if (T.head[k] === 'раз' || /^\d+$/.test(c)) { td.className = 'n'; td.textContent = (+c).toLocaleString('ru'); }
+      else { td.className = c ? 'hint' : ''; td.textContent = c; }
+      tr.append(td);
+    });
+    t.append(tr);
+  }
+  return t;
+}
+function botMsg(a, holder) {
+  const b = holder.querySelector('.bub'); b.innerHTML = '';
+  for (const B of a.blocks || []) {
+    const box = el('div');
+    if (B.title) { const h = el('div', 't-h'); h.append(el('h3', null, B.title)); const g = B.group || (B.type !== 'text' ? a.group : null); if (B.type === 'card') { if (g) h.append(el('span', 'grp ' + g, GR[g] || g)); else if (/^alias:/.test(a.key || '')) h.append(el('span', 'grp me', 'ваш алиас')); } box.append(h); }
+    if (B.sub) { const s = el('div', 'sub'); B.sub.forEach(x => s.append(el('span', null, x))); box.append(s); }
+    if (B.wr) {
+      const w = el('div', 'wr'), L = el('div'); const v = B.wr.bb100;
+      L.append(el('div', 'big ' + (v > 0 ? 'p' : v < 0 ? 'm' : ''), (v > 0 ? '+' : '') + String(v).replace('.', ',') + ' bb/100'), el('div', 'lab', '± ' + String(B.wr.ci).replace('.', ',') + ' · ' + B.wr.n.toLocaleString('ru') + ' рук'));
+      w.append(L);
+      if (B.wrFmt && B.wrFmt.length) { const f = el('div', 'fmt'); B.wrFmt.forEach(x => { const d = el('div', null, (x.bb100 > 0 ? '+' : '') + String(x.bb100).replace('.', ',')); d.style.color = x.bb100 > 0 ? 'var(--good)' : x.bb100 < 0 ? 'var(--bad)' : ''; d.append(el('small', null, x.k + ' · ' + x.n.toLocaleString('ru'))); f.append(d); }); w.append(f); }
+      box.append(w);
+    }
+    if (B.note) box.append(el('div', 'note', B.note));
+    if (B.table) box.append(tableEl(B.table, a.group));
+    if (B.text) box.append(el('div', 'txt', B.text));
+    b.append(box);
+  }
+  if (a.sugg && a.sugg.length) { const s = el('div', 'sugg'); a.sugg.forEach(x => { const c = el('button', 'chip', x.label); c.onclick = () => ask(x.label.split(' · ')[0], false, x.key); s.append(c); }); b.append(s); }
+  if (a.key) {
+    const s = el('div', 'sugg');
+    [['3-беты по позициям'], ['опены по позициям'], ['фолд на 3-бет'], ['сквиз'], ['изо'], ['колл олл-ина'], ['винрейт']].forEach(([x]) => { const c = el('button', 'chip', x); c.onclick = () => ask(x); s.append(c); });
+    b.append(s);
+  }
+  holder.append(el('div', 'time', now() + (a.ms != null ? ' · ' + a.ms + ' мс' : '')));
+  if (a.key) setCtx(a.key, a.player, a.group);
+  scroll();
+}
+async function ask(text, voice, key) {
+  text = String(text || '').trim(); if (!text && !key) return;
+  me(text || '…', voice); inp.value = '';
+  if (text) { hist.unshift(text); hi = -1; }
+  const t = typing();
+  try {
+    const u = '/api/ask?q=' + encodeURIComponent(text) + (ctx ? '&ctx=' + encodeURIComponent(ctx) : '') + (key ? '&key=' + encodeURIComponent(key) : '');
+    const a = await (await fetch(u)).json(); botMsg(a, t);
+  } catch (e) { t.querySelector('.bub').textContent = 'Нет связи с программой — перезапустите ярлык «TG-бот».'; }
+}
+$('#send').onclick = () => ask(inp.value);
+inp.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') ask(inp.value);
+  else if (e.key === 'ArrowUp' && hist.length) { hi = Math.min(hist.length - 1, hi + 1); inp.value = hist[hi]; e.preventDefault(); }
+  else if (e.key === 'ArrowDown') { hi = Math.max(-1, hi - 1); inp.value = hi >= 0 ? hist[hi] : ''; e.preventDefault(); }
+});
+
+// ---------- голос: распознавание речи браузера (ru-RU) ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition; let rec = null, recOn = false, heard = '';
+function micStart() {
+  if (!SR) { const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Голос в этом окне не поддерживается — запускайте программу ярлыком «TG-бот» (окно Edge).' }] }, m); return; }
+  rec = new SR(); rec.lang = 'ru-RU'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1; heard = '';
+  rec.onresult = (e) => { let s = ''; for (let i = 0; i < e.results.length; i++) s += e.results[i][0].transcript; heard = s; inp.value = s; };
+  rec.onerror = (e) => { if (e.error === 'not-allowed') { const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Нет доступа к микрофону — разрешите его в окне (значок замка слева от адреса) или в настройках Windows.' }] }, m); } };
+  rec.onend = () => { recOn = false; $('#mic').classList.remove('rec'); if (heard.trim()) ask(heard, true); };
+  rec.start(); recOn = true; $('#mic').classList.add('rec'); inp.value = ''; inp.placeholder = 'Говорите…';
+}
+function micStop() { if (rec) rec.stop(); inp.placeholder = 'Ник или вопрос — «мой алиас», «покажи FFtonny», «его 3-беты по позициям до 20 бб»'; }
+$('#mic').onclick = () => (recOn ? micStop() : micStart());
+document.addEventListener('keydown', (e) => { if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); recOn ? micStop() : micStart(); } });
+
+// ---------- приветствие ----------
+(async () => {
+  try { const m = await (await fetch('/api/meta')).json(); $('#meta').textContent = 'игроков в базе ' + (+m.players).toLocaleString('ru') + ' · ответ за доли секунды'; } catch (e) { $('#meta').textContent = 'нет связи с программой'; }
+  const w = el('div', 'msg bot'), b = el('div', 'bub bot welcome');
+  b.append(el('h2', null, 'Привет! Спросите про любого игрока'));
+  b.append(el('p', null, 'Напишите ник или нажмите микрофон и скажите. Дальше уточняйте: «его 3-беты по позициям», «опены до 20 бб», «фолд на 3-бет», «винрейт». Своё — «мой алиас» или «мой винрейт на Winamax».'));
+  b.append(el('p', null, 'Постфлоп (c-bet, донк, чек-рейз) появится после следующего прохода по базе.'));
+  const s = el('div', 'sugg'); ['мой алиас', 'мои 3-беты по позициям', 'мой винрейт на winamax', 'покажи FFtonny'].forEach(x => { const c = el('button', 'chip', x); c.onclick = () => ask(x); s.append(c); });
+  b.append(s); w.append(b); feed.append(w);
+  inp.focus();
+})();
+</script>
+</body>
+</html>
