@@ -344,23 +344,18 @@ function b3iBlocks(P, ql, o) {
 }// ---------- размеры 3-бета (алиас — ext.s3; 24.11.2026): как часто какой размер и фолд на 4-бет, по стекам ----------
 const S3_RE = /(3\s*-?\s*бет[а-яё]*|трибет[а-яё]*|3bet).{0,25}(сайз|размер)|(сайз|размер)[а-яё]*.{0,20}(3\s*-?\s*бет|трибет|3bet)/;
 const S3LBL = (g) => (g === '05.0' ? 'до 5 bb' : g === '11.0' ? '11 bb и больше' : g === '09.5' ? '9,5–10,5 bb' : String(+g).replace('.', ',') + ' bb');
-const S3COLS = [['TOT', BANDS], ['до 20 bb', ['<12', '12-19']], ['20–35', ['20-35']], ['36–59', ['36-59']], ['60–99', ['60-99']], ['100+', ['100-149', '150+']]];
 function s3Blocks(P, ql, o) {
-  const pos = o.pos ? (o.pos === 'EP' ? 'MP' : o.pos) : 'TOT', S = P.ext.s3;
-  const cols = o.bands.length < BANDS.length ? [[grpLabel('', o.bands), o.bands]] : S3COLS;
-  const get = (g, bs) => { const x = [0, 0, 0, 0]; for (const b of bs) { const r = S[g] && S[g][pos] && S[g][pos][b]; if (r) for (let j = 0; j < 4; j++) x[j] += r[j]; } return x; };
-  const S3G = Object.keys(S).sort().map(g => [g, S3LBL(g)]);
-  const tot = (bs) => S3G.reduce((a, [g]) => a + get(g, bs)[0], 0);
-  const rows = [];
-  for (const [g, lab] of S3G) {
-    const all = get(g, BANDS); if (!all[0]) continue;
-    rows.push([lab, ...cols.map(([, bs]) => { const x = get(g, bs), t = tot(bs); return { v: pctS(x[0], t), n: x[0] }; })]);
-    rows.push(['Fold vs 4bet', ...cols.map(([, bs]) => { const x = get(g, bs); return { v: pctS(x[3], x[2]), n: x[2] }; })]);
-  }
-  return [{ type: 'table', title: title(P) + ' — размеры 3-бета' + (pos === 'TOT' ? '' : ' с ' + pos), ai: 'без олл-инов',
-    note: 'размер — сколько всего ставим 3-бетом, в bb (округлено до 0,5); верхняя строка — доля этого размера среди 3-бетов на этом стеке; Fold vs 4bet — сбросили на 4-бет; 3-бет против одного опена без коллеров и лимпов',
-    table: { head: ['', ...cols.map(c => c[0])], rows, grid: true, heatRow: true } }];
-}function statBlocks(P, id, ql, TT) {
+  // строки — размеры сверху вниз; колонки — частота (доля среди 3-бетов) и Fold vs 4bet; стек — фильтр из вопроса (владелец, 24.11.2026)
+  const pos = o.pos ? (o.pos === 'EP' ? 'MP' : o.pos) : 'TOT', S = P.ext.s3, bs = o.bands;
+  const get = (g) => { const x = [0, 0, 0, 0]; for (const b of bs) { const r = S[g] && S[g][pos] && S[g][pos][b]; if (r) for (let j = 0; j < 4; j++) x[j] += r[j]; } return x; };
+  const G = Object.keys(S).sort(), tot = G.reduce((a, g) => a + get(g)[0], 0);
+  const rows = G.map(g => { const x = get(g); return x[0] ? [S3LBL(g), { v: pctS(x[0], tot), n: x[0] }, { v: pctS(x[3], x[2]), n: x[2] }] : null; }).filter(Boolean);
+  const st = bs.length < BANDS.length ? 'стек ' + grpLabel('', bs) : 'все стеки';
+  return [{ type: 'table', title: title(P) + ' — 3-беты по сайзам' + (pos === 'TOT' ? '' : ' с ' + pos), ai: 'без олл-инов',
+    note: st + ' · всего 3-бетов ' + tot.toLocaleString('ru') + ' · размер — сколько всего ставим, в bb (округлено до 0,5); частота — доля этого размера среди 3-бетов; Fold vs 4bet — сбросили на 4-бет',
+    table: { head: ['размер', 'частота', 'Fold vs 4bet'], rows, grid: true, heatCol: true } }];
+}
+function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
   const c = (nm) => clStat(P, nm);
