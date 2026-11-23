@@ -66,6 +66,7 @@ td.pc span{position:relative;z-index:1}
 td.pc::before{content:'';position:absolute;right:6px;top:22%;height:56%;width:calc(var(--w,0%) * .72);background:var(--bar,rgba(58,160,255,.22));border-radius:4px}
 tr:hover td{background:rgba(255,255,255,.025)}
 .txt{color:var(--soft)}
+td.gc{text-align:right}td.gc .gv{font:600 14px var(--mono)}td.gc small{font:11px var(--mono);color:var(--faint);margin-left:6px;vertical-align:2px}
 .st{margin-top:10px;display:grid;grid-template-columns:1fr;max-width:560px}
 .st-r{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
 .st-l{font-weight:600}.st-v{font:600 14px var(--mono);white-space:nowrap}
@@ -173,6 +174,7 @@ function tableEl(T, group) {
     r.forEach((c, k) => {
       const td = el('td');
       if (k === 0) td.textContent = c;
+      else if (c && typeof c === 'object') { td.className = 'gc'; td.append(el('span', 'gv', c.v)); if (c.n) td.append(el('small', null, c.n.toLocaleString('ru'))); }
       else if (/%$/.test(c)) { td.className = 'pc'; td.style.setProperty('--w', Math.min(100, parseFloat(c)) + '%'); if (group && BAR[group]) td.style.setProperty('--bar', BAR[group]); td.append(el('span', null, c.replace('.', ','))); }
       else if (/^[+-]\d/.test(c)) { td.textContent = c; td.style.color = c[0] === '+' ? 'var(--good)' : 'var(--bad)'; td.style.fontWeight = '700'; }
       else if (T.head[k] === 'раз' || T.head[k] === 'руки' || /^\d+$/.test(c)) { td.className = 'n'; td.textContent = (+c).toLocaleString('ru'); }

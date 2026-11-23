@@ -93,6 +93,15 @@ function famTable(P, fam, bands, byBand) {
   } else for (const b of bands) rows.push(rowsOf(b + ' bb', [LU.slotOf(fam, b, '')]));
   return { head, rows: rows.filter(r => r[1] !== '0') };
 }
+// RFI (владелец, 23.11.2026): опен-рейз первым в банк БЕЗ олл-инов / все раз, когда до игрока все сбросили;
+// по позициям EP · MP · CO · BTN; «по стекам» — строка на каждый банд стека. Клетка — { v: процент, n: сколько раз }
+function rfiGrid(P, bands, byBand) {
+  const POS = ['EP', 'MP', 'CO', 'BTN'];
+  const cell = (bs, p) => { let n = 0, o = 0; for (const b of bs) { const s = LU.slotOf('rfi', b, p); n += P.pf[s]; o += P.pf[s + 1]; } return n ? { v: String(pct(o, n)).replace('.', ',') + '%', n } : { v: '—', n: 0 }; };
+  const rows = [['RFI', ...POS.map(p => cell(bands, p))]];
+  if (byBand) for (const b of bands) { const r = [b + ' bb', ...POS.map(p => cell([b], p))]; if (r.slice(1).some(c => c.n)) rows.push(r); }
+  return { head: ['', ...POS], rows, grid: true };
+}
 const FAM_T = { rfi: 'Первым в банк (опен / лимп / олл-ин) по позициям', vso: 'Против опена: колл / 3-бет / олл-ин по позициям', vs3: 'После своего опена против 3-бета', sqz: 'Сквиз (опен и колл перед ним)', iso: 'Против лимперов: изо / овер-лимп', ai: 'Против олл-ина: колл' };
 
 // ---------- разбор фразы ----------
@@ -113,7 +122,7 @@ function intentOf(q) {
   if (/сквиз|squeeze/.test(q)) return 'sqz';
   if (/(фолд|ответ|против|на)\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет|4\s*-?\s*бет|четыр[её]х?бет|vs\s*3/.test(q)) return 'vs3';
   if (/3\s*-?\s*бет|трибет|тр[её]хбет|3bet|защит|против опен|колл опен|на опен/.test(q)) return 'vso';
-  if (/опен|открыт|первым|rfi|рфи|стил/.test(q)) return 'rfi';
+  if (/опен|открыт|первым|rfi|рфи|эр\s*эф|стил/.test(q)) return 'rfi';
   if (/изо|лимп|limp|iso/.test(q)) return 'iso';
   if (/олл-?ин|пуш|all-?in/.test(q)) return 'ai';
   if (/винрейт|winrate|выигр|bb\/100|бб\/100|результат|профит/.test(q)) return /позиц/.test(q) ? 'wrpos' : 'wr';
@@ -151,7 +160,7 @@ function answer(q, ctx, key) {
 function answerFor(P, ql, intent, rows0) {
   const others = rows0.slice(1).map(r => ({ label: r.nick + ' · ' + (ROOM_RU[r.room] || r.room) + ' · ' + r.n.toLocaleString('ru') + ' рук', key: r.key }));
   const blocks = [];
-  const bands0 = bandsOf(ql), bands = bands0 || BANDS, byBand = /по стек|стек/.test(ql) && !bands0;
+  const bands0 = bandsOf(ql), bands = bands0 || BANDS, byBand = /по стек|ст[еэ]к|сайз/.test(ql);
   const bnote = bands0 ? 'стек ' + (bands0.length > 1 ? bands0[0] + ' … ' + bands0[bands0.length - 1] : bands0[0]) + ' bb' : 'все стеки';
   if (intent === 'card') blocks.push(card(P));
   else if (intent === 'wr') { const c = card(P); blocks.push({ type: 'card', title: c.title, sub: c.sub, group: c.group, wr: c.wr, wrFmt: c.wrFmt, graph: c.graph }); }
@@ -167,6 +176,7 @@ function answerFor(P, ql, intent, rows0) {
   }
   else if (intent === 'river') { const c = card(P); blocks.push({ type: 'card', title: title(P) + ' — ривер (один на один)', stats: c.stats.filter(r => r.label && /river/i.test(r.label)) }); }
   else if (intent === 'postflop') blocks.push({ type: 'text', title: title(P), text: 'Постфлоп-статы (c-bet, донк, чек-рейз, флоп / тёрн) ещё не посчитаны — это следующий этап: сначала отрабатываем на ваших раздачах, потом один проход по всей базе. Сейчас есть только ривер один на один — скажите «ривер».' });
+  else if (intent === 'rfi') blocks.push({ type: 'table', title: title(P) + ' — RFI по позициям', note: 'опен-рейз первым в банк, без олл-инов · ' + bnote + (byBand ? ' · по стекам' : ''), table: rfiGrid(P, bands, byBand) });
   else {
     const t = famTable(P, intent, bands, byBand);
     blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T[intent], note: bnote + (intent === 'vso' ? ' · BTN, CO, HJ пока одной группой (разделим при следующем пересчёте)' : ''), table: t });
