@@ -112,6 +112,14 @@ footer{padding:10px 14px 14px;background:linear-gradient(180deg,transparent,rgba
 #mic.rec{background:#e5484d;color:#fff;animation:pulse 1.2s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(229,72,77,.55)}70%{box-shadow:0 0 0 14px rgba(229,72,77,0)}100%{box-shadow:0 0 0 0 rgba(229,72,77,0)}}
 #send{background:linear-gradient(135deg,#3aa0ff,#5b7cff);color:#fff}#send:hover{filter:brightness(1.1)}
+.acw{max-width:900px;margin:0 auto;position:relative}
+.ac{position:absolute;left:8px;right:8px;bottom:8px;background:#132131;border:1px solid var(--line2);border-radius:14px;padding:6px;box-shadow:0 -10px 30px rgba(0,0,0,.45);max-height:46vh;overflow-y:auto;z-index:5}
+.ac-i{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;cursor:pointer}
+.ac-i.on,.ac-i:hover{background:#1f3550}
+.ac-i i{width:9px;height:9px;border-radius:50%;flex:none;background:var(--faint)}
+.ac-i b{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ac-i b u{text-decoration:none;color:var(--accent)}
+.ac-i span{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+.ac-h{font-size:11px;color:var(--faint);padding:3px 10px 5px}
 .hint2{max-width:900px;margin:7px auto 0;font-size:11.5px;color:var(--faint);text-align:center}
 .hint2 kbd{font:11px var(--mono);background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--soft)}
 @media (max-width:640px){.ctx{max-width:40vw}.wr .big{font-size:23px}td,th{padding:6px 5px}}
@@ -126,6 +134,7 @@ footer{padding:10px 14px 14px;background:linear-gradient(180deg,transparent,rgba
 </header>
 <main id="feed" aria-live="polite"></main>
 <footer>
+  <div class="acw"><div class="ac" id="ac" role="listbox" aria-label="Подходящие ники" hidden></div></div>
   <div class="bar">
     <input id="q" autocomplete="off" spellcheck="false" placeholder="Ник или вопрос — «мой алиас», «покажи FFtonny», «его 3-беты по позициям до 20 бб»">
     <button class="ib" id="mic" title="Сказать голосом (ещё раз — стоп)" aria-label="Сказать голосом"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/></svg></button>
@@ -251,9 +260,47 @@ async function ask(text, voice, key) {
     const a = await (await fetch(u)).json(); botMsg(a, t);
   } catch (e) { t.querySelector('.bub').textContent = 'Нет связи с программой — перезапустите ярлык «TG-бот».'; }
 }
-$('#send').onclick = () => ask(inp.value);
+// ---------- подсказки ников при вводе латиницей ----------
+const AC = $('#ac'); let acItems = [], acSel = -1, acT = null, acSeq = 0;
+const GCOL = { reg: 'var(--reg)', nit: 'var(--nit)', fish: 'var(--fish)', superfish: 'var(--superfish)' };
+function acHide() { AC.hidden = true; acItems = []; acSel = -1; }
+function acPart(t) { // что искать: весь ввод, если он латиницей, иначе — последнее слово латиницей («покажи Blu…»)
+  if (!/[a-z0-9]/i.test(t)) return '';
+  if (!/[а-яё]/i.test(t)) return t.trim();
+  const m = /([^\sа-яё]+)$/i.exec(t.trim()); return m && /[a-z]/i.test(m[1]) ? m[1] : '';
+}
+function acRender(p) {
+  AC.innerHTML = ''; if (!acItems.length) { acHide(); return; }
+  AC.append(el('div', 'ac-h', 'Ники в базе — ↑↓ и Enter, Esc — закрыть'));
+  acItems.forEach((x, k) => {
+    const it = el('div', 'ac-i' + (k === acSel ? ' on' : '')); it.setAttribute('role', 'option');
+    const dot = el('i'); if (GCOL[x.group]) dot.style.background = GCOL[x.group];
+    const b = el('b'); const L = p.length; b.append(el('u', null, x.nick.slice(0, L)), document.createTextNode(x.nick.slice(L)));
+    it.append(dot, b, el('span', null, x.room + ' · ' + x.n.toLocaleString('ru') + ' рук'));
+    it.onmousedown = (e) => { e.preventDefault(); acPick(k); };
+    AC.append(it);
+  });
+  AC.hidden = false;
+}
+function acPick(k) { const x = acItems[k]; if (!x) return; acHide(); inp.value = ''; ask(x.nick, false, x.key); }
+inp.addEventListener('input', () => {
+  clearTimeout(acT); const p = acPart(inp.value);
+  if (p.length < 2) { acHide(); return; }
+  acT = setTimeout(async () => {
+    const my = ++acSeq;
+    try { const r = await (await fetch('/api/suggest?p=' + encodeURIComponent(p))).json(); if (my !== acSeq) return; acItems = r; acSel = -1; acRender(p); } catch (e) { acHide(); }
+  }, 70);
+});
+inp.addEventListener('blur', () => setTimeout(acHide, 150));
+$('#send').onclick = () => { acHide(); ask(inp.value); };
 inp.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') ask(inp.value);
+  if (!AC.hidden && acItems.length) {
+    if (e.key === 'ArrowDown') { acSel = (acSel + 1) % acItems.length; acRender(acPart(inp.value)); e.preventDefault(); return; }
+    if (e.key === 'ArrowUp') { acSel = acSel <= 0 ? acItems.length - 1 : acSel - 1; acRender(acPart(inp.value)); e.preventDefault(); return; }
+    if (e.key === 'Escape') { acHide(); e.preventDefault(); return; }
+    if (e.key === 'Enter' && acSel >= 0) { acPick(acSel); e.preventDefault(); return; }
+  }
+  if (e.key === 'Enter') { acHide(); ask(inp.value); }
   else if (e.key === 'ArrowUp' && hist.length) { hi = Math.min(hist.length - 1, hi + 1); inp.value = hist[hi]; e.preventDefault(); }
   else if (e.key === 'ArrowDown') { hi = Math.max(-1, hi - 1); inp.value = hi >= 0 ? hist[hi] : ''; e.preventDefault(); }
 });

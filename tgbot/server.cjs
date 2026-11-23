@@ -13,6 +13,8 @@ if (!fs.existsSync(DBF)) { console.error('Нет базы ' + DBF + ' — зап
 const db = new DatabaseSync(DBF, { readOnly: true });
 const qKey = db.prepare('SELECT * FROM p WHERE key = ?'), qLc = db.prepare('SELECT * FROM p WHERE lc = ? ORDER BY n DESC LIMIT 12');
 const qLike = db.prepare("SELECT key, room, nick, n FROM p WHERE lc LIKE ? ORDER BY n DESC LIMIT 8");
+// подсказки при вводе: ники, начинающиеся с введённого (диапазон по индексу lc — быстро), самые сыгранные первыми
+const qPrefix = db.prepare('SELECT key, room, nick, n, cl FROM p WHERE lc >= ? AND lc < ? ORDER BY n DESC LIMIT 10');
 const NCL = ST.CL.length, BANDS = LU.BANDS;
 const ROOM_RU = { ps: 'PokerStars', pses: 'PokerStars.es', coin: 'CoinPoker', wpn: 'WPN', ipoker: 'iPoker', chico: 'Chico', '888': '888poker', wnmx: 'Winamax', gg: 'GGPoker', alias: 'мой алиас', 'все': 'все румы' };
 const GR_RU = { reg: 'рег', nit: 'нит', fish: 'фиш', superfish: 'суперфиш' };
@@ -134,9 +136,7 @@ function findPlayer(q, ctx) {
   for (const t of toks) if (t.length >= 3 && !STOP.has(t.toLowerCase())) cands.push(t);
   for (const c of cands) { const lc = c.toLowerCase(); if (!lc || STOP.has(lc)) continue; const rows = qLc.all(lc); if (rows.length) return { rows }; }
   if (ctx) { const r = qKey.get(ctx); if (r) return { rows: [r], ctx: true }; }
-  const words = toks.map(t => t.replace(/[.,!?]+$/, '')).filter(t => t.length >= 3 && !STOP.has(t.toLowerCase()));
-  const sugg = []; for (const w of words) for (const r of qLike.all('%' + w.toLowerCase() + '%')) if (!sugg.some(s => s.key === r.key)) sugg.push(r);
-  return { none: true, sugg: sugg.slice(0, 8) };
+  return { none: true };
 }
 
 function answer(q, ctx, key) {
@@ -145,10 +145,7 @@ function answer(q, ctx, key) {
   if (!q) return { blocks: [{ type: 'text', text: 'Напишите или скажите ник игрока. Например: «покажи FFtonny» или «мой алиас», потом «его 3-беты по позициям».' }] };
   const intent = intentOf(ql);
   const f = findPlayer(q, ctx);
-  if (f.none) {
-    const b = [{ type: 'text', text: 'Игрока не нашёл.' + (f.sugg && f.sugg.length ? ' Похожие ники:' : ' Проверьте ник (большие/маленькие буквы не важны).') }];
-    return { blocks: b, sugg: (f.sugg || []).map(s => ({ label: s.nick + ' · ' + (ROOM_RU[s.room] || s.room) + ' · ' + s.n + ' рук', key: s.key })) };
-  }
+  if (f.none) return { blocks: [{ type: 'text', text: 'Игрока не нашёл.' }] }; // похожие ники не показываем (владелец, 23.11.2026)
   return Object.assign(answerFor(load(f.rows[0]), ql, intent, f.rows), { heard: q, ctxUsed: !!f.ctx });
 }
 function answerFor(P, ql, intent, rows0) {
@@ -187,6 +184,12 @@ const srv = http.createServer((req, res) => {
     try { out = answer(u.searchParams.get('q'), u.searchParams.get('ctx'), u.searchParams.get('key')); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; }
     out.ms = Date.now() - t0;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify(out));
+  }
+  if (u.pathname === '/api/suggest') {
+    const p = String(u.searchParams.get('p') || '').trim().toLowerCase();
+    const rows = p.length >= 2 ? qPrefix.all(p, p + '￿').filter(r => r.room !== 'alias') : [];
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    return res.end(JSON.stringify(rows.map(r => ({ key: r.key, nick: r.nick, room: ROOM_RU[r.room] || r.room, n: r.n, group: r.cl != null ? CLU.GROUP[r.cl] : null }))));
   }
   if (u.pathname === '/api/meta') { const m = Object.fromEntries(db.prepare('SELECT k, v FROM meta').all().map(r => [r.k, r.v])); res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify(m)); }
   const f = path.join(__dirname, 'ui', u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname));
