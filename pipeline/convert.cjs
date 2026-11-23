@@ -14,7 +14,8 @@ const fmt = (v) => { const r = Math.round(v * 100) / 100; return String(r); };
 function wpnToPS(t, fp) {
   const lines = t.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (!lines.length) return null;
-  const h = /^Game Hand #(\d+) - Tournament #(\d+) - Holdem\(No Limit\) - Level (\d+) \(([\d.,]+)\/([\d.,]+)\)\s*- (.+)$/.exec(lines[0]);
+  // «Holdem(No Limit)» — архивы базы, «Holdem (No Limit)» — выгрузка клиента WPN (раздачи владельца, 23.11.2026)
+  const h = /^Game Hand #(\d+) - Tournament #(\d+) - Holdem\s*\(No Limit\) - Level (\d+) \(([\d.,]+)\/([\d.,]+)\)\s*- (.+)$/.exec(lines[0]);
   if (!h) return null;
   const tb = /^Table '(.*)' (\d+)-max Seat #(\d+) is the button$/.exec(lines[1] || '');
   if (!tb) return null;
@@ -25,7 +26,9 @@ function wpnToPS(t, fp) {
   const nicks = [];
   let i = 2;
   for (; i < lines.length; i++) {
-    const m = /^Seat (\d+): (.+?) \(([\d.,]+)\)\s*$/.exec(lines[i]);
+    // «Seat 8: realwork (1784.00) is sitting out» — сидит без игры, но в раздаче (ставит анте) — место читаем
+    const m = /^Seat (\d+): (.+?) \(([\d.,]+)\)(?:\s+is sitting out)?\s*$/.exec(lines[i]);
+    if (!m && /^Seat \d+: .+ will be allowed to play after the button\s*$/.test(lines[i])) continue; // ждёт баттона — в раздаче нет
     if (!m) break;
     nicks.push(m[2]);
     out.push(`Seat ${m[1]}: ${m[2]} (${fmt(num(m[3]))} in chips)`);
@@ -50,6 +53,8 @@ function wpnToPS(t, fp) {
     if (/^(Main pot|Side pot)/.test(l)) continue;
     let m;
     if ((m = /^Uncalled bet \(([\d.,]+)\) returned to (.+)$/.exec(l))) { hasU = true; out.push(`Uncalled bet (${fmt(num(m[1]))}) returned to ${m[2]}`); continue; }
+    // карты героя (есть в выгрузке клиента, в архивах базы — нет)
+    if ((m = /^Dealt to (.+?) \[([^\]]+)\]/.exec(l))) { if (nicks.indexOf(m[1]) >= 0) out.push(`Dealt to ${m[1]} [${m[2].trim()}]`); continue; }
     const n = who(l); if (!n) continue;
     const r = l.slice(n.length).replace(/^:?\s*/, '');
     const ai = /and is all-in\s*$/.test(r) ? ' and is all-in' : '';
@@ -294,4 +299,63 @@ function e888ToPS(t, fp) {
   return out.join('\n');
 }
 
-module.exports = { wpnToPS, ipokerXmlToPS, ipokerGameToPS, chicoToPS, e888ToPS };
+// ---------- Winamax (23.11.2026, раздачи владельца) ----------
+// «Winamax Poker - Tournament "ИМЯ" buyIn: 45€ + 5€ level: 18 - HandId: #A-B-C - Holdem no limit (анте/SB/BB) - дата UTC»,
+// «Table: 'ИМЯ(номер турнира)#стол' 6-max (real money) Seat #1 is the button», места «(стек, 72€ bounty)»,
+// «X posts ante 2500» (без двоеточия), улицы «*** PRE-FLOP ***», «*** TURN *** [..][..]» (без пробела), «No rake».
+// Строки «Uncalled bet» у Winamax нет: «collected» включает неуравненную часть — банк и выигрыши всё равно сходятся.
+function wnmxToPS(t) {
+  const L = t.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const h = /^Winamax Poker - Tournament "(.*)" buyIn: ([^ ]+) \+ ([^ ]+)(?: \+ ([^ ]+))? level: (\d+) - HandId: #([\d-]+) - Holdem no limit \(([\d.]+)\/([\d.]+)\/([\d.]+)\) - (.+)$/.exec(L[0] || '');
+  if (!h) return null;
+  const tb = /^Table: '(.*)\((\d+)\)#(\d+)' (\d+)-max .*Seat #(\d+) is the button/.exec(L[1] || ''); if (!tb) return null;
+  const eur = (s) => { const v = num(String(s).replace(/[€$£]/g, '')); return '€' + fmt(v); };
+  const buy = [h[2], h[3], h[4]].filter(Boolean).map(eur).join('+');
+  const hid = h[6].replace(/-/g, '');
+  const out = [`Winamax Hand #${hid}: Tournament #${tb[2]}, ${buy} EUR ${h[1]} Hold'em No Limit - Level ${h[5]} (${fmt(num(h[8]))}/${fmt(num(h[9]))}) - ${h[10].replace(/\s*UTC$/, ' UTC')}`,
+    `Table '${tb[2]} ${tb[3]}' ${tb[4]}-max Seat #${tb[5]} is the button`];
+  const nicks = []; let i = 2;
+  for (; i < L.length; i++) {
+    const m = /^Seat (\d+): (.+?) \(([\d.]+)(?:, ([\d.]+)€ bounty)?\)\s*$/.exec(L[i]); if (!m) break;
+    nicks.push(m[2]); out.push(`Seat ${m[1]}: ${m[2]} (${fmt(num(m[3]))} in chips${m[4] ? ', €' + fmt(num(m[4])) + ' bounty' : ''})`);
+  }
+  if (nicks.length < 2) return null;
+  const byLen = nicks.slice().sort((a, b) => b.length - a.length);
+  const who = (l) => { for (const n of byLen) if (l.startsWith(n + ' ')) return n; return null; };
+  let hole = false, sum = false, pot = null;
+  for (; i < L.length; i++) {
+    const l = L[i]; let m;
+    if (/^\*\*\* SUMMARY \*\*\*/.test(l)) { sum = true; continue; }
+    if (sum) { if ((m = /^Total pot ([\d.]+)/.exec(l))) pot = num(m[1]); continue; }
+    if (/^\*\*\* ANTE\/BLINDS \*\*\*/.test(l)) continue;
+    if (/^\*\*\* PRE-FLOP \*\*\*/.test(l)) { if (!hole) { out.push('*** HOLE CARDS ***'); hole = true; } continue; }
+    if ((m = /^Dealt to (.+?) \[([^\]]+)\]/.exec(l))) { if (!hole) { out.push('*** HOLE CARDS ***'); hole = true; } out.push(`Dealt to ${m[1]} [${m[2].trim()}]`); continue; }
+    if ((m = /^\*\*\* FLOP \*\*\* \[([^\]]+)\]/.exec(l))) { out.push(`*** FLOP *** [${m[1]}]`); continue; }
+    if ((m = /^\*\*\* (TURN|RIVER) \*\*\* \[([^\]]+)\]\s*\[([^\]]+)\]/.exec(l))) { out.push(`*** ${m[1]} *** [${m[2]}] [${m[3]}]`); continue; }
+    if (/^\*\*\* SHOW ?DOWN \*\*\*/.test(l)) { out.push('*** SHOW DOWN ***'); continue; }
+    const n = who(l); if (!n) continue;
+    const r = l.slice(n.length + 1), ai = /and is all-in\s*$/.test(r) ? ' and is all-in' : '';
+    if ((m = /^posts ante ([\d.]+)/.exec(r))) out.push(`${n}: posts the ante ${fmt(num(m[1]))}`);
+    else if ((m = /^posts (small|big) blind ([\d.]+)/.exec(r))) out.push(`${n}: posts ${m[1]} blind ${fmt(num(m[2]))}`);
+    else if (/^folds/.test(r)) out.push(`${n}: folds`);
+    else if (/^checks/.test(r)) out.push(`${n}: checks`);
+    else if ((m = /^calls ([\d.]+)/.exec(r))) out.push(`${n}: calls ${fmt(num(m[1]))}${ai}`);
+    else if ((m = /^bets ([\d.]+)/.exec(r))) out.push(`${n}: bets ${fmt(num(m[1]))}${ai}`);
+    else if ((m = /^raises ([\d.]+) to ([\d.]+)/.exec(r))) out.push(`${n}: raises ${fmt(num(m[1]))} to ${fmt(num(m[2]))}${ai}`);
+    else if ((m = /^shows \[([^\]]+)\]/.exec(r))) out.push(`${n}: shows [${m[1].trim()}]`);
+    else if ((m = /^collected ([\d.]+) from/.exec(r))) out.push(`${n} collected ${fmt(num(m[1]))} from pot`);
+  }
+  if (pot == null) return null;
+  out.push('*** SUMMARY ***', `Total pot ${fmt(pot)} | Rake 0`);
+  return out.join('\n');
+}
+
+// ---------- GG, выгруженный в формате PokerStars (23.11.2026, раздачи владельца) ----------
+// Заголовок «PokerStars Hand #…», но уровень «Level II (60/120(15))» (анте в скобках) и в итоге «Jackpot 0 | Bingo 0 |
+// Fortune 0»; ники соперников зашифрованы (8 знаков). Рум — GG: префикс «Poker Hand #», уровень — «(60/120)».
+const isGGasPS = (t) => /^PokerStars Hand #/.test(t) && (/Jackpot [\d.,]+ \| Bingo/.test(t) || /- Level \w+ \([\d.,]+\/[\d.,]+\([\d.,]+\)\)/.test(t));
+function ggToPS(t) {
+  return t.replace(/^PokerStars Hand #/, 'Poker Hand #').replace(/(- Level \w+ \()([\d.,]+\/[\d.,]+)\([\d.,]+\)\)/, '$1$2)');
+}
+
+module.exports = { wpnToPS, ipokerXmlToPS, ipokerGameToPS, chicoToPS, e888ToPS, wnmxToPS, isGGasPS, ggToPS };
