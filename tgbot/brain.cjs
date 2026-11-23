@@ -25,7 +25,7 @@ const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'COLD_CALL', 'OVERCALL
   'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'VS_3BET', 'SQUEEZE', 'ISO', 'VS_ALLIN', 'POSTFLOP', 'UNKNOWN'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers', 'parts'],
+  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers', 'parts', 'in_position'],
   properties: {
     me: { type: 'boolean', description: 'спрашивают про себя (мой, мои, у меня, моя статистика)' },
     nick: { type: 'string', description: 'ник игрока, как услышан/написан; пусто — игрок не назван (тогда «его/он» = прошлый игрок)' },
@@ -40,6 +40,7 @@ const SCHEMA = {
     stack_groups: { type: 'array', description: 'строки таблицы — группы стеков, если их назвали (короткие/средние/большие, «до 15, 15–30, больше 30»); иначе []', items: { type: 'object', additionalProperties: false, required: ['name', 'from', 'to'], properties: { name: { type: 'string' }, from: { type: ['number', 'null'] }, to: { type: ['number', 'null'] } } } },
     opener: { type: 'string', enum: ['none', 'EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'], description: 'против чьего опена (позиция открывшего): «3-бет баттона против MP» → MP; иначе none' },
     vs_matrix: { type: 'boolean', description: '«позиция против позиции», «поза в позу», «детальный 3-бет», «против каждой позиции» — таблица моя позиция × кто открыл' },
+    in_position: { type: 'string', enum: ['any', 'ip', 'oop', 'both'], description: '«в позиции» — ip, «без позиции» — oop, оба сразу («в позиции и без позиции») — both; иначе any' },
     parts: { type: 'array', items: { type: 'string' }, description: 'если в вопросе НЕСКОЛЬКО отдельных просьб (два-три разных стата / таблицы) — каждая отдельной короткой фразой с игроком, в стиле «мой 3-бет по позициям», «мой колд-колл по позициям», «FFtonny VPIP»; одна просьба — []' },
     callers: { type: 'string', enum: ['any', '1', '2+'], description: 'для оверколла: третьим в банк (1 коллер) — 1, четвёртым и дальше — 2+; иначе any' },
     limpers: { type: 'string', enum: ['any', '1', '2+'], description: 'для изолейта: против одного лимпера — 1, двух и больше — 2+; иначе any' },
@@ -87,6 +88,7 @@ function toPhrase(o) {
   else if (o.table) w.push(o.stat === 'WINRATE' || o.stat === 'WINRATE_POS' ? '' : 'по позициям');
   if (o.opener && o.opener !== 'none') w.push('против ' + o.opener); else if (o.vs_matrix) w.push('позиция против позиции');
   if (o.stat === 'OVERCALL' && o.callers === '1') w[w.indexOf('колл третьим в банк четвёртым в банк')] = 'колл третьим в банк'; else if (o.stat === 'OVERCALL' && o.callers === '2+') w[w.indexOf('колл третьим в банк четвёртым в банк')] = 'колл четвёртым в банк';
+  if (o.in_position === 'ip') w.push('в позиции'); else if (o.in_position === 'oop') w.push('без позиции'); else if (o.in_position === 'both') w.push('в позиции и без позиции');
   if (o.limpers === '1') w.push('против 1 лимпера'); else if (o.limpers === '2+') w.push('против 2 лимперов');
   if (o.allin === 'without') w.push('без олл-ина'); else if (o.allin === 'only') w.push('олл-ином');
   if (o.stat === 'VS_OPEN' && o.action && o.action !== 'any') w.push({ call: 'колл', '3bet': '3-бет', allin: 'олл-ин', fold: 'фолд' }[o.action]);

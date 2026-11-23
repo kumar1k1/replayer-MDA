@@ -359,7 +359,9 @@ function s3Blocks(P, ql, o) {
 const F3POS = ['TOT', 'EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'];
 function f3Blocks(P, ql, o) {
   const { bands, PL, pos } = o, mode = aiMode(ql), vsAi = /против\s*(олл|пуш|ул[ыи]н)|на\s*(олл|пуш|ул[ыи]н)/.test(ql);
-  const wSel = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)/.test(ql) ? ['oop'] : /(^|[^а-яё])в\s*позиц|(^|[^a-z])ip([^a-z]|$)/.test(ql) ? ['ip'] : ['all', 'ip', 'oop'];
+  // «в позиции» / «без позиции» / оба сразу — по словам вопроса
+  const hasOop = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)/.test(ql), hasIp = /(^|[^а-яёa-z])(в\s*позиц|ip)([^a-z]|$)/.test(ql.replace(/не\s*в\s*позиц/g, ' '));
+  const wSel = hasIp && hasOop ? ['ip', 'oop'] : hasOop ? ['oop'] : hasIp ? ['ip'] : ['all', 'ip', 'oop'];
   const get = (p, w) => { const x = [0, 0, 0, 0, 0, 0]; for (const b of bands) { const r = P.ext.f3[p] && P.ext.f3[p][w] && P.ext.f3[p][w][b]; if (r) for (let j = 0; j < 6; j++) x[j] += r[j]; } return x; };
   // «против олл-ина» — только 3-беты олл-ином; «без олл-ина» — только обычные 3-беты
   const val = (x) => (vsAi || mode === 'ai' ? [x[5], x[4]] : mode === 'nai' ? [x[1] - x[5], x[0] - x[4]] : [x[1], x[0]]);
@@ -367,6 +369,7 @@ function f3Blocks(P, ql, o) {
   const kind = vsAi || mode === 'ai' ? ' · против 3-бета олл-ином' : mode === 'nai' ? ' · против 3-бета не олл-ином' : '';
   const note = 'наш опен (не олл-ин) → ровно один 3-бет, никто не коллировал (сквиз — отдельно); IP — 3-бет с блайндов, OOP — сзади не с блайндов или мы на SB; TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   const ai = vsAi || mode === 'ai' ? 'против олл-ина' : mode === 'nai' ? 'против 3-бета не олл-ином' : 'любой 3-бет';
+  if (cols.length === 1 && wSel.length === 2 && !o.table) return wSel.map(w => { const v = val(get(cols[0], w)); return { type: 'big', title: title(P) + ' — фолд на 3-бет ' + LBL[w].replace(/ \(.*\)/, '') + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: v[1] ? pctS(v[0], v[1]) : 'нет данных', n: v[1], ai, note: w === 'ip' ? 'в позиции — 3-бет с блайндов' : 'без позиции — 3-бет сзади не с блайндов или мы на SB' }; });
   if (cols.length === 1 && wSel.length === 1) { const v = val(get(cols[0], wSel[0])); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет' + (wSel[0] === 'all' ? '' : ' ' + LBL[wSel[0]].replace(/ \(.*\)/, '')) + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: v[1] ? pctS(v[0], v[1]) : 'нет данных', n: v[1], ai, note }]; }
   if (cols.length === 1 && !o.table) { const a = val(get(cols[0], 'all')), i = val(get(cols[0], 'ip')), oo = val(get(cols[0], 'oop')); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: a[1] ? pctS(a[0], a[1]) : 'нет данных', n: a[1], ai, note: 'в позиции ' + pctS(i[0], i[1]) + ' · без позиции ' + pctS(oo[0], oo[1]) + ' · ' + note }]; }
   const rows = wSel.map(w => [LBL[w], ...cols.map(p => { const v = val(get(p, w)); return { v: pctS(v[0], v[1]), n: v[1] }; })]);
