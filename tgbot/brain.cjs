@@ -21,7 +21,7 @@ function getClient() {
 }
 try { const fs = require('fs'); if (!fs.existsSync(KEYF)) fs.writeFileSync(KEYF, 'Вставьте сюда ключ Claude (начинается с sk-ant-) и сохраните файл.\r\n'); } catch (e) {}
 
-const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'FOLD_3BET', 'LIMP', 'WTSD', 'WSD', 'WWSF', 'BET_RIVER', 'FOLD_RIVER',
+const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'COLD_CALL', 'FOLD_3BET', 'LIMP', 'WTSD', 'WSD', 'WWSF', 'BET_RIVER', 'FOLD_RIVER',
   'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'VS_3BET', 'SQUEEZE', 'ISO', 'VS_ALLIN', 'POSTFLOP', 'UNKNOWN'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
@@ -51,7 +51,7 @@ const SYSTEM = `Ты — разборщик вопросов бота покер
 «эр эф ай», «РФ», «эрфай», «опен-рейз первым», «открытие» = RFI; «трибет», «3-бет» = 3BET; «фолд на трибет» = FOLD_3BET;
 «баттон», «батон», «кнопка», «дилер» = BTN; «катофф», «кат офф» = CO; «хайджек» = HJ; «малый блайнд» = SB; «большой блайнд» = BB;
 «ранняя позиция», «андер зе ган», «UTG» = EP; «средняя» = MP. «Блайндов», «бб», «больших» — стек в bb; числа словами переводи в цифры.
-Статы: VPIP, PFR, VPIP_PFR (оба сразу), 3BET (3-бет NAI), FOLD_3BET, LIMP (лимп первым), WTSD, WSD (W$SD), WWSF, BET_RIVER, FOLD_RIVER
+Статы: VPIP, PFR, VPIP_PFR (оба сразу), 3BET (3-бет), COLD_CALL (колд-колл, «колл в холодную», «коллы против одного рейза / опена»), FOLD_3BET, LIMP (лимп первым), WTSD, WSD (W$SD), WWSF, BET_RIVER, FOLD_RIVER
 (фолд на ставку на ривере), SQUARE (квадрат WS/WN/LS/LN), RFI, WINRATE (винрейт / выигрыш / bb/100), WINRATE_POS (винрейт по позициям),
 VS_OPEN (ответы на опен: колл/3-бет), VS_3BET (после своего опена против 3-бета), SQUEEZE, ISO (изолейт — рейз против лимперов), VS_ALLIN (колл олл-ина),
 POSTFLOP (c-bet, донк, чек-рейз, флоп, тёрн), card — просто показать игрока / его карточку, UNKNOWN — не про статистику.
@@ -69,7 +69,7 @@ POSTFLOP (c-bet, донк, чек-рейз, флоп, тёрн), card — про
 
 function toPhrase(o) {
   // перевод в фразу, которую понимает разбор server.cjs
-  const ST = { card: '', VPIP: 'VPIP', PFR: 'PFR', VPIP_PFR: 'VPIP PFR', '3BET': '3-бет', FOLD_3BET: 'фолд на 3-бет', LIMP: 'лимп', WTSD: 'WTSD', WSD: 'W$SD',
+  const ST = { card: '', VPIP: 'VPIP', PFR: 'PFR', VPIP_PFR: 'VPIP PFR', '3BET': '3-бет', COLD_CALL: 'колд-колл', FOLD_3BET: 'фолд на 3-бет', LIMP: 'лимп', WTSD: 'WTSD', WSD: 'W$SD',
     WWSF: 'WWSF', BET_RIVER: 'бет ривер', FOLD_RIVER: 'фолд на бет на ривере', SQUARE: 'квадрат', RFI: 'RFI', WINRATE: 'винрейт', WINRATE_POS: 'винрейт по позициям',
     VS_OPEN: 'против опена', VS_3BET: 'фолд на 3-бет по стекам', SQUEEZE: 'сквиз', ISO: 'изо', VS_ALLIN: 'олл-ин', POSTFLOP: 'c-bet', UNKNOWN: '' };
   const w = [];
@@ -107,7 +107,8 @@ async function understand(text, prevPlayer, prevQ) {
   } catch (e) {
     lastErr = (e && e.status ? e.status + ' ' : '') + (e && e.message || String(e));
     // нет ключа / неверный ключ — не дёргаем API каждую фразу (проверим снова через 5 минут)
-    if (e && (e.status === 401 || e.status === 403 || /api key|apiKey|authentication|credential/i.test(lastErr))) disabledUntil = Date.now() + 5 * 60000;
+    // нет ключа / неверный ключ / кончились деньги на счёте — не дёргаем API каждую фразу (проверим снова через 5 минут)
+    if (e && (e.status === 401 || e.status === 403 || /api key|apiKey|authentication|credential|credit balance|billing/i.test(lastErr))) disabledUntil = Date.now() + 5 * 60000;
     return null;
   }
 }

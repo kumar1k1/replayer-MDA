@@ -218,6 +218,7 @@ function findPlayer(q, ctx) {
 // ---------- один стат — одна цифра (владелец, 23.11.2026): «покажи мой WWSF», «его VPIP», «фолд на 3-бет» ----------
 // таблица — только когда просят таблицу / «по позициям» / «по стекам». Слова — как пишет и как слышит голос.
 const STATS = [
+  ['CC', /колд|cold|в\s*холодн|холодн[а-яё]*\s*кол|(^|[^а-яё])кол{1,2}[а-яё]*\s*(опен|рейз|против\s*(одного\s*|1\s*)?(опен|рейз))/],
   ['FRB', /фолд[\wа-яё]*\s*(на|против)\s*(бет[\wа-яё]*|ставк[\wа-яё]*)\s*(на\s*)?ривер|fold\s*to\s*(bet\s*)?river|сброс[\wа-яё]*\s*на\s*ривер/],
   ['BR', /бет\s*ривер|бет[\wа-яё]*\s*на\s*ривер|bet\s*river|став[\wа-яё]*\s*на\s*ривер/],
   ['F3', /фолд[\wа-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3|ф3б/],
@@ -282,15 +283,15 @@ function vsInfo(ql) {
   if (!matrix && !right.length) return null;
   return { hero: left.filter(p => V3H.includes(p === 'EP' ? 'MP' : p)).map(p => (p === 'EP' ? 'MP' : p)), opp: right.filter(p => V3O.includes(p)) };
 }
-function v3mBlocks(P, ql, vs, bands) {
-  const M = P.ext.v3m, k = aiMode(ql), name = { all: '3bet', nai: '3bet NAI', ai: '3bet AI' }[k];
-  const get = (h, o) => { let n = 0, a = 0, b = 0; for (const bd of bands) { const x = M[h] && M[h][o] && M[h][o][bd]; if (x) { n += x[0]; a += x[2]; b += x[3]; } } return { n, v: k === 'all' ? a + b : k === 'nai' ? a : b, a, b }; };
+function v3mBlocks(P, ql, vs, bands, metric) {
+  const M = P.ext.v3m, k = metric === 'call' ? 'call' : aiMode(ql), name = { all: '3bet', nai: '3bet NAI', ai: '3bet AI', call: 'Cold call' }[k];
+  const get = (h, o) => { let n = 0, a = 0, b = 0, c = 0; for (const bd of bands) { const x = M[h] && M[h][o] && M[h][o][bd]; if (x) { n += x[0]; c += x[1]; a += x[2]; b += x[3]; } } return { n, v: k === 'call' ? c : k === 'all' ? a + b : k === 'nai' ? a : b, a, b }; };
   const H = vs.hero.length ? vs.hero : V3H, O = vs.opp.length ? vs.opp : V3O, note = 'строки — моя позиция, колонки — кто открыл; против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
-  if (H.length === 1 && O.length === 1) { const r = get(H[0], O[0]); return [{ type: 'big', title: title(P) + ' — ' + name + ' с ' + H[0] + ' против ' + O[0], big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, note: (r.n && k === 'all' ? 'NAI ' + pctS(r.a, r.n) + ' · AI ' + pctS(r.b, r.n) + ' · ' : '') + 'против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '') }]; }
+  if (H.length === 1 && O.length === 1) { const r = get(H[0], O[0]); return [{ type: 'big', title: title(P) + ' — ' + name + ' с ' + H[0] + ' против ' + O[0], big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, ai: k === 'call' ? 'колл — опен не олл-ин' : undefined, note: (r.n && k === 'all' ? 'NAI ' + pctS(r.a, r.n) + ' · AI ' + pctS(r.b, r.n) + ' · ' : '') + 'против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '') }]; }
   // осталась одна клетка (одна моя позиция с данными против одного опенера) — одна цифра
-  if (O.length === 1) { const Hd = H.filter(h => ORD.indexOf(O[0]) < ORD.indexOf(h) && get(h, O[0]).n); if (Hd.length === 1) return v3mBlocks(P, ql, { hero: Hd, opp: O }, bands); }
+  if (O.length === 1) { const Hd = H.filter(h => ORD.indexOf(O[0]) < ORD.indexOf(h) && get(h, O[0]).n); if (Hd.length === 1) return v3mBlocks(P, ql, { hero: Hd, opp: O }, bands, metric); }
   const rows = H.map(h => [h, ...O.map(o => { if (ORD.indexOf(o) >= ORD.indexOf(h)) return ''; const r = get(h, o); return r.n ? { v: pctS(r.v, r.n), n: r.n } : { v: '—', n: 0 }; })]).filter(r => r.slice(1).some(c => c && c.n));
-  return [{ type: 'table', title: title(P) + ' — ' + name + ': позиция против позиции', note, table: { head: ['', ...O], rows, grid: true } }];
+  return [{ type: 'table', title: title(P) + ' — ' + name + ': позиция против позиции', note, ai: k === 'call' ? 'колл — опен не олл-ин' : undefined, table: { head: ['', ...O], rows, grid: true } }];
 }// ---------- изолейт по позициям (алиас — ext.iso; сверено с таблицей владельца 24.11.2026) ----------
 // строки: против 1 лимпера / ISO Fold / против 2+ лимперов / ISO Fold; ISO Fold — изолировали, лимпер ответил рейзом (3-бет / пуш), мы сбросили
 const IPOS = ['TOT', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -322,7 +323,14 @@ function isoBlocks(P, ql, o) {
   if (id === 'LIMP') { const a = c('LimpNSB'); return [big('лимп первым (кроме SB)', f1(a.p) + '%', a.n, '')]; }
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
-  if (id === '3B' && P.ext && P.ext.v3m && TT) { const vs = vsInfo(ql); if (vs) return v3mBlocks(P, ql, vs, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands); }
+  if (id === 'CC' && P.ext && P.ext.vso && TT) {
+    // колд-колл (владелец, 24.11.2026): колл ровно одного опена без коллеров, опен не олл-ин — то же правило, что 3-бет
+    const vs = P.ext.v3m ? vsInfo(ql) : null; if (vs) return v3mBlocks(P, ql, vs, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands, 'call');
+    const tbl = WANT_TABLE.test(ql) || TT.G || TT.PL || TT.byBand, pos = posOf(ql);
+    const out = vsoBlocks(P, ql, { G: TT.G, PL: TT.PL, bands: TT.bands, byBand: TT.byBand, pos: tbl && !TT.PL ? null : (pos || (tbl ? null : 'TOT')), focus: 'call' });
+    for (const B of out) { B.title = String(B.title).replace(/колл против опена/, 'Cold call'); B.ai = 'колл — опен не олл-ин'; if (B.table) { B.table.rows.forEach(r => { if (r[0] === 'колл') r[0] = 'Cold call'; }); B.note = (B.note || '') + '; TOT — с BB против SB'; } }
+    return out;
+  }  if (id === '3B' && P.ext && P.ext.v3m && TT) { const vs = vsInfo(ql); if (vs) return v3mBlocks(P, ql, vs, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands); }
   if (id === '3B' && P.ext && P.ext.vso && TT) {
     const tbl = WANT_TABLE.test(ql) || TT.G || TT.PL || TT.byBand, pos = posOf(ql);
     // без просьбы о таблице и без позиции — одна цифра (TOT)
@@ -484,7 +492,8 @@ function aiTag(B) {
 // ---------- сервер ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.png': 'image/png' };
 // ---------- голос: Whisper (whisper.cpp, модель держится в памяти) ----------
-const BRAIN = require('./brain.cjs');
+const BRAIN0 = require('./brain.cjs'); let NOBRAIN = false; // nobrain=1 — проверка без Claude (не тратит счёт)
+const BRAIN = { understand: (...a) => (NOBRAIN ? Promise.resolve(null) : BRAIN0.understand(...a)), status: () => BRAIN0.status() };
 const WH = { dir: path.join(__dirname, 'whisper'), port: 8791, proc: null, ready: false };
 WH.exe = path.join(WH.dir, 'bin', 'Release', 'whisper-server.exe'); WH.model = path.join(WH.dir, 'ggml-large-v3-turbo-q5_0.bin');
 // подсказка Whisper: покерные слова пишем как надо (латиница), чтобы реже ошибался
@@ -576,7 +585,7 @@ const srv = http.createServer(async (req, res) => {
     const t0 = Date.now(); let out;
     const q0 = u.searchParams.get('q'), ctx = u.searchParams.get('ctx'), key = u.searchParams.get('key');
     let alts = []; try { alts = JSON.parse(u.searchParams.get('alts') || '[]').filter(x => typeof x === 'string').slice(0, 12); } catch (e) { alts = []; }
-    try { out = await ask(dedupPhrase(q0), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || ''); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; }
+    try { NOBRAIN = !!u.searchParams.get('nobrain'); out = await ask(dedupPhrase(q0), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || ''); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; }
     try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, brain: out.brain || null, heard: out.heard, intent: out.intent, player: out.player || null }) + '\n'); } catch (e) {}
     out.ms = Date.now() - t0;
     return J(out);

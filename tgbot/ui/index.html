@@ -424,7 +424,7 @@ document.addEventListener('keydown', (e) => { if (e.ctrlKey && e.code === 'Space
 
 // ---------- приветствие ----------
 (async () => {
-  try { const m = await (await fetch('/api/meta')).json(); const st = await (await fetch('/api/status')).json().catch(() => ({})); $('#meta').textContent = 'игроков в базе ' + (+m.players).toLocaleString('ru') + ' · голос: ' + (st.whisper ? 'Whisper' : 'Edge') + ' · Claude: ' + (st.brain && st.brain.keyInFile ? 'подключён' : 'нет ключа'); } catch (e) { $('#meta').textContent = 'нет связи с программой'; }
+  try { const m = await (await fetch('/api/meta')).json(); const st = await (await fetch('/api/status')).json().catch(() => ({})); $('#meta').textContent = 'игроков в базе ' + (+m.players).toLocaleString('ru') + ' · голос: ' + (st.whisper ? 'Whisper' : 'Edge') + ' · Claude: ' + (!st.brain || !st.brain.keyInFile ? 'нет ключа' : /credit balance|billing/i.test(st.brain.lastErr || '') ? 'пополните счёт' : st.brain.ready ? 'подключён' : 'не отвечает'); } catch (e) { $('#meta').textContent = 'нет связи с программой'; }
   const w = el('div', 'msg bot'), b = el('div', 'bub bot welcome');
   b.append(el('h2', null, 'Привет! Спросите про любого игрока'));
   b.append(el('p', null, 'Напишите ник или нажмите микрофон и скажите. Дальше уточняйте: «его 3-беты по позициям», «опены до 20 бб», «фолд на 3-бет», «винрейт». Своё — «мой алиас» или «мой винрейт на Winamax».'));
