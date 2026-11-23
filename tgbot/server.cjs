@@ -183,7 +183,7 @@ function specFromBrain(o) {
 }function intentOf(q) {
   if (/донк|c-?bet|кбет|конт|си-?бет|чек-?рейз|чекрейз|флоп|т[её]рн|проб|флоат|барр?ел/.test(q)) return 'postflop';
   if (/сквиз|squeeze/.test(q)) return 'sqz';
-  if (/(фолд|ответ|против|на)\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет|4\s*-?\s*бет|четыр[её]х?бет|vs\s*3/.test(q)) return 'vs3';
+  if (/(?<![а-яё])(фолд|ответ|против|на)\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет|4\s*-?\s*бет|четыр[её]х?бет|vs\s*3/.test(q)) return 'vs3';
   if (/3\s*-?\s*бет|трибет|тр[её]хбет|3bet|защит|против опен|колл опен|на опен/.test(q)) return 'vso';
   if (/опен|открыт|первым|rfi|рфи|эр\s*эф|стил/.test(q)) return 'rfi';
   if (/изо|лимп|limp|iso/.test(q)) return 'iso';
@@ -501,7 +501,9 @@ function clarify(out, q0, key) {
   if (!left.length) return out; // только ник — карточка
   return { key: out.key, player: out.player, group: out.group, intent: 'clarify', heard: out.heard, brain: out.brain, blocks: [{ type: 'text', text: 'Не понял, что показать' + (out.player ? ' по ' + out.player : '') + '. Уточните, например: «VPIP», «3-беты по позициям», «RFI по стекам», «фолд на 3-бет», «винрейт» или «карточка».' }] };
 }
-async function ask(q0, ctx, key, alts, voice, prevQ) { return clarify(await ask0(q0, ctx, key, alts, voice, prevQ), q0, key); }async function ask0(q0, ctx, key, alts, voice, prevQ) {
+// прошлый вопрос даём Claude только для уточнений: в новом вопросе назван стат и нет слов «эту / то же самое / а … / теперь» — это новый вопрос
+const REFINE = /(^|[^а-яё])(эт[уоаиы]|то\s*же|тоже|теперь|так\s*же|ещё|еще)([^а-яё]|$)|^\s*(а|и|но|нет)[\s,]/;
+async function ask(q0, ctx, key, alts, voice, prevQ) { const ql0 = String(q0 || '').toLowerCase(); if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ), q0, key); }async function ask0(q0, ctx, key, alts, voice, prevQ) {
   if (key || !q0) return answer(q0, ctx, key);
   if (voice && ctx) {
     const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
