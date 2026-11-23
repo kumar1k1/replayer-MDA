@@ -234,8 +234,43 @@ function statBlocks(P, id, ql) {
   const val = { WTSD: hu ? [WS.h + LS.h, HU] : [T.sd, T.fl], WSD: hu ? [WS.h, WS.h + LS.h] : [T.sdw, T.sd], WWSF: hu ? [WS.h + WN.h, HU] : [T.won, T.fl] }[id];
   const other = hu && T && T.fl ? null : { WTSD: [WS.h + LS.h, HU], WSD: [WS.h, WS.h + LS.h], WWSF: [WS.h + WN.h, HU] }[id];
   return [big(STAT_RU[id] + (hu ? ' (один на один)' : ' (TOTAL)'), pv(val[0], val[1]), val[1], hu ? 'банки, где флоп видели двое' : 'все банки с флопом' + (other && other[1] ? ' · один на один ' + pv(other[0], other[1]) : ''))];
-}function voiceScore(o) {
-  if (!o || !o.blocks) return 0; if (o.blocks.some(b => b.text === 'Игрока не нашёл.')) return 0;
+}// ---------- похожие ники (владелец, 24.11.2026): голос не знает, как пишется ник — «Bluff Too Much» → Bluf_To_Much ----------
+// нормализация: строчные, только буквы/цифры, 2/two/too → to, 4 → for, сдвоенные буквы → одна; дальше — расстояние Левенштейна
+const nnorm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9а-яё]+/g, ' ').replace(/(^| )(two|too|2)(?= |$)/g, '$1to').replace(/(^| )4(?= |$)/g, '$1for')
+  .replace(/\s+/g, '').replace(/two|too/g, 'to').replace(/2/g, 'to').replace(/4/g, 'for').replace(/(.)\1+/g, '$1');
+const NK = { keys: null, norm: null, n: null };
+setTimeout(() => { const t = Date.now(); const rows = db.prepare("SELECT key, nick, n FROM p WHERE room <> 'alias'").all(); NK.keys = rows.map(r => r.key); NK.norm = rows.map(r => nnorm(r.nick)); NK.n = Int32Array.from(rows, r => r.n); console.log('похожие ники: ' + rows.length + ', ' + (Date.now() - t) + ' мс'); }, 50);
+function lev(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = new Array(b.length + 1), cur = new Array(b.length + 1); for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) { cur[0] = i; let mn = i; for (let j = 1; j <= b.length; j++) { const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); cur[j] = v; if (v < mn) mn = v; } if (mn > max) return max + 1; [prev, cur] = [cur, prev]; }
+  return prev[b.length];
+}
+function similarNicks(cands, lim) {
+  if (!NK.norm) return [];
+  const best = new Map();
+  for (const c of cands) {
+    const q = nnorm(c); if (q.length < 3) continue; const max = Math.max(1, Math.floor(q.length * 0.3));
+    for (let i = 0; i < NK.norm.length; i++) {
+      const s = NK.norm[i]; let d;
+      if (s === q) d = 0; else if (Math.abs(s.length - q.length) > max && !(q.length >= 5 && s.includes(q))) continue;
+      else d = s.includes(q) && q.length >= 5 ? Math.min(max, 1 + Math.floor((s.length - q.length) / 3)) : lev(q, s, max);
+      if (d <= max) { const sc = d / q.length; const o = best.get(i); if (!o || sc < o) best.set(i, sc); }
+    }
+  }
+  return [...best.entries()].sort((a, b) => a[1] - b[1] || NK.n[b[0]] - NK.n[a[0]]).slice(0, lim || 6).map(([i]) => qKey.get(NK.keys[i])).filter(Boolean);
+}
+// что искать как ник: ник от Claude и слова фразы без служебных
+function nickParts(q, brainNick) {
+  const toks = String(q || '').replace(/[.,!?«»"]+/g, ' ').split(/\s+/).filter(t => t && !STOP.has(t.toLowerCase()) && !/^(игрок\w*|ник\w*|покаж\w*|найд\w*|открой|дай|карточк\w*)$/i.test(t));
+  const out = []; if (brainNick) out.push(brainNick); if (toks.length) out.push(toks.join(' ')); return [...new Set(out)];
+}
+const notFoundMsg = (q, brainNick) => {
+  const rows = similarNicks(nickParts(q, brainNick), 6);
+  return { nf: true, blocks: [{ type: 'text', text: rows.length ? 'Такого ника нет. Похожие в базе — нажмите нужный:' : 'Игрока не нашёл.' }],
+    sugg: rows.map(r => ({ label: r.nick + ' · ' + (ROOM_RU[r.room] || r.room) + ' · ' + r.n.toLocaleString('ru') + ' рук', key: r.key })) };
+};function voiceScore(o) {
+  if (!o || !o.blocks) return 0; if (o.nf || o.blocks.some(b => b.text === 'Игрока не нашёл.')) return 0;
   const h = String(o.heard || '').toLowerCase(); return 4 + (o.intent && o.intent !== 'card' ? 2 : 0) + (posOf(h) ? 1 : 0) + (bandsOf(h) ? 1 : 0);
 }
 // как голос пишет «RFI»: «РФ», «эрфай», «эр эф ай», «р ф и», «арфи» → rfi
@@ -254,7 +289,7 @@ function answer(q, ctx, key, lock) {
   if (!q) return { blocks: [{ type: 'text', text: 'Напишите или скажите ник игрока. Например: «покажи FFtonny» или «мой алиас», потом «его 3-беты по позициям».' }] };
   const intent = statOf(ql) ? 'stat' : intentOf(ql);
   const f = findPlayer(q, ctx);
-  if (f.none) return { blocks: [{ type: 'text', text: 'Игрока не нашёл.' }] }; // похожие ники не показываем (владелец, 23.11.2026)
+  if (f.none) return { nf: true, blocks: [{ type: 'text', text: 'Игрока не нашёл.' }] }; // похожие ники ищет ask() — один раз на вопрос
   return Object.assign(answerFor(load(f.rows[0]), ql, intent, f.rows), { heard: q, ctxUsed: !!f.ctx });
 }
 function answerFor(P, ql, intent, rows0) {
@@ -329,7 +364,7 @@ async function transcribe(wav) {
 }
 const readBody = (req, max) => new Promise((ok, no) => { const ch = []; let n = 0; req.on('data', (c) => { n += c.length; if (n > max) { no(new Error('слишком длинная запись')); req.destroy(); } else ch.push(c); }); req.on('end', () => ok(Buffer.concat(ch))); req.on('error', no); });
 
-const notFound = (o) => !o || (o.blocks || []).some(b => b.text === 'Игрока не нашёл.');
+const notFound = (o) => !o || o.nf || (o.blocks || []).some(b => b.text === 'Игрока не нашёл.');
 async function ask(q0, ctx, key, alts, voice) {
   if (key || !q0) return answer(q0, ctx, key);
   if (voice && ctx) {
@@ -352,6 +387,7 @@ async function ask(q0, ctx, key, alts, voice) {
   }
   let out = cands[0] || null, best = out ? voiceScore(out) + 1 : -1; // при равенстве — понимание Claude
   for (const q of [q0, ...alts]) { const o = answer(q, ctx, key), sc = voiceScore(o); if (sc > best) { best = sc; out = o; } }
+  if (notFound(out)) out = notFoundMsg(q0, B && B.parsed && !B.parsed.me ? B.parsed.nick : null); // нет такого ника — похожие из базы кнопками (владелец, 24.11.2026)
   return out;
 }
 
