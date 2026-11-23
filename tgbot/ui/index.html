@@ -68,7 +68,16 @@ tr:hover td{background:rgba(255,255,255,.025)}
 .txt{color:var(--soft)}
 .bigv{display:flex;align-items:baseline;gap:10px;margin:10px 0 4px}.bigv b{font:700 34px/1 var(--mono);color:var(--accent)}.bigv small{font:12px var(--mono);color:var(--faint)}
 td.gc{text-align:right}
-#q.wait{opacity:.6}td.gc .gv{font:600 14px var(--mono)}td.gc small{font:11px var(--mono);color:var(--faint);margin-left:6px;vertical-align:2px}
+td.gc .gv{display:inline-block;min-width:48px;padding:3px 7px;border-radius:7px;font-weight:700}
+td.gc small{display:block;margin-top:2px;font-size:10px;color:var(--faint)}
+td.gc.few .gv{opacity:.55;outline:1px dashed rgba(255,255,255,.18)}
+td.gc.few2 .gv{opacity:.32;outline:1px dashed rgba(255,255,255,.14)}
+th.tot,td.tot{border-right:1px solid var(--line2)}
+td.tot .gv{box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+.heatlg{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--faint)}
+.heatlg i{display:block;width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,hsl(210 85% 60%),hsl(285 75% 62%),hsl(345 80% 64%),hsl(25 95% 60%))}
+.heatlg em{font-style:normal;margin-left:auto}
+.tblw{overflow-x:auto}#q.wait{opacity:.6}td.gc .gv{font:600 14px var(--mono)}td.gc small{font:11px var(--mono);color:var(--faint);margin-left:6px;vertical-align:2px}
 .st{margin-top:10px;display:grid;grid-template-columns:1fr;max-width:560px}
 .st-r{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
 .st-l{font-weight:600}.st-v{font:600 14px var(--mono);white-space:nowrap}
@@ -169,14 +178,26 @@ function me(text, voice) {
 }
 function typing() { const m = el('div', 'msg bot'), b = el('div', 'bub bot'), t = el('div', 'typing'); t.append(el('i'), el('i'), el('i')); b.append(t); m.append(b); feed.append(m); scroll(); return m; }
 
+// цвет цифры в таблице: шкала «реже → чаще» внутри таблицы — синий (тайтово) → фиолетовый → оранжевый (часто, лузово);
+// мало раздач (< 100) — бледно, < 30 — совсем бледно: таким цифрам меньше доверия
+const HEAT_N = 100;
+function heat(v, lo, hi) { const t = hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 0.5, h = (210 + t * 175) % 360; return { fg: `hsl(${h} 95% 74%)`, bg: `hsla(${h}, 85%, 55%, ${0.10 + t * 0.16})` }; }
 function tableEl(T, group) {
-  const t = el('table'), hr = el('tr'); T.head.forEach(h => hr.append(el('th', null, h))); t.append(hr);
+  const t = el('table'), hr = el('tr'); T.head.forEach((h, k) => { const th = el('th', null, h); if (h === 'TOT') th.className = 'tot'; hr.append(th); }); t.append(hr);
+  const pv = (c) => (c && typeof c === 'object' && c.n >= 30 && /\d/.test(c.v) ? parseFloat(String(c.v).replace(',', '.')) : null);
+  const vals = T.rows.flatMap(r => r.slice(1).map(pv)).filter(v => v != null), lo = Math.min(...vals), hi = Math.max(...vals);
+  let heated = false;
   for (const r of T.rows) {
     const tr = el('tr');
     r.forEach((c, k) => {
       const td = el('td');
       if (k === 0) td.textContent = c;
-      else if (c && typeof c === 'object') { td.className = 'gc'; td.append(el('span', 'gv', c.v)); if (c.n) td.append(el('small', null, c.n.toLocaleString('ru'))); }
+      else if (c && typeof c === 'object') {
+        td.className = 'gc' + (T.head[k] === 'TOT' ? ' tot' : ''); const sp = el('span', 'gv', c.v); td.append(sp); if (c.n) td.append(el('small', null, c.n.toLocaleString('ru')));
+        const v = pv(c);
+        if (v != null && vals.length > 1) { const H = heat(v, lo, hi); sp.style.color = H.fg; sp.style.background = H.bg; heated = true; }
+        if (c.n && c.n < HEAT_N) td.classList.add(c.n < 30 ? 'few2' : 'few');
+      }
       else if (/%$/.test(c)) { td.className = 'pc'; td.style.setProperty('--w', Math.min(100, parseFloat(c)) + '%'); if (group && BAR[group]) td.style.setProperty('--bar', BAR[group]); td.append(el('span', null, c.replace('.', ','))); }
       else if (/^[+-]\d/.test(c)) { td.textContent = c; td.style.color = c[0] === '+' ? 'var(--good)' : 'var(--bad)'; td.style.fontWeight = '700'; }
       else if (T.head[k] === 'раз' || T.head[k] === 'руки' || /^\d+$/.test(c)) { td.className = 'n'; td.textContent = (+c).toLocaleString('ru'); }
@@ -186,7 +207,11 @@ function tableEl(T, group) {
     });
     t.append(tr);
   }
-  return t;
+  if (!heated) return t;
+  // подпись к цветам
+  const w = el('div', 'tblw'); w.append(t);
+  const lg = el('div', 'heatlg'); lg.append(el('span', null, 'реже')); lg.append(el('i')); lg.append(el('span', null, 'чаще')); lg.append(el('em', null, 'бледные — мало раздач (меньше ' + HEAT_N + ')'));
+  w.append(lg); return w;
 }
 // квадрат тренера: 4 исхода флопа один на один (сумма 100%); цвет — выше / ниже нормы
 function squareEl(S) {
