@@ -40,7 +40,7 @@ const SCHEMA = {
     stack_groups: { type: 'array', description: 'строки таблицы — группы стеков, если их назвали (короткие/средние/большие, «до 15, 15–30, больше 30»); иначе []', items: { type: 'object', additionalProperties: false, required: ['name', 'from', 'to'], properties: { name: { type: 'string' }, from: { type: ['number', 'null'] }, to: { type: ['number', 'null'] } } } },
     opener: { type: 'string', enum: ['none', 'EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'], description: 'против чьего опена (позиция открывшего): «3-бет баттона против MP» → MP; иначе none' },
     vs_matrix: { type: 'boolean', description: '«позиция против позиции», «поза в позу», «детальный 3-бет», «против каждой позиции» — таблица моя позиция × кто открыл' },
-    allin: { type: 'string', enum: ['any', 'without', 'only'], description: '«без олл-ина / NAI» — without; «олл-ином / пуши» — only; иначе any' },
+    allin: { type: 'string', enum: ['any', 'without', 'only'], description: '«без олл-инов / без улынов / без пушей / NAI» — without; «только олл-ины / улыны / пуши / олл-ином / AI» — only; иначе any (голос пишет олл-ины как «улыны», «пуши»)' },
     action: { type: 'string', enum: ['any', 'call', '3bet', 'allin', 'fold'], description: 'для ответов на опен: какое одно действие спросили (колл, 3-бет, олл-ин, фолд); иначе any' },
     positions: { type: 'array', description: 'колонки — позиции, если назвали несколько или группу позиций; иначе []', items: { type: 'string', enum: ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'] } },
   },

@@ -243,15 +243,18 @@ const focusAct = (ql, dflt) => (/3\s*-?\s*бет|трибет|3bet/.test(ql) ? '
 const vPosList = (PL) => (PL ? [...new Set(PL.map(p => (p === 'EP' ? 'MP' : p)))].filter(p => VPOS.includes(p)) : null);
 VPOS.TOT = true;
 const RS0 = (G, byBand) => !!(G || byBand);
+// олл-ин в вопросе: «без олл-инов / без улынов / NAI» → nai; «только олл-ины / олл-ином / пуши / AI» → ai; иначе — всё (владелец, 24.11.2026)
+const AIW = '(?:олл-?\s*ин|ол\s*ин|ул[ыи]н|all-?\s*in|пуш)';
+function aiMode(ql) { if (new RegExp('без\\s*' + AIW + '|(^|[^a-zа-яё])(nai|наи|н\\s*а\\s*и)([^a-zа-яё]|$)').test(ql)) return 'nai'; if (new RegExp('только\\s*' + AIW + '|' + AIW + '[а-яё]*ом(?![а-яё])|' + AIW + '[а-яё]*ами|(^|[^a-zа-яё])(ai|аи)([^a-zа-яё]|$)|' + AIW).test(ql)) return 'ai'; return 'all'; }
 function vsoBlocks(P, ql, o) {
   let { G, PL, bands, byBand, pos, focus } = o; const cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : null); // pos 'TOT' — одна общая цифра
   const RS = G || (byBand ? bands.map(b => [b + ' bb', [b]]) : null), note = 'против одного опена без коллеров; стек — свой, без анте' + (!RS0(G, byBand) && bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   // 3-бет: «всего» (с олл-ином), «без олл-ина», «олл-ином»; одна цифра — всего, в подписи — разбивка
   if (o.three) {
-    focus = /без\s*олл|без\s*пуш|nai|наи/.test(ql) ? 'b3' : /олл-?\s*ин[\wа-яё]*|пуш|ai(?![a-z])/.test(ql) ? 'b3ai' : 'b3all';
+    focus = { nai: 'b3', ai: 'b3ai', all: 'b3all' }[aiMode(ql)];
     const C1 = cols || ['TOT', ...VPOS];
     if (C1.length === 1 && !RS) { const r = vsoGet(P, C1[0], bands); return [{ type: 'big', title: title(P) + ' — ' + VACT[focus][0] + (C1[0] === 'TOT' ? '' : ' с ' + C1[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note: (r.n && focus === 'b3all' ? 'NAI ' + vCell(r, 'b3').v + ' · AI ' + vCell(r, 'b3ai').v + ' · ' : '') + note }]; }
-    if (!RS) { const LBL = { b3all: '3bet', b3: '3bet NAI', b3ai: '3bet AI' }; const rows = ['b3all', 'b3', 'b3ai'].map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — 3bet по позициям', note: 'NAI — без олл-ина, AI — олл-ином; ' + note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
+    if (!RS) { const LBL = { b3all: '3bet', b3: '3bet NAI', b3ai: '3bet AI' }; const rows = (focus === 'b3all' ? ['b3all', 'b3', 'b3ai'] : [focus]).map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — 3bet по позициям', note: 'NAI — без олл-ина, AI — олл-ином; ' + note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
   }
   if (focus) { // одно действие: колонки — позиции, строки — стеки
     const C = cols || ['TOT', ...VPOS], name = VACT[focus][0];
@@ -275,7 +278,7 @@ function vsInfo(ql) {
   return { hero: left.filter(p => V3H.includes(p === 'EP' ? 'MP' : p)).map(p => (p === 'EP' ? 'MP' : p)), opp: right.filter(p => V3O.includes(p)) };
 }
 function v3mBlocks(P, ql, vs, bands) {
-  const M = P.ext.v3m, k = /без\s*олл|без\s*пуш|nai|наи/.test(ql) ? 'nai' : /олл-?\s*ин[\wа-яё]*|пуш|(^|[^a-z])ai([^a-z]|$)/.test(ql) ? 'ai' : 'all', name = { all: '3bet', nai: '3bet NAI', ai: '3bet AI' }[k];
+  const M = P.ext.v3m, k = aiMode(ql), name = { all: '3bet', nai: '3bet NAI', ai: '3bet AI' }[k];
   const get = (h, o) => { let n = 0, a = 0, b = 0; for (const bd of bands) { const x = M[h] && M[h][o] && M[h][o][bd]; if (x) { n += x[0]; a += x[2]; b += x[3]; } } return { n, v: k === 'all' ? a + b : k === 'nai' ? a : b, a, b }; };
   const H = vs.hero.length ? vs.hero : V3H, O = vs.opp.length ? vs.opp : V3O, note = 'строки — моя позиция, колонки — кто открыл; против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   if (H.length === 1 && O.length === 1) { const r = get(H[0], O[0]); return [{ type: 'big', title: title(P) + ' — ' + name + ' с ' + H[0] + ' против ' + O[0], big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, note: (r.n && k === 'all' ? 'NAI ' + pctS(r.a, r.n) + ' · AI ' + pctS(r.b, r.n) + ' · ' : '') + 'против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '') }]; }
@@ -377,8 +380,10 @@ function answer(q, ctx, key, lock, spec) {
 function answerFor(P, ql, intent, rows0, spec) {
   const others = rows0.slice(1).map(r => ({ label: r.nick + ' · ' + (ROOM_RU[r.room] || r.room) + ' · ' + r.n.toLocaleString('ru') + ' рук', key: r.key }));
   const blocks = [];
-  spec = spec || {}; const G = spec.groups || groupsRule(ql), PL = spec.pos || (posListRule(ql).length > 1 ? posListRule(ql) : null);
-  const bands0 = G ? null : bandsOf(ql), bands = bands0 || BANDS, byBand = /по ст[еэ]к|ст[еэ]кам|ст[еэ]ков|разбив|сайз/.test(ql) && !(bands0 && bands0.num != null);
+  spec = spec || {}; let G = spec.groups || groupsRule(ql); const PL = spec.pos || (posListRule(ql).length > 1 ? posListRule(ql) : null);
+  // одна названная группа стеков — это фильтр всей таблицы, а не строка (владелец, 24.11.2026)
+  const G1 = G && G.length === 1 ? G[0][1] : null; if (G1) G = null;
+  const bands0 = G ? null : (G1 || bandsOf(ql)), bands = bands0 || BANDS, byBand = /по ст[еэ]к|ст[еэ]кам|ст[еэ]ков|разбив|сайз/.test(ql) && !(bands0 && bands0.num != null);
   const bnote = bands0 ? 'стек ' + (bands0.length > 1 ? bands0[0] + ' … ' + bands0[bands0.length - 1] : bands0[0]) + ' bb' : 'все стеки';
   let sb = null;
   if (intent === 'stat' && (sb = statBlocks(P, statOf(ql), ql, { G, PL, bands, byBand, bands0 }))) blocks.push(...sb);
