@@ -241,7 +241,7 @@ const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
 // правило — как 3-бет NAI: против ровно одного опена без коллеров, опен не олл-ин, BB против SB не берём; стек — свой, без анте
 const VPOS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
 const VACT = { call: ['колл', [1]], b3: ['3bet NAI', [2]], shove: ['олл-ин', [3]], fold: ['фолд', [0]], b3all: ['3bet', [2, 3]], b3ai: ['3bet AI', [3]] };
-function vsoGet(P, pos, bs) { let n = 0; const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.vso[pos] && P.ext.vso[pos][b]; if (r) { n += r[0]; x[1] += r[1]; x[2] += r[2]; x[3] += r[3]; } } x[0] = n - x[1] - x[2] - x[3]; return { n, x }; }
+function vsoGet(P, pos, bs, totKey) { if (pos === 'TOT' && totKey) pos = totKey; let n = 0; const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.vso[pos] && P.ext.vso[pos][b]; if (r) { n += r[0]; x[1] += r[1]; x[2] += r[2]; x[3] += r[3]; } } x[0] = n - x[1] - x[2] - x[3]; return { n, x }; }
 const vCell = (r, k) => ({ v: pctS(VACT[k][1].reduce((a, i) => a + r.x[i], 0), r.n), n: r.n });
 const focusAct = (ql, dflt) => (/3\s*-?\s*бет|трибет|3bet/.test(ql) ? 'b3' : /колл|кол(?![а-яё])|уравн/.test(ql) ? 'call' : /олл|пуш|all/.test(ql) ? 'shove' : /фолд|сброс/.test(ql) ? 'fold' : dflt);
 const vPosList = (PL) => (PL ? [...new Set(PL.map(p => (p === 'EP' ? 'MP' : p)))].filter(p => VPOS.includes(p)) : null);
@@ -262,8 +262,8 @@ function vsoBlocks(P, ql, o) {
   }
   if (focus) { // одно действие: колонки — позиции, строки — стеки
     const C = cols || ['TOT', ...VPOS], name = VACT[focus][0];
-    if (C.length === 1 && !RS) { const r = vsoGet(P, C[0], bands); return [{ type: 'big', title: title(P) + ' — ' + name + ' против опена' + (C[0] === 'TOT' ? '' : ' с ' + C[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note }]; }
-    const rows = (RS || [[name, bands]]).map(([l, bs]) => [l, ...C.map(p => vCell(vsoGet(P, p, bs), focus))]).filter(r => r.slice(1).some(c => c.n));
+    if (C.length === 1 && !RS) { const r = vsoGet(P, C[0], bands, o.totKey); return [{ type: 'big', title: title(P) + ' — ' + name + ' против опена' + (C[0] === 'TOT' ? '' : ' с ' + C[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note }]; }
+    const rows = (RS || [[name, bands]]).map(([l, bs]) => [l, ...C.map(p => vCell(vsoGet(P, p, bs, o.totKey), focus))]).filter(r => r.slice(1).some(c => c.n));
     return [{ type: 'table', title: title(P) + ' — ' + name + (o.three ? '' : ' против опена') + (RS ? ' по стекам' : ' по позициям'), note, table: { head: ['', ...C], rows, grid: true } }];
   }
   // все действия: строки — позиции (и группы стеков), колонки — колл / 3-бет / олл-ин / фолд
@@ -327,8 +327,8 @@ function isoBlocks(P, ql, o) {
     // колд-колл (владелец, 24.11.2026): колл ровно одного опена без коллеров, опен не олл-ин — то же правило, что 3-бет
     const vs = P.ext.v3m ? vsInfo(ql) : null; if (vs) return v3mBlocks(P, ql, vs, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands, 'call');
     const tbl = WANT_TABLE.test(ql) || TT.G || TT.PL || TT.byBand, pos = posOf(ql);
-    const out = vsoBlocks(P, ql, { G: TT.G, PL: TT.PL, bands: TT.bands, byBand: TT.byBand, pos: tbl && !TT.PL ? null : (pos || (tbl ? null : 'TOT')), focus: 'call' });
-    for (const B of out) { B.title = String(B.title).replace(/колл против опена/, 'Cold call'); B.ai = 'колл — опен не олл-ин'; if (B.table) { B.table.rows.forEach(r => { if (r[0] === 'колл') r[0] = 'Cold call'; }); B.note = (B.note || '') + '; TOT — с BB против SB'; } }
+    const out = vsoBlocks(P, ql, { G: TT.G, PL: TT.PL, bands: TT.bands, byBand: TT.byBand, pos: tbl && !TT.PL ? null : (pos || (tbl ? null : 'TOT')), focus: 'call', totKey: P.ext.vso.TOTnb ? 'TOTnb' : null });
+    for (const B of out) { B.title = String(B.title).replace(/колл против опена/, 'Cold call'); B.ai = 'колл — опен не олл-ин'; if (B.table) { B.table.rows.forEach(r => { if (r[0] === 'колл') r[0] = 'Cold call'; }); B.note = (B.note || '') + '; TOT — без BB'; } else B.note = (B.note || '') + '; без BB'; }
     return out;
   }  if (id === '3B' && P.ext && P.ext.v3m && TT) { const vs = vsInfo(ql); if (vs) return v3mBlocks(P, ql, vs, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands); }
   if (id === '3B' && P.ext && P.ext.vso && TT) {
