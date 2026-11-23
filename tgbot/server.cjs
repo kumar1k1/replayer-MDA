@@ -355,7 +355,7 @@ function nickParts(q, brainNick) {
 }
 const notFoundMsg = (q, brainNick) => {
   const rows = similarNicks(nickParts(q, brainNick), 6);
-  return { nf: true, blocks: [{ type: 'text', text: rows.length ? 'Такого ника нет. Похожие в базе — нажмите нужный:' : 'Игрока не нашёл.' }],
+  return { nf: true, blocks: [{ type: 'text', text: rows.length ? 'Такого ника нет. Похожие в базе — нажмите нужный:' : brainNick || nickParts(q, null).length ? 'Игрока не нашёл.' : 'Про какого игрока? Наберите ник или скажите «мой …».' }],
     sugg: rows.map(r => ({ label: r.nick + ' · ' + (ROOM_RU[r.room] || r.room) + ' · ' + r.n.toLocaleString('ru') + ' рук', key: r.key })) };
 };function voiceScore(o) {
   if (!o || !o.blocks) return 0; if (o.nf || o.blocks.some(b => b.text === 'Игрока не нашёл.')) return 0;
@@ -380,7 +380,17 @@ function answer(q, ctx, key, lock, spec) {
   if (f.none) return { nf: true, blocks: [{ type: 'text', text: 'Игрока не нашёл.' }] }; // похожие ники ищет ask() — один раз на вопрос
   return Object.assign(answerFor(load(f.rows[0]), ql, intent, f.rows, spec), { heard: q, ctxUsed: !!f.ctx });
 }
-function answerFor(P, ql, intent, rows0, spec) {
+// учитывается ли олл-ин — по названию / строкам / подписи блока
+function aiTag(B) {
+  const t = String(B.title || ''), note = String(B.note || ''), rows = B.table ? B.table.rows.map(r => String(r[0])) : [], head = B.table ? B.table.head.map(String) : [];
+  if (/3bet NAI/.test(t)) return 'без олл-инов';
+  if (/3bet AI/.test(t)) return 'только олл-ины';
+  if (rows.includes('3bet NAI') && rows.includes('3bet AI')) return '3bet — с олл-инами · NAI — без · AI — только олл-ины';
+  if (/3bet/.test(t)) return 'с олл-инами';
+  if (/RFI/.test(t)) { if (rows.includes('NAI')) return 'RFI — с олл-инами · NAI — без'; if (/без олл-инов/.test(note) && B.type === 'table') return 'без олл-инов'; return 'с олл-инами'; }
+  if (head.some(h => /олл-ин/.test(h)) || /олл-ин/.test(t)) return 'олл-ин — отдельно';
+  return null;
+}function answerFor(P, ql, intent, rows0, spec) {
   const others = rows0.slice(1).map(r => ({ label: r.nick + ' · ' + (ROOM_RU[r.room] || r.room) + ' · ' + r.n.toLocaleString('ru') + ' рук', key: r.key }));
   const blocks = [];
   spec = spec || {}; let G = spec.groups || groupsRule(ql); const PL = spec.pos || (posListRule(ql).length > 1 ? posListRule(ql) : null);
@@ -440,6 +450,8 @@ function answerFor(P, ql, intent, rows0, spec) {
     blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T[intent], note: bnote + (intent === 'vso' ? ' · BTN, CO, HJ — одной группой' : ''), table: t });
     if (!t.rows.length) blocks.push({ type: 'text', text: 'В этой ситуации у игрока нет раздач' + (bands0 ? ' при таком стеке' : '') + '.' });
   }
+  // плашка в шапке ответа: учитывается ли олл-ин (владелец, 24.11.2026)
+  for (const B of blocks) if (!B.ai && (B.type === 'big' || B.type === 'table')) B.ai = aiTag(B);
   return { key: P.key, player: title(P), group: P.cl != null ? CLU.GROUP[P.cl] : null, intent, blocks, sugg: others };
 }
 

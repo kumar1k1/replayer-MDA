@@ -67,6 +67,7 @@ td.pc::before{content:'';position:absolute;right:6px;top:22%;height:56%;width:ca
 tr:hover td{background:rgba(255,255,255,.025)}
 .txt{color:var(--soft)}
 .bigv{display:flex;align-items:baseline;gap:10px;margin:10px 0 4px}.bigv b{font:700 34px/1 var(--mono);color:var(--accent)}.bigv small{font:12px var(--mono);color:var(--faint)}
+.meta2{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 6px}.meta2 .und{font:600 13px 'Segoe UI',sans-serif;color:#9dff6a;background:rgba(120,220,60,.12);border:1px solid rgba(140,230,80,.35);border-radius:8px;padding:3px 9px}.meta2 .aitag{font:600 12px 'Segoe UI',sans-serif;color:#ffd27a;background:rgba(255,190,80,.10);border:1px solid rgba(255,190,80,.35);border-radius:8px;padding:3px 9px}
 td.gc{text-align:right}
 td.gc .gv{display:inline-block;min-width:48px;padding:3px 7px;border-radius:7px;font-weight:700}
 td.gc small{display:block;margin-top:2px;font-size:10px;color:var(--faint)}
@@ -259,9 +260,13 @@ function graphEl(P) {
 }
 function botMsg(a, holder) {
   const b = holder.querySelector('.bub'); b.innerHTML = '';
+  let first = true;
   for (const B of a.blocks || []) {
     const box = el('div');
     if (B.title) { const h = el('div', 't-h'); h.append(el('h3', null, B.title)); const g = B.group || (B.type !== 'text' ? a.group : null); if (B.type === 'card') { if (g) h.append(el('span', 'grp ' + g, GR[g] || g)); else if (/^alias:/.test(a.key || '')) h.append(el('span', 'grp me', 'ваш алиас')); } box.append(h); }
+    // шапка: как понял вопрос (ярко) и учитывается ли олл-ин
+    if ((first && a.understood) || B.ai) { const m = el('div', 'meta2'); if (first && a.understood) m.append(el('span', 'und', 'Понял: ' + a.understood)); if (B.ai) m.append(el('span', 'aitag', B.ai)); box.append(m); }
+    first = false;
     if (B.sub) { const s = el('div', 'sub'); B.sub.forEach(x => s.append(el('span', null, x))); box.append(s); }
     if (B.wr) {
       const w = el('div', 'wr'), L = el('div'); const v = B.wr.bb100;
@@ -292,7 +297,7 @@ async function ask(text, voice, key, alts) {
   try {
     const u = '/api/ask?q=' + encodeURIComponent(text) + (ctx ? '&ctx=' + encodeURIComponent(ctx) : '') + (key ? '&key=' + encodeURIComponent(key) : '') + (voice ? '&voice=1' : '') + (alts && alts.length ? '&alts=' + encodeURIComponent(JSON.stringify(alts.slice(0, 12))) : '') + (lastQ && !key ? '&prev=' + encodeURIComponent(lastQ) : '');
     const a = await (await fetch(u)).json(); if (text && !key && a.intent && a.intent !== 'card' && a.intent !== 'clarify' && !a.nf) lastQ = a.heard || text; // прошлый вопрос — для уточнений «эту таблицу», «то же самое»
-    if (voice && a.heard && a.heard.toLowerCase() !== text.toLowerCase()) (a.blocks = a.blocks || []).push({ type: 'text', text: 'Понял как: «' + a.heard + '»' });
+    if (a.heard && (voice || a.brain) && a.heard.toLowerCase() !== text.toLowerCase()) a.understood = a.heard; // «Понял: …» — ярко под названием
     botMsg(a, t);
   } catch (e) { t.querySelector('.bub').textContent = 'Нет связи с программой — перезапустите ярлык «TG-бот».'; }
 }
