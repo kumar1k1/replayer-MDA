@@ -140,13 +140,28 @@ const SZ_VS = { r: 'против рега', n: 'против нита', f: 'пр
           const mix = Object.entries(a.gtoF.f).sort((x, y) => y[1] - x[1]).map(([k, v]) => RUA[k] + ' ' + Math.round(v * 100) + '%').join(', ');
           if (mix) r.append(el('span', 'rm-mix', '(GTO для ' + a.hand + ': ' + mix + ')')); }
         s.append(r);
-        if (a.handW) { const RUB = { call: 'колл', limp: 'лимп', open: 'опен', iso: 'изо', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин' };
-          const ws = Object.entries(a.handW.w).filter(x => x[1] > 0.005).sort((x, y) => y[1] - x[1]).map(([k, v]) => (RUB[k] || k) + ' ' + Math.round(v * 100) + '%').join(', ');
-          const W0 = a.handW.who === 'реги' ? 'Реги' : 'Топы', st = a.handW.same ? '' : ', стек ' + a.handW.band + ' BB';
-          if (a.handW.full) {
-            const fs = Object.entries(a.handW.full).filter(x => x[1] > 0.005 || x[0] === 'fold').sort((x, y) => (x[0] === 'fold' ? -1 : y[0] === 'fold' ? 1 : y[1] - x[1])).map(([k, v]) => (k === 'fold' ? 'фолд' : RUB[k] || k) + ' ' + Math.round(v * 100) + '%').join(', ');
-            const d = el('div', 'rm-why'); d.append(el('b', null, W0 + ' с ' + a.hand + ' здесь: ' + fs)); d.append(document.createTextNode(' (из сыгранных: ' + ws + '; по ' + a.handW.shown + ' показанным рукам' + st + '; фолд — оценка: ' + W0.toLowerCase() + ' продолжают здесь ' + Math.round(a.handW.cont * 100) + '% рук, ' + a.hand + ' — по порядку рук GTO в лучших ' + Math.max(1, Math.round(a.handW.pct * 100)) + '%)')); s.append(d);
-          } else if (ws) s.append(el('div', 'rm-why', W0 + ' с ' + a.hand + ' здесь, когда играют: ' + ws + ' — по ' + a.handW.shown + ' показанным рукам' + st + '; фолды по базе не видны')); }
+        // ваша рука в этом споте (владелец, 23.11.2026): по каждому действию — как играют ЭТУ руку реги (топы), частота GTO
+        // и EV руки в GTO этим действием; под советом, таблицей
+        if (next.cards && (a.handW || a.gtoF)) {
+          const RUB = { fold: 'фолд', check: 'чек', call: 'колл', limp: 'лимп', open: 'опен', iso: 'изо', '3bet': '3-бет', '4bet': '4-бет', shove: 'олл-ин' };
+          const ACTS = a.rows.map(x => x.act), RZ = ['4bet', '3bet', 'iso', 'open'].find(x => ACTS.indexOf(x) >= 0);
+          const g2o = (k) => (k === 'raise' ? RZ : k), G = {}; if (a.gtoF) for (const k of a.gtoF.acts) { const o = g2o(k); if (o) G[o] = { f: a.gtoF.all[k], ev: a.gtoF.ev[k] }; }
+          const hw = a.handW, W0 = hw ? (hw.who === 'реги' ? 'реги' : 'топы') : 'реги';
+          const wf = (k) => (!hw ? null : hw.full ? (hw.full[k] != null ? hw.full[k] : 0) : k === 'fold' ? null : hw.w[k] || 0);
+          const keys = ['fold', 'check', 'limp', 'call', 'open', 'iso', '3bet', '4bet', 'shove'].filter(k => ACTS.indexOf(k) >= 0 || G[k]).filter(k => k === 'fold' || k === a.rec.act || (wf(k) || 0) > 0.005 || (G[k] && G[k].f > 0.005));
+          const t = el('table', 'rm-tab rm-myhand'), hd = el('tr');
+          [[a.hand + ' здесь', ''], [W0, 'как часто ' + W0 + ' играют этой рукой каждое действие здесь' + (hw ? ' — по ' + hw.shown + ' показанным рукам' : '')], ['GTO', 'частота в решениях HRC для этой руки'], ['EV GTO', 'EV этой руки в GTO этим действием, BB к фолду (селфплей HRC); «нет данных» — GTO так эту руку не играет']].forEach(([x, tt], q) => { const th = el('th', q ? 'g' : null, x); if (tt) th.title = tt; hd.append(th); }); t.append(hd);
+          for (const k of keys) {
+            const tr = el('tr', k === a.rec.act ? 'on' : ''), w = wf(k), g = G[k];
+            const evS = !g ? '—' : g.ev == null ? 'нет данных' : sgn(g.ev);
+            const evTd = el('td', 'num' + (g && g.ev == null ? ' rm-nd' : ''), evS);
+            tr.append(el('td', null, RUB[k] || k), el('td', 'num', w == null ? '—' : pct(w)), el('td', 'num', g ? pct(g.f) : '—'), evTd); t.append(tr);
+          }
+          s.append(t);
+          const st = hw && !hw.same ? ', стек ' + hw.band + ' BB' : '';
+          const note = (hw ? (W0[0].toUpperCase() + W0.slice(1)) + ' — по ' + hw.shown + ' показанным рукам' + st + (hw.full ? '; фолд — оценка: ' + W0 + ' продолжают здесь ' + Math.round(hw.cont * 100) + '% рук, ' + a.hand + ' — в лучших ' + Math.max(1, Math.round(hw.pct * 100)) + '% по порядку GTO' : '; доли — среди сыгранных, фолды по базе не видны') + '. ' : 'Как ' + W0 + ' играют эту руку — мало показанных рук. ') + (a.gtoF ? 'GTO — HRC, ' + a.gtoF.depth + ' BB; EV GTO — BB к фолду.' : 'GTO: такого спота в решениях HRC нет.');
+          s.append(el('div', 'rm-note', note));
+        }
         s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));
       if (a.gtoF) { const RUA = { fold: 'фолд', call: 'колл', limp: 'лимп', raise: a.tbl === 'RFI' ? 'опен' : a.tbl === 'VS3' ? '4-бет' : a.tbl === 'ISO' ? 'изо' : '3-бет', shove: 'олл-ин' };
         const parts = Object.entries(a.gtoF.f).sort((x, y) => y[1] - x[1]).map(([k, v]) => RUA[k] + ' ' + Math.round(v * 100) + '%');

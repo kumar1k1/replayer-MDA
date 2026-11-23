@@ -120,7 +120,9 @@
       const e = sp.eff || 0; let best = null; for (const d of G_DEPTHS) if (GTO.nodes[d + '|' + key] && (best == null || Math.abs(Math.log(e / d)) < Math.abs(Math.log(e / best)))) best = d;
       if (best == null) return null; const nd = GTO.nodes[best + '|' + key], r = nd.hands[K.H169[h].label]; if (!r) return null;
       const f = {}; nd.acts.forEach((a, k) => { if (r[k][0] > 0.005) f[a] = r[k][0]; });
-      return { depth: best, key, f };
+      // EV руки в GTO каждым действием (BB к фолду, селфплей HRC): только если так сыграна хотя бы в 30 раздачах
+      const ev = {}, all = {}; nd.acts.forEach((a, k) => { all[a] = r[k][0] || 0; ev[a] = a === 'fold' ? 0 : r[k][1] != null && (r[k][2] || 0) >= 30 ? r[k][1] : null; });
+      return { depth: best, key, f, all, ev, acts: nd.acts.slice() };
     }
     // EV руки: реальный уровень спота + GTO-форма (вместо смещённого EV по вскрытиям)
     function handEVgto(sp, act, h, sl, pfa, mfa) {
