@@ -67,7 +67,8 @@ td.pc::before{content:'';position:absolute;right:6px;top:22%;height:56%;width:ca
 tr:hover td{background:rgba(255,255,255,.025)}
 .txt{color:var(--soft)}
 .bigv{display:flex;align-items:baseline;gap:10px;margin:10px 0 4px}.bigv b{font:700 34px/1 var(--mono);color:var(--accent)}.bigv small{font:12px var(--mono);color:var(--faint)}
-td.gc{text-align:right}td.gc .gv{font:600 14px var(--mono)}td.gc small{font:11px var(--mono);color:var(--faint);margin-left:6px;vertical-align:2px}
+td.gc{text-align:right}
+#q.wait{opacity:.6}td.gc .gv{font:600 14px var(--mono)}td.gc small{font:11px var(--mono);color:var(--faint);margin-left:6px;vertical-align:2px}
 .st{margin-top:10px;display:grid;grid-template-columns:1fr;max-width:560px}
 .st-r{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
 .st-l{font-weight:600}.st-v{font:600 14px var(--mono);white-space:nowrap}
@@ -346,7 +347,13 @@ async function whStart() {
     if ((spoke && now - lastLoud > 1500) || (!spoke && now - t0 > 6000) || now - t0 > 15000) whStop();
   };
   src.connect(pr); pr.connect(ac.destination);
-  Object.assign(W, { on: true, ac, src, pr, stream, chunks, rate: ac.sampleRate, spoke: () => spoke });
+  // живой текст в поле, пока говорите (распознавание Edge — мгновенно); в конце его заменит точный текст Whisper
+  let live = null;
+  if (SR) { try { live = new SR(); live.lang = 'ru-RU'; live.interimResults = true; live.continuous = true;
+    live.onresult = (e) => { if (!W.on) return; let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; inp.value = t; };
+    live.onerror = () => {}; live.onend = () => { if (W.on) { try { live.start(); } catch (e) {} } };
+    live.start(); } catch (e) { live = null; } }
+  Object.assign(W, { on: true, ac, src, pr, stream, chunks, rate: ac.sampleRate, spoke: () => spoke, live });
   $('#mic').classList.add('rec'); inp.value = ''; inp.placeholder = 'Говорите… (пауза — отправлю)';
 }
 function toWav(chunks, rate) {
@@ -361,14 +368,15 @@ function toWav(chunks, rate) {
 async function whStop() {
   if (!W.on) return; W.on = false;
   try { W.pr.disconnect(); W.src.disconnect(); W.stream.getTracks().forEach(t => t.stop()); W.ac.close(); } catch (e) {}
+  try { if (W.live) W.live.abort(); } catch (e) {}
   $('#mic').classList.remove('rec'); inp.placeholder = PH;
-  if (!W.spoke()) return;
-  inp.placeholder = 'Распознаю…';
+  if (!W.spoke()) { inp.value = ''; return; }
+  inp.placeholder = 'Распознаю…'; inp.classList.add('wait');
   try {
-    const r = await (await fetch('/api/stt', { method: 'POST', body: toWav(W.chunks, W.rate) })).json(); inp.placeholder = PH;
+    const r = await (await fetch('/api/stt', { method: 'POST', body: toWav(W.chunks, W.rate) })).json(); inp.placeholder = PH; inp.classList.remove('wait');
     if (r.error) { const m = typing(); botMsg({ blocks: [{ type: 'text', text: r.error }] }, m); return; }
-    if (r.text) ask(r.text, true); else { const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Не расслышал — повторите, пожалуйста.' }] }, m); }
-  } catch (e) { inp.placeholder = PH; const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Нет связи с программой — перезапустите ярлык «TG-бот».' }] }, m); }
+    if (r.text) { inp.value = r.text; await new Promise(ok => setTimeout(ok, 350)); ask(r.text, true); } // точный текст Whisper — виден в поле, потом уходит в вопрос else { const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Не расслышал — повторите, пожалуйста.' }] }, m); }
+  } catch (e) { inp.placeholder = PH; inp.classList.remove('wait'); const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Нет связи с программой — перезапустите ярлык «TG-бот».' }] }, m); }
 }
 const micToggle = () => (WHISPER ? (W.on ? whStop() : whStart()) : (recOn ? micStop() : micStart()));
 $('#mic').onclick = micToggle;
