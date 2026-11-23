@@ -236,7 +236,7 @@ const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
 // ---------- ответы на опен по каждой позиции (алиас — ext.vso, по своим раздачам; у игроков базы — после пересчёта) ----------
 // правило — как 3-бет NAI: против ровно одного опена без коллеров, опен не олл-ин, BB против SB не берём; стек — свой, без анте
 const VPOS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
-const VACT = { call: ['колл', [1]], b3: ['3-бет без олл-ина', [2]], shove: ['олл-ин', [3]], fold: ['фолд', [0]], b3all: ['3-бет', [2, 3]], b3ai: ['3-бет олл-ином', [3]] };
+const VACT = { call: ['колл', [1]], b3: ['3bet NAI', [2]], shove: ['олл-ин', [3]], fold: ['фолд', [0]], b3all: ['3bet', [2, 3]], b3ai: ['3bet AI', [3]] };
 function vsoGet(P, pos, bs) { let n = 0; const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.vso[pos] && P.ext.vso[pos][b]; if (r) { n += r[0]; x[1] += r[1]; x[2] += r[2]; x[3] += r[3]; } } x[0] = n - x[1] - x[2] - x[3]; return { n, x }; }
 const vCell = (r, k) => ({ v: pctS(VACT[k][1].reduce((a, i) => a + r.x[i], 0), r.n), n: r.n });
 const focusAct = (ql, dflt) => (/3\s*-?\s*бет|трибет|3bet/.test(ql) ? 'b3' : /колл|кол(?![а-яё])|уравн/.test(ql) ? 'call' : /олл|пуш|all/.test(ql) ? 'shove' : /фолд|сброс/.test(ql) ? 'fold' : dflt);
@@ -249,8 +249,8 @@ function vsoBlocks(P, ql, o) {
   if (o.three) {
     focus = /без\s*олл|без\s*пуш|nai|наи/.test(ql) ? 'b3' : /олл-?\s*ин\w*|пуш|ai(?![a-z])/.test(ql) ? 'b3ai' : 'b3all';
     const C1 = cols || ['TOT', ...VPOS];
-    if (C1.length === 1 && !RS) { const r = vsoGet(P, C1[0], bands); return [{ type: 'big', title: title(P) + ' — ' + VACT[focus][0] + (C1[0] === 'TOT' ? '' : ' с ' + C1[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note: (r.n && focus === 'b3all' ? 'без олл-ина ' + vCell(r, 'b3').v + ' · олл-ином ' + vCell(r, 'b3ai').v + ' · ' : '') + note }]; }
-    if (!RS) { const LBL = { b3all: '3-бет', b3: 'без олл-ина', b3ai: 'олл-ином' }; const rows = ['b3all', 'b3', 'b3ai'].map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — 3-бет по позициям', note: note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
+    if (C1.length === 1 && !RS) { const r = vsoGet(P, C1[0], bands); return [{ type: 'big', title: title(P) + ' — ' + VACT[focus][0] + (C1[0] === 'TOT' ? '' : ' с ' + C1[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note: (r.n && focus === 'b3all' ? 'NAI ' + vCell(r, 'b3').v + ' · AI ' + vCell(r, 'b3ai').v + ' · ' : '') + note }]; }
+    if (!RS) { const LBL = { b3all: '3bet', b3: '3bet NAI', b3ai: '3bet AI' }; const rows = ['b3all', 'b3', 'b3ai'].map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — 3bet по позициям', note: 'NAI — без олл-ина, AI — олл-ином; ' + note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
   }
   if (focus) { // одно действие: колонки — позиции, строки — стеки
     const C = cols || ['TOT', ...VPOS], name = VACT[focus][0];
