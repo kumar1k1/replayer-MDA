@@ -114,6 +114,23 @@
       }
       return null;
     }
+    // EV этой руки у регов (топов) по каждому действию — ПО ВСКРЫТИЯМ (владелец, 23.11.2026): ячейки «greg|Sb|действие|hN»
+    // (банд стека — тот же, что у частот руки hw, иначе свой); от 50 вскрытий. Смещено: выигрыши без вскрытия и сбросы
+    // после флопа не видны — только для сравнения, в совете не участвует. who — как у частот руки (реги, иначе топы).
+    function handShowdownEV(sp, h, acts, hw) {
+      if (h == null) return null;
+      const who = hw && hw.who === 'топы' ? 'T' : 'greg', Sb = keys(sp).Sb, parts = Sb.split('|');
+      // банд стека: свой, затем соседние не дальше двух шагов (как у частот руки), первый с ≥ 50 вскрытиями
+      const bi = BANDS7.indexOf(parts[5]), order = [bi]; for (let d = 1; d <= 2; d++) { if (bi - d >= 0) order.push(bi - d); if (bi + d < 7) order.push(bi + d); }
+      const out = {};
+      for (const a of acts) {
+        if (a === 'fold' || a === 'check') continue;
+        let got = null;
+        for (const j of order) { if (j < 0) continue; const p2 = parts.slice(); p2[5] = BANDS7[j]; const c = cellHC(who + '|' + p2.join('|') + '|' + a + '|h' + h); if (c && c.n >= 50) { got = { m: c.m, n: c.n, se: (c.sd || 0) / Math.sqrt(c.n), band: BANDS7[j], same: j === bi }; break; } }
+        out[a] = got || { m: null, n: 0 };
+      }
+      return { who: who === 'T' ? 'топы' : 'реги', ev: out };
+    }
     // частоты GTO для руки в этом споте (ближайшая глубина): { depth, key, f: {fold, call|limp, raise, shove} }
     function gtoFreq(sp, h) {
       if (!GTO || h == null) return null; const key = gtoNodeKey(sp); if (!key) return null;
@@ -791,7 +808,7 @@
         for (const a of acts) if (a !== 'fold') { const x = cellHC('T|' + Sb + '|' + a + '|' + cl); c[a] = x ? x.n : 0; n += c[a]; }
         if (n >= 10) classTops = { cls: CL_RU[cl] || cl, n, share: Object.fromEntries(Object.entries(c).map(([a, v]) => [a, v / n])) };
       }
-      return { compare, classTops, handW: hw, regN: FR.n, gtoF: gtoFreq(sp, h), freqWho: whoB, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
+      return { compare, classTops, handW: hw, handSD: cards ? handShowdownEV(sp, h, acts, hw) : null, regN: FR.n, gtoF: gtoFreq(sp, h), freqWho: whoB, rk: keys(sp).Sb, tbl: sp.tbl, pos: sp.pos, band: SP.bandOf(sp.eff), st: stUsed, stNote: [stUsed !== sp0.st ? 'лимита «' + sp0.st + '» в базе нет — взят ближайший «' + stUsed + '»' : '', kdData !== sp0.kd ? 'по формату «' + KD_RU[sp0.kd] + '» в этом споте мало данных — взят «' + KD_RU[kdData] + '»' : ''].filter(Boolean).join('; ') || null, kd: sp0.kd, kdData, stage: sp0.stage || null, stageN: FT.stageN, hand: h != null ? K.H169[h].label : null, rows, best, rec, range: ra, freqN: FT.n, freqLvl: FT.lvl };
     }
     // вердикт фактическому действию: act — метка из разметки (open:x2.2 / shove / …), sz — корзина сайза (d.sz)
     function verdict(adv, act, sz) {

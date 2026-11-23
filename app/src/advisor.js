@@ -150,16 +150,23 @@ const SZ_VS = { r: 'против рега', n: 'против нита', f: 'пр
           const wf = (k) => (!hw ? null : hw.full ? (hw.full[k] != null ? hw.full[k] : 0) : k === 'fold' ? null : hw.w[k] || 0);
           const keys = ['fold', 'check', 'limp', 'call', 'open', 'iso', '3bet', '4bet', 'shove'].filter(k => ACTS.indexOf(k) >= 0 || G[k]).filter(k => k === 'fold' || k === a.rec.act || (wf(k) || 0) > 0.005 || (G[k] && G[k].f > 0.005));
           const t = el('table', 'rm-tab rm-myhand'), hd = el('tr');
-          [[a.hand + ' здесь', ''], [W0, 'как часто ' + W0 + ' играют этой рукой каждое действие здесь' + (hw ? ' — по ' + hw.shown + ' показанным рукам' : '')], ['GTO', 'частота в решениях HRC для этой руки'], ['EV GTO', 'EV этой руки в GTO этим действием, BB к фолду (селфплей HRC); «нет данных» — GTO так эту руку не играет']].forEach(([x, tt], q) => { const th = el('th', q ? 'g' : null, x); if (tt) th.title = tt; hd.append(th); }); t.append(hd);
+          const SD = a.handSD, W1 = SD ? SD.who : W0;
+          [[a.hand + ' здесь', ''], [W0, 'как часто ' + W0 + ' играют этой рукой каждое действие здесь' + (hw ? ' — по ' + hw.shown + ' показанным рукам' : '')],
+            ['EV ' + W1 + '*', 'EV этой руки у ' + (W1 === 'реги' ? 'регов' : 'топов') + ' этим действием, BB к фолду — ПО ВСКРЫТИЯМ: видны только руки, дошедшие до вскрытия (выигрыши без вскрытия и сбросы после флопа не видны), поэтому оценка смещена — только для сравнения, в совете не участвует; «нет данных» — меньше 50 вскрытий'],
+            ['GTO', 'частота в решениях HRC для этой руки'], ['EV GTO', 'EV этой руки в GTO этим действием, BB к фолду (селфплей HRC); «нет данных» — GTO так эту руку не играет']].forEach(([x, tt], q) => { const th = el('th', q ? 'g' : null, x); if (tt) th.title = tt; hd.append(th); }); t.append(hd);
           for (const k of keys) {
             const tr = el('tr', k === a.rec.act ? 'on' : ''), w = wf(k), g = G[k];
             const evS = !g ? '—' : g.ev == null ? 'нет данных' : sgn(g.ev);
             const evTd = el('td', 'num' + (g && g.ev == null ? ' rm-nd' : ''), evS);
-            tr.append(el('td', null, RUB[k] || k), el('td', 'num', w == null ? '—' : pct(w)), el('td', 'num', g ? pct(g.f) : '—'), evTd); t.append(tr);
+            const sd = SD && SD.ev[k];
+            const sdTd = k === 'fold' ? el('td', 'num', '0') : !sd ? el('td', 'num', '—') : sd.m == null ? el('td', 'num rm-nd', 'нет данных') : el('td', 'num', sgn(sd.m));
+            if (sd) sdTd.title = sd.m == null ? 'меньше 50 вскрытий с этой рукой (при вашем стеке и соседних)' : 'по ' + sd.n + ' вскрытиям' + (sd.same ? '' : ', стек ' + sd.band + ' BB') + ', ± ' + fmt(1.96 * sd.se, 1) + ' BB; смещено (видны только вскрытия)';
+            if (sd && sd.m != null && !sd.same) sdTd.textContent += '¹';
+            tr.append(el('td', null, RUB[k] || k), el('td', 'num', w == null ? '—' : pct(w)), sdTd, el('td', 'num', g ? pct(g.f) : '—'), evTd); t.append(tr);
           }
           s.append(t);
           const st = hw && !hw.same ? ', стек ' + hw.band + ' BB' : '';
-          const note = (hw ? (W0[0].toUpperCase() + W0.slice(1)) + ' — по ' + hw.shown + ' показанным рукам' + st + (hw.full ? '; фолд — оценка: ' + W0 + ' продолжают здесь ' + Math.round(hw.cont * 100) + '% рук, ' + a.hand + ' — в лучших ' + Math.max(1, Math.round(hw.pct * 100)) + '% по порядку GTO' : '; доли — среди сыгранных, фолды по базе не видны') + '. ' : 'Как ' + W0 + ' играют эту руку — мало показанных рук. ') + (a.gtoF ? 'GTO — HRC, ' + a.gtoF.depth + ' BB; EV GTO — BB к фолду.' : 'GTO: такого спота в решениях HRC нет.');
+          const note = (hw ? (W0[0].toUpperCase() + W0.slice(1)) + ' — по ' + hw.shown + ' показанным рукам' + st + (hw.full ? '; фолд — оценка: ' + W0 + ' продолжают здесь ' + Math.round(hw.cont * 100) + '% рук, ' + a.hand + ' — в лучших ' + Math.max(1, Math.round(hw.pct * 100)) + '% по порядку GTO' : '; доли — среди сыгранных, фолды по базе не видны') + '. ' : 'Как ' + W0 + ' играют эту руку — мало показанных рук. ') + (a.gtoF ? 'GTO — HRC, ' + a.gtoF.depth + ' BB; EV GTO — BB к фолду.' : 'GTO: такого спота в решениях HRC нет.') + ' * EV ' + W1 + ' — по вскрытиям, смещено (видны только руки, дошедшие до вскрытия) — для сравнения; ¹ — с соседнего стека (наведите).';
           s.append(el('div', 'rm-note', note));
         }
         s.append(el('div', 'rm-why', a.rec.why + (a.rec.size && a.rec.size.why ? ' · ' + a.rec.size.why : a.rec.size ? ' · размер — самый частый у топов (' + a.rec.size.bucket + ')' : '')));

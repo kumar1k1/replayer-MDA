@@ -86,6 +86,8 @@ const sz = {};
   const M = C8.loadModel(mf, (sec, k, v) => {
     if (sec === 'HC') { const m = reH.exec(k); if (m) { const o = RG[m[1] === 'greg' ? 'R' : m[1]], key = m[2] + '|' + m[3]; (o[key] || (o[key] = {}))[m[4]] = v[0]; } }
     if (sec === 'EV' && k.charCodeAt(0) === 89 && k[1] === '|') { cut++; return false; } // «Y|год|…» — только для отчёта по годам, в реплеер не нужны
+    // EV руки у регов и топов по вскрытиям — для таблицы «ваша рука» (владелец, 23.11.2026): от 50 вскрытий, а не от hcMin
+    if (sec === 'HC' && v[0] >= 50 && v[0] < hcMin && /^(greg|T)\|~[^]*\|h\d+$/.test(k)) return true;
     if ((sec === 'HC' && v[0] < hcMin) || (sec === 'EV' && v[0] < evMin)) { cut++; return false; } return true;
   });
   { const pack = (o) => { const r = {}; for (const k in o) { const e = Object.entries(o[k]); if (e.reduce((s, x) => s + x[1], 0) >= 20) r[k] = e.map(([h, n]) => h + ':' + n).join(','); } return r; };
