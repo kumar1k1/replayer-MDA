@@ -490,7 +490,8 @@ function aiTag(B) {
     const stackTxt = bands0 ? (bands0.num != null ? 'стек ' + String(bands0.num).replace('.', ',') + ' bb (в диапазоне ' + bands0[0] + ' bb)' : bnote) : 'все стеки';
     const posNote = S.h2n ? '' : ' · EP — все ранние места, MP — HJ и место перед ним';
     const p1 = pos || (total || !(byBand || WANT_TABLE.test(ql)) ? 'TOT' : null); // без позиции и без просьбы о таблице — одна цифра
-    if (p1 && !byBand) {
+    if (p1 === 'BB') blocks.push({ type: 'text', title: title(P) + ' — RFI с BB', text: 'С BB RFI не бывает: когда очередь доходит до BB, открыть первым уже нельзя. Можно спросить, например, «колд-колл с BB» или «3-бет с BB».' });
+    else if (p1 && !byBand) {
       const x = S.get(p1, bands);
       blocks.push({ type: 'big', title: title(P) + ' — RFI ' + (p1 === 'TOT' ? 'общий' : 'с ' + p1), big: x.n ? pctS(x.tot, x.n) : 'нет данных', n: x.n, note: stackTxt + (x.n ? ' · без олл-инов ' + pctS(x.nai, x.n) : '') + posNote });
     } else if (p1) {
