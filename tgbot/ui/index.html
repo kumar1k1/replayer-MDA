@@ -237,11 +237,6 @@ function botMsg(a, holder) {
     b.append(box);
   }
   if (a.sugg && a.sugg.length) { const s = el('div', 'sugg'); a.sugg.forEach(x => { const c = el('button', 'chip', x.label); c.onclick = () => ask(x.label.split(' · ')[0], false, x.key); s.append(c); }); b.append(s); }
-  if (a.key) {
-    const s = el('div', 'sugg');
-    [['3-беты по позициям'], ['опены по позициям'], ['фолд на 3-бет'], ['сквиз'], ['изо'], ['колл олл-ина'], ['винрейт'], ['винрейт по позициям']].forEach(([x]) => { const c = el('button', 'chip', x); c.onclick = () => ask(x); s.append(c); });
-    b.append(s);
-  }
   holder.append(el('div', 'time', now() + (a.ms != null ? ' · ' + a.ms + ' мс' : '')));
   if (a.key) setCtx(a.key, a.player, a.group);
   scroll();
