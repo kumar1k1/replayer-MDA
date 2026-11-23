@@ -22,3 +22,4 @@ data/practice_alias.json
 
 # TG-бот: база игроков (1+ ГБ, собирается tgbot/build_db.cjs)
 tgbot/data/
+tgbot/whisper/

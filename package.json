@@ -10,5 +10,10 @@
     "tops": "node pipeline/tops_v7.cjs",
     "model": "node --max-old-space-size=12288 pipeline/passV7.cjs"
   },
-  "optionalDependencies": { "node-unrar-js": "^2.0.2" }
+  "optionalDependencies": {
+    "node-unrar-js": "^2.0.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.13.0"
+  }
 }

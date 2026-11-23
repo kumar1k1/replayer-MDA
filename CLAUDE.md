@@ -88,6 +88,12 @@ lib/handfix.js — позиции по блайндам, игроки «out of h
 (--app, свой профиль tgbot/data/edge; голос — распознавание речи Edge, ru-RU). База — tgbot/data/players.db (SQLite,
 node:sqlite, ~1,1 ГБ, не в git): node tgbot/build_db.cjs — игроки из out2/players_v8.ndjson + кластеры + алиас владельца
 по его раздачам (data/practice_alias.json, только на ПК). Сейчас — префлоп и 11 статов тренера; постфлоп — после прохода.
+Голос (23.11.2026): кнопка микрофона → запись в окне → WAV 16 кГц → /api/stt → Whisper (whisper.cpp b5454, модель large-v3-turbo-q5_0,
+tgbot/whisper/, не в git; whisper-server порт 8791 запускает server.cjs; путь к модели — короткое имя: кириллицу в пути не открывает; -ac 768 —
+до 15 с звука, ~2,5 с на фразу на CPU). Без Whisper — распознавание Edge. «Мозг» — Claude (tgbot/brain.cjs, @anthropic-ai/sdk, модель
+TGBOT_MODEL, по умолчанию claude-opus-5-5): понимает вопрос любыми словами → точная фраза для разбора; цифры всегда из базы. Нужен ключ
+ANTHROPIC_API_KEY (владелец подключит позже); без ключа — свой разбор слов. Запросы — tgbot/data/asks.log. Правило ответов: один стат — одна
+цифра; таблица — только «по позициям» / «по стекам» / «таблицей».
 
 ## Состояние на 20.11.2026, ночь
 - Новая база: D:\маининг\new (888, Chico, PS 2025, PS.es, WPN/iPoker/Coin 2025; Winamax — пока нет). Переведено ≈ 294 млн

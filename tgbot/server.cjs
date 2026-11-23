@@ -126,7 +126,7 @@ function wordsToNum(q) {
 // отдельное слово (\b в JS не работает с кириллицей — границы вручную)
 const W = (alts) => new RegExp('(?:^|[^a-zа-яё0-9])(?:' + alts + ')(?=$|[^a-zа-яё0-9])', 'i');
 const POS_RE = [
-  ['BTN', /баттон|батон|кнопк|button|дилер/, W('btn|бтн|бт|бу|bu')],
+  ['BTN', /батт?[оа]н|кнопк|button|дилер/, W('btn|бтн|бт|бу|bu')],
   ['CO', /катоф|кат оф|cut\s*off|cutoff/, W('co|ко|со|си о|си-о')],
   ['SB', /мал[а-яё]* блайнд|смол|small\s*blind/, W('sb|сб|эс би|эсби')],
   ['HJ', /хайдж|хай дж|хайж|hi\s*jack|хиджек/, W('hj|хдж|эйч джей')],
@@ -165,7 +165,7 @@ function findPlayer(q, ctx) {
   const ql = q.toLowerCase();
   // «я / мой / мою / моей / моих / свою / себя / алиас …» — все формы: «покажи мою статистику», «мои 3-беты», «про себя»
   // «я / мне / меня» не считаем: «я хочу узнать RFI его…» — про другого игрока
-  const ali = /(^|[^a-zа-яё])(мой|моя|мою|моё|мое|мои|моих|моим|моими|моей|моего|моему|моём|моем|себя|собой|свой|своя|свою|своё|свое|свои|своих|своей|своего|алиас|алиаса)([^a-zа-яё]|$)/.test(ql);
+  const ali = /(^|[^a-zа-яё])(мой|моя|мою|моё|мое|мои|моих|моим|моими|моей|моего|моему|моём|моем|себя|собой|свой|своя|свою|своё|свое|свои|своих|своей|своего|алиас|алиаса)([^a-zа-яё]|$)/.test(ql) || /(^|[^a-zа-яё])(у|для|про|обо?)\s+(меня|мне)([^a-zа-яё]|$)/.test(ql);
   if (ali) { const rm = /winamax|винамакс|гг|gg|wpn|впн|stars|старс|покерстарс/.exec(ql); const k = rm ? ({ winamax: 'wnmx', 'винамакс': 'wnmx', 'гг': 'gg', gg: 'gg', wpn: 'wpn', 'впн': 'wpn', stars: 'ps', 'старс': 'ps', 'покерстарс': 'ps' })[rm[0]] : 'все'; const r = qKey.get('alias:' + k) || qKey.get('alias:все'); return r ? { rows: [r] } : { none: true }; }
   // ник: вся фраза, отдельные слова, пары слов (с пробелом и слитно — голос рвёт ники)
   const raw = q.trim().replace(/[.,!?]+$/, ''), toks = raw.split(/\s+/).filter(Boolean);
@@ -293,22 +293,68 @@ function answerFor(P, ql, intent, rows0) {
 
 // ---------- сервер ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.png': 'image/png' };
-const srv = http.createServer((req, res) => {
+// ---------- голос: Whisper (whisper.cpp, модель держится в памяти) ----------
+const BRAIN = require('./brain.cjs');
+const WH = { dir: path.join(__dirname, 'whisper'), port: 8791, proc: null, ready: false };
+WH.exe = path.join(WH.dir, 'bin', 'Release', 'whisper-server.exe'); WH.model = path.join(WH.dir, 'ggml-large-v3-turbo-q5_0.bin');
+// подсказка Whisper: покерные слова пишем как надо (латиница), чтобы реже ошибался
+const WH_PROMPT = 'Покерная статистика: VPIP, PFR, 3-бет, RFI, WTSD, W$SD, WWSF, фолд на 3-бет, баттон, катофф, хайджек, блайнды, бб, мой алиас, FFtonny.';
+async function whisperStart() {
+  // уже работает (остался от прошлого запуска) — подключаемся к нему
+  try { await fetch('http://127.0.0.1:' + WH.port + '/', { signal: AbortSignal.timeout(800) }); WH.ready = true; return; } catch (e) {}
+  if (!fs.existsSync(WH.exe) || !fs.existsSync(WH.model)) { console.log('Whisper не найден — голос через Edge'); return; }
+  const thr = Math.max(4, Math.min(12, require('os').cpus().length - 2));
+  WH.proc = require('child_process').spawn(WH.exe, ['-m', path.basename(WH.model), /* путь с кириллицей Whisper не открывает — короткое имя из своей папки */ '-l', 'ru', '-t', String(thr), '-ac', '768', /* звук до 15 с — вдвое быстрее */ '--host', '127.0.0.1', '--port', String(WH.port), '--prompt', WH_PROMPT], { cwd: WH.dir, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+  WH.proc.stderr.on('data', (d) => { if (/listening|server is listening/i.test(String(d))) WH.ready = true; });
+  WH.proc.on('exit', () => { WH.ready = false; WH.proc = null; });
+  const ping = setInterval(async () => { try { await fetch('http://127.0.0.1:' + WH.port + '/'); WH.ready = true; clearInterval(ping); } catch (e) {} }, 1000);
+}
+for (const sig of ['exit', 'SIGINT', 'SIGTERM']) process.on(sig, () => { try { if (WH.proc) WH.proc.kill(); } catch (e) {} if (sig !== 'exit') process.exit(0); });
+async function transcribe(wav) {
+  const fd = new FormData();
+  fd.append('file', new Blob([wav], { type: 'audio/wav' }), 'q.wav');
+  fd.append('language', 'ru'); fd.append('temperature', '0'); fd.append('response_format', 'json'); fd.append('prompt', WH_PROMPT);
+  const r = await fetch('http://127.0.0.1:' + WH.port + '/inference', { method: 'POST', body: fd });
+  const j = await r.json(); return String(j.text || '').replace(/\s+/g, ' ').replace(/^\s*[\[(].*?[\])]\s*$/, '').trim();
+}
+const readBody = (req, max) => new Promise((ok, no) => { const ch = []; let n = 0; req.on('data', (c) => { n += c.length; if (n > max) { no(new Error('слишком длинная запись')); req.destroy(); } else ch.push(c); }); req.on('end', () => ok(Buffer.concat(ch))); req.on('error', no); });
+
+const notFound = (o) => !o || (o.blocks || []).some(b => b.text === 'Игрока не нашёл.');
+async function ask(q0, ctx, key, alts, voice) {
+  if (key || !q0) return answer(q0, ctx, key);
+  // мозг (Claude): понимает вопрос любыми словами → точная фраза; цифры — из базы. Нет ключа — свой разбор слов.
+  const prev = ctx ? (qKey.get(ctx) || {}).nick : null;
+  const B = await BRAIN.understand(q0, prev);
+  const cands = [];
+  if (B && B.phrase) {
+    let o = answer(B.phrase, ctx, null);
+    // ник не нашёлся как есть — берём самый «большой» ник, который так начинается
+    if (notFound(o) && B.parsed && B.parsed.nick) { const lo = B.parsed.nick.toLowerCase().replace(/\s+/g, ''); const r = lo.length >= 3 ? qPrefix.all(lo, lo + '￿').filter(x => x.room !== 'alias')[0] : null; if (r) o = answer(B.phrase.replace(B.parsed.nick, r.nick), ctx, null); }
+    if (!notFound(o)) { o.brain = { model: BRAIN.status().model, phrase: B.phrase }; cands.push(o); }
+  }
+  let out = cands[0] || null, best = out ? voiceScore(out) + 1 : -1; // при равенстве — понимание Claude
+  for (const q of [q0, ...alts]) { const o = answer(q, ctx, key), sc = voiceScore(o); if (sc > best) { best = sc; out = o; } }
+  return out;
+}
+
+const srv = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
+  const J = (o) => { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };
+  if (u.pathname === '/api/stt' && req.method === 'POST') {
+    const t0 = Date.now();
+    if (!WH.ready) return J({ error: 'Whisper ещё загружается — подождите несколько секунд' });
+    try { const text = await transcribe(await readBody(req, 8 << 20)); return J({ text, ms: Date.now() - t0 }); } catch (e) { return J({ error: 'Не получилось распознать: ' + e.message }); }
+  }
+  if (u.pathname === '/api/status') return J({ whisper: WH.ready, brain: BRAIN.status() });
   if (u.pathname === '/api/ask') {
     const t0 = Date.now(); let out;
     const q0 = u.searchParams.get('q'), ctx = u.searchParams.get('ctx'), key = u.searchParams.get('key');
     let alts = []; try { alts = JSON.parse(u.searchParams.get('alts') || '[]').filter(x => typeof x === 'string').slice(0, 12); } catch (e) { alts = []; }
-    try {
-      // голос: из вариантов распознавания берём тот, что понят лучше всего (игрок найден, ясно что спрошено, позиция / стек)
-      let best = -1;
-      for (const q of [q0, ...alts]) { const o = answer(q, ctx, key), sc = voiceScore(o); if (sc > best) { best = sc; out = o; } }
-    } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; }
-    try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, heard: out.heard, intent: out.intent, player: out.player || null }) + '\n'); } catch (e) {}
+    try { out = await ask(q0, ctx, key, alts, !!u.searchParams.get('voice')); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; }
+    try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, brain: out.brain || null, heard: out.heard, intent: out.intent, player: out.player || null }) + '\n'); } catch (e) {}
     out.ms = Date.now() - t0;
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); return res.end(JSON.stringify(out));
-  }
-  if (u.pathname === '/api/suggest') {
+    return J(out);
+  }  if (u.pathname === '/api/suggest') {
     const p = String(u.searchParams.get('p') || '').trim().toLowerCase();
     const rows = p.length >= 2 ? qPrefix.all(p, p + '￿').filter(r => r.room !== 'alias') : [];
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -320,5 +366,5 @@ const srv = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(res);
 });
 srv.on('error', (e) => { if (e.code === 'EADDRINUSE') { console.log('TG-бот уже запущен на порту ' + PORT); process.exit(0); } throw e; });
-srv.listen(PORT, '127.0.0.1', () => console.log('TG-бот: http://127.0.0.1:' + PORT));
+srv.listen(PORT, '127.0.0.1', () => { console.log('TG-бот: http://127.0.0.1:' + PORT); whisperStart(); });
 module.exports = { answer };
