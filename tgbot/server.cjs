@@ -161,6 +161,9 @@ function intentOf(q) {
   if (/ривер/.test(q)) return 'river';
   return 'card';
 }
+// «своё»: явные слова о себе — мой / моя / мою / мои / свою / алиас / у меня / про меня («покажи мне …» — НЕ о себе)
+const isOwn = (ql) => /(^|[^a-zа-яё])(мой|моя|мою|моё|мое|мои|моих|моим|моими|моей|моего|моему|моём|моем|себя|собой|свой|своя|свою|своё|свое|свои|своих|своей|своего|алиас|алиаса)([^a-zа-яё]|$)/.test(ql) || /(^|[^a-zа-яё])(у|для|про|обо?)\s+(меня|мне)([^a-zа-яё]|$)/.test(ql);
+function aliasRow(ql) { const rm = /winamax|винамакс|гг|gg|wpn|впн|stars|старс|покерстарс/.exec(ql); const k = rm ? ({ winamax: 'wnmx', 'винамакс': 'wnmx', 'гг': 'gg', gg: 'gg', wpn: 'wpn', 'впн': 'wpn', stars: 'ps', 'старс': 'ps', 'покерстарс': 'ps' })[rm[0]] : 'все'; return qKey.get('alias:' + k) || qKey.get('alias:все'); }
 function findPlayer(q, ctx) {
   const ql = q.toLowerCase();
   // «я / мой / мою / моей / моих / свою / себя / алиас …» — все формы: «покажи мою статистику», «мои 3-беты», «про себя»
@@ -237,7 +240,14 @@ function statBlocks(P, id, ql) {
 }
 // как голос пишет «RFI»: «РФ», «эрфай», «эр эф ай», «р ф и», «арфи» → rfi
 const normRFI = (q) => q.replace(/(^|[^a-zа-яё0-9])(?:r\s*f\s*i?|рфи|рф|рфай|эр\s*эф\s*(?:ай|и)?|эрэф(?:ай|и)?|эрфа[йи]|эрфи|р\s+ф\s+и|арфи|ар\s*фи|а\s*р\s*ф\s*и)(?=$|[^a-zа-яё0-9])/gi, '$1rfi');
-function answer(q, ctx, key) {
+// lock (владелец, 23.11.2026): голос, когда открыта карточка игрока, — всегда про этого игрока; ники в голосе не ищем
+// (смена игрока — только набрав ник); на свою базу переключают лишь слова о себе (own — по исходной фразе)
+function answer(q, ctx, key, lock) {
+  if (lock && ctx && !key) {
+    q = wordsToNum(normRFI(String(q || '')).trim()); const ql = q.toLowerCase();
+    const r = lock.own ? aliasRow(lock.src) : qKey.get(ctx); if (!r) return { blocks: [{ type: 'text', text: 'Игрока не нашёл.' }] };
+    return Object.assign(answerFor(load(r), ql, statOf(ql) ? 'stat' : intentOf(ql), [r]), { heard: q, ctxUsed: !lock.own, oneOff: !!lock.own && !/^alias:/.test(ctx) }); // свой стат — разово: открытая карточка остаётся
+  }
   q = normRFI(String(q || ''));
   q = wordsToNum(String(q || '').trim()); const ql = q.toLowerCase();
   if (key) { const r = qKey.get(key); if (r) { const P0 = load(r); return Object.assign(answerFor(P0, ql, 'card', [r]), { heard: q }); } }
@@ -322,6 +332,14 @@ const readBody = (req, max) => new Promise((ok, no) => { const ch = []; let n = 
 const notFound = (o) => !o || (o.blocks || []).some(b => b.text === 'Игрока не нашёл.');
 async function ask(q0, ctx, key, alts, voice) {
   if (key || !q0) return answer(q0, ctx, key);
+  if (voice && ctx) {
+    const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
+    const B = await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick);
+    let out = null, best = -1;
+    if (B && B.phrase) { out = answer(B.phrase, ctx, null, lock); out.brain = { model: BRAIN.status().model, phrase: B.phrase }; best = voiceScore(out) + 1; }
+    for (const q of [q0, ...alts]) { const o = answer(q, ctx, null, lock), sc = voiceScore(o); if (sc > best) { best = sc; out = o; } }
+    return out;
+  }
   // мозг (Claude): понимает вопрос любыми словами → точная фраза; цифры — из базы. Нет ключа — свой разбор слов.
   const prev = ctx ? (qKey.get(ctx) || {}).nick : null;
   const B = await BRAIN.understand(q0, prev);

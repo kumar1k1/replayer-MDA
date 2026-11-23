@@ -277,7 +277,7 @@ function botMsg(a, holder) {
   }
   if (a.sugg && a.sugg.length) { const s = el('div', 'sugg'); a.sugg.forEach(x => { const c = el('button', 'chip', x.label); c.onclick = () => ask(x.label.split(' · ')[0], false, x.key); s.append(c); }); b.append(s); }
   holder.append(el('div', 'time', now() + (a.ms != null ? ' · ' + a.ms + ' мс' : '')));
-  if (a.key) setCtx(a.key, a.player, a.group);
+  if (a.key && !a.oneOff) setCtx(a.key, a.player, a.group); // вопрос голосом о себе при открытой карточке — разовый
   scroll();
 }
 async function ask(text, voice, key, alts) {
