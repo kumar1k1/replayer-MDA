@@ -42,7 +42,7 @@ function card(P) {
   const VP = clStat(P, 'VPIP'), PR = clStat(P, 'PFR');
   stats.push({ label: 'VPIP / PFR', v: VP.p == null ? '—' : f1(VP.p) + ' / ' + f1(PR.p), n: VP.n });
   { const H = P.ext && P.ext.h3 && P.ext.h3.TOT; if (H) stats.push({ label: '3-бет NAI', v: f1(pct(H[1], H[0])) + '%', n: H[0] }); else add('3-бет NAI', clStat(P, '3BetNAI')); } // у алиаса — как Hand2Note
-  add('Фолд на 3-бет', clStat(P, 'F3Bet'));
+  { const F = P.ext && P.ext.f3 && P.ext.f3.TOT && P.ext.f3.TOT.all && P.ext.f3.TOT.all.all; if (F) stats.push({ label: 'Фолд на 3-бет', v: f1(pct(F[1], F[0])) + '%', n: F[0] }); else add('Фолд на 3-бет', clStat(P, 'F3Bet')); }
   add('Лимп (не SB)', clStat(P, 'LimpNSB'));
   // WS / LS / WN / LN — банки один на один после флопа (флоп видели ровно двое, без олл-ина префлоп), lib/stats.js
   const WS = clStat(P, 'WS'), LS = clStat(P, 'LS'), WN = clStat(P, 'WN'), LN = clStat(P, 'LN'), HU = WS.n;
@@ -237,7 +237,7 @@ const STATS = [
   ['SQ', /квадрат|фиат/],
 ];
 const NO_STAT = /rfi|опен|открыт|первым|стил|сквиз|изо|изол|iso|против\s*(опен|лимп|олл)|колл\s*опен|на\s*опен|винрейт|winrate|выигрыш|профит|bb\/100|бб\/100/;
-function statOf(ql) { if (S3_RE.test(ql)) return 'S3'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
+function statOf(ql) { if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
 const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -355,7 +355,23 @@ function s3Blocks(P, ql, o) {
     note: st + ' · всего 3-бетов ' + tot.toLocaleString('ru') + ' · размер — сколько всего ставим, в bb (округлено до 0,5); частота — доля этого размера среди 3-бетов; Fold vs 4bet — сбросили на 4-бет',
     table: { head: ['размер', 'частота', 'Fold vs 4bet'], rows, grid: true, heatCol: true } }];
 }
-function statBlocks(P, id, ql, TT) {
+// ---------- фолд на 3-бет после своего опена: общий / в позиции / без позиции, по позициям опена (алиас — ext.f3; 24.11.2026) ----------
+const F3POS = ['TOT', 'EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'];
+function f3Blocks(P, ql, o) {
+  const { bands, PL, pos } = o, mode = aiMode(ql), vsAi = /против\s*(олл|пуш|ул[ыи]н)|на\s*(олл|пуш|ул[ыи]н)/.test(ql);
+  const wSel = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)/.test(ql) ? ['oop'] : /(^|[^а-яё])в\s*позиц|(^|[^a-z])ip([^a-z]|$)/.test(ql) ? ['ip'] : ['all', 'ip', 'oop'];
+  const get = (p, w) => { const x = [0, 0, 0, 0, 0, 0]; for (const b of bands) { const r = P.ext.f3[p] && P.ext.f3[p][w] && P.ext.f3[p][w][b]; if (r) for (let j = 0; j < 6; j++) x[j] += r[j]; } return x; };
+  // «против олл-ина» — только 3-беты олл-ином; «без олл-ина» — только обычные 3-беты
+  const val = (x) => (vsAi || mode === 'ai' ? [x[5], x[4]] : mode === 'nai' ? [x[1] - x[5], x[0] - x[4]] : [x[1], x[0]]);
+  const LBL = { all: 'Fold to 3bet', ip: 'в позиции (IP)', oop: 'без позиции (OOP)' }, cols = vPosList(PL) ? PL.filter(p => F3POS.includes(p)) : (pos ? [pos] : o.table ? F3POS : ['TOT']);
+  const kind = vsAi || mode === 'ai' ? ' · против 3-бета олл-ином' : mode === 'nai' ? ' · против 3-бета не олл-ином' : '';
+  const note = 'наш опен (не олл-ин) → ровно один 3-бет, никто не коллировал (сквиз — отдельно); IP — 3-бет с блайндов, OOP — сзади не с блайндов или мы на SB; TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
+  const ai = vsAi || mode === 'ai' ? 'против олл-ина' : mode === 'nai' ? 'против 3-бета не олл-ином' : 'любой 3-бет';
+  if (cols.length === 1 && wSel.length === 1) { const v = val(get(cols[0], wSel[0])); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет' + (wSel[0] === 'all' ? '' : ' ' + LBL[wSel[0]].replace(/ \(.*\)/, '')) + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: v[1] ? pctS(v[0], v[1]) : 'нет данных', n: v[1], ai, note }]; }
+  if (cols.length === 1 && !o.table) { const a = val(get(cols[0], 'all')), i = val(get(cols[0], 'ip')), oo = val(get(cols[0], 'oop')); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: a[1] ? pctS(a[0], a[1]) : 'нет данных', n: a[1], ai, note: 'в позиции ' + pctS(i[0], i[1]) + ' · без позиции ' + pctS(oo[0], oo[1]) + ' · ' + note }]; }
+  const rows = wSel.map(w => [LBL[w], ...cols.map(p => { const v = val(get(p, w)); return { v: pctS(v[0], v[1]), n: v[1] }; })]);
+  return [{ type: 'table', title: title(P) + ' — фолд на 3-бет по позициям' + kind, note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
+}function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
   const c = (nm) => clStat(P, nm);
@@ -363,6 +379,7 @@ function statBlocks(P, id, ql, TT) {
   if (id === 'VPIPPFR') { const a = c('VPIP'), b = c('PFR'); return [big('VPIP / PFR', f1(a.p) + ' / ' + f1(b.p), a.n, '')]; }
   if (id === 'VPIP' || id === 'PFR') { const a = c(id); return [big(id, f1(a.p) + '%', a.n, '')]; }
   if (id === 'LIMP') { const a = c('LimpNSB'); return [big('лимп первым (кроме SB)', f1(a.p) + '%', a.n, '')]; }
+  if (id === 'F3' && P.ext && P.ext.f3 && TT) return f3Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) });
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
   if (id === 'S3') { if (!(P.ext && P.ext.s3)) return [{ type: 'text', text: 'Размеры 3-бета пока посчитаны только по вашей базе.' }]; return s3Blocks(P, ql, { bands: TT.bands, pos: posOf(ql) }); }
