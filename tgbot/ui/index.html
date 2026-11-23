@@ -75,7 +75,7 @@ td.gc.few2 .gv{opacity:.32;outline:1px dashed rgba(255,255,255,.14)}
 th.tot,td.tot{border-right:1px solid var(--line2)}
 td.tot .gv{box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
 .heatlg{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--faint)}
-.heatlg i{display:block;width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,hsl(210 85% 60%),hsl(285 75% 62%),hsl(345 80% 64%),hsl(25 95% 60%))}
+.heatlg i{display:block;width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,hsl(155 55% 30%),hsl(120 70% 38%),hsl(85 85% 46%))}
 .heatlg em{font-style:normal;margin-left:auto}
 .tblw{overflow-x:auto}#q.wait{opacity:.6}td.gc .gv{font:600 14px var(--mono)}td.gc small{font:11px var(--mono);color:var(--faint);margin-left:6px;vertical-align:2px}
 .st{margin-top:10px;display:grid;grid-template-columns:1fr;max-width:560px}
@@ -178,10 +178,10 @@ function me(text, voice) {
 }
 function typing() { const m = el('div', 'msg bot'), b = el('div', 'bub bot'), t = el('div', 'typing'); t.append(el('i'), el('i'), el('i')); b.append(t); m.append(b); feed.append(m); scroll(); return m; }
 
-// цвет цифры в таблице: шкала «реже → чаще» внутри таблицы — синий (тайтово) → фиолетовый → оранжевый (часто, лузово);
+// цвет цифры в таблице: шкала «реже → чаще» внутри таблицы — тёмно-зелёный (реже) → салатовый (чаще), цифры светлые;
 // мало раздач (< 100) — бледно, < 30 — совсем бледно: таким цифрам меньше доверия
 const HEAT_N = 100;
-function heat(v, lo, hi) { const t = hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 0.5, h = (210 + t * 175) % 360; return { fg: `hsl(${h} 95% 74%)`, bg: `hsla(${h}, 85%, 55%, ${0.10 + t * 0.16})` }; }
+function heat(v, lo, hi) { const t = hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 0.5, h = 155 - t * 70; /* тёмно-зелёный → салатовый */ return { fg: `hsl(${h} 70% ${86 + t * 6}%)`, bg: `hsla(${h}, ${55 + t * 30}%, ${30 + t * 16}%, ${0.35 + t * 0.4})` }; }
 function tableEl(T, group) {
   const t = el('table'), hr = el('tr'); T.head.forEach((h, k) => { const th = el('th', null, h); if (h === 'TOT') th.className = 'tot'; hr.append(th); }); t.append(hr);
   const pv = (c) => (c && typeof c === 'object' && c.n >= 30 && /\d/.test(c.v) ? parseFloat(String(c.v).replace(',', '.')) : null);
