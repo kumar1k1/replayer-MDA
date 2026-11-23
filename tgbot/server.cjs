@@ -75,15 +75,17 @@ function card(P) {
 
 // ---------- префлоп-разрезы (lib/lineup.js: семейства слотов) ----------
 const POSN = { rfi: ['EP', 'MP', 'CO', 'BTN', 'SB'], vso: [['BB', 'BB'], ['SB', 'SB'], ['CO', 'остальные (BTN, CO, HJ, EP)']] };
+const pctS = (x, n) => n ? String(pct(x, n)).replace('.', ',') + '%' : '—';
 function famTable(P, fam, bands, byBand) {
   const F = LU.FAM[fam], acts = F.acts, RU = { open: 'опен', limp: 'лимп', shove: 'олл-ин', call: 'колл', '3bet': '3-бет', raise: 'рейз', fold: 'фолд', '4bet': '4-бет', iso: 'изо' };
-  const head = ['', 'раз'].concat(acts.map(a => RU[a] || a)).concat(F.explicitFold ? [] : ['фолд']);
+  // клетки — { v, n } как в таблице RFI (салатовые плашки, число раздач мелко); яркость — по каждой колонке (владелец, 24.11.2026)
+  const head = [''].concat(acts.map(a => RU[a] || a)).concat(F.explicitFold ? [] : ['фолд']);
   const rowsOf = (label, slots) => {
     let n = 0; const x = acts.map(() => 0);
     for (const o of slots) { n += P.pf[o]; acts.forEach((_, k) => { x[k] += P.pf[o + 1 + k]; }); }
-    const cells = x.map(v => (n ? pct(v, n) + '%' : '—'));
-    if (!F.explicitFold) cells.push(n ? pct(n - x.reduce((a, b) => a + b, 0), n) + '%' : '—');
-    return [label, String(n)].concat(cells);
+    const cells = x.map(v => ({ v: pctS(v, n), n }));
+    if (!F.explicitFold) cells.push({ v: pctS(n - x.reduce((a, b) => a + b, 0), n), n });
+    return [label].concat(cells);
   };
   const rows = [];
   if (fam === 'rfi' || fam === 'vso') {
@@ -91,7 +93,7 @@ function famTable(P, fam, bands, byBand) {
     if (byBand) for (const b of bands) for (const [p, lab] of L) rows.push(rowsOf(b + ' · ' + lab, [LU.slotOf(fam, b, p)]));
     else for (const [p, lab] of L) rows.push(rowsOf(lab, bands.map(b => LU.slotOf(fam, b, p))));
   } else for (const b of bands) rows.push(rowsOf(b + ' bb', [LU.slotOf(fam, b, '')]));
-  return { head, rows: rows.filter(r => r[1] !== '0') };
+  return { head, rows: rows.filter(r => r[1].n), grid: true, heatCol: true };
 }
 // RFI как Hand2Note (владелец, 23.11.2026; сверено с его Hand2Note): TOT — любой рейз первым в банк (с олл-инами),
 // NAI — без олл-ина; знаменатель — все раз, когда до игрока все сбросили. Позиции: EP (5+ мест до баттона) · MP (3–4) ·
@@ -103,7 +105,6 @@ function rfiSrc(P) {
   const map = { EP: 'EP', MP: 'MP', HJ: 'MP', CO: 'CO', BTN: 'BTN', SB: 'SB' };
   return { h2n: false, cols: RFI_COLS_B, get: (pos, bs) => { let n = 0, t = 0, a = 0; for (const p of pos === 'TOT' ? RFI_COLS_B : [map[pos]]) for (const b of bs) { const s = LU.slotOf('rfi', b, p); n += P.pf[s]; a += P.pf[s + 1]; t += P.pf[s + 1] + P.pf[s + 3]; } return { n, tot: t, nai: a }; } };
 }
-const pctS = (x, n) => n ? String(pct(x, n)).replace('.', ',') + '%' : '—';
 function rfiGrid(P, bands, byBand) {
   const S = rfiSrc(P), head = ['', 'TOT', ...S.cols], rows = [];
   const row = (lab, bs, k) => [lab, ...['TOT', ...S.cols].map(p => { const x = S.get(p, bs); return { v: pctS(x[k], x.n), n: x.n }; })];
