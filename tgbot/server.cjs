@@ -247,12 +247,12 @@ function statBlocks(P, id, ql) {
     // по позициям — как Hand2Note (у алиаса); одна позиция — одна цифра
     const H = P.ext && P.ext.h3, pos = posOf(ql), tbl = WANT_TABLE.test(ql);
     if (H && (tbl || pos)) {
-      if (pos && !tbl) { const p = pos === 'EP' ? 'MP' : pos, x = H[p]; return [big('3-бет NAI с ' + p, x ? pctS(x[1], x[0]) : '—', x ? x[0] : 0, 'как в Hand2Note: против одного опена без коллеров' + (pos === 'EP' ? ' · ранние места у Hand2Note — MP' : ''))]; }
+      if (pos && !tbl) { const p = pos === 'EP' ? 'MP' : pos, x = H[p]; return [big('3-бет NAI с ' + p, x ? pctS(x[1], x[0]) : '—', x ? x[0] : 0, 'против одного опена без коллеров' + (pos === 'EP' ? ' · ранние места считаются как MP' : ''))]; }
       const rows = [['NAI', ...['TOT', ...H3POS].map(p => { const x = H[p]; return x ? { v: pctS(x[1], x[0]), n: x[0] } : { v: '—', n: 0 }; })]];
-      return [{ type: 'table', title: title(P) + ' — 3-бет NAI по позициям', note: 'как в Hand2Note: против одного опена без коллеров, BB — без защиты против SB', table: { head: ['', 'TOT', ...H3POS], rows, grid: true } }];
+      return [{ type: 'table', title: title(P) + ' — 3-бет NAI по позициям', note: 'против одного опена без коллеров; BB — без раздач против SB', table: { head: ['', 'TOT', ...H3POS], rows, grid: true } }];
     }
     if (tbl) return null; // у игроков базы — прежняя таблица «против опена»
-    if (H && H.TOT) return [big('3-бет NAI', pctS(H.TOT[1], H.TOT[0]), H.TOT[0], 'как в Hand2Note: против одного опена без коллеров')];
+    if (H && H.TOT) return [big('3-бет NAI', pctS(H.TOT[1], H.TOT[0]), H.TOT[0], 'против одного опена без коллеров')];
     const a = c('3BetNAI'); return [big('3-бет NAI', f1(a.p) + '%', a.n, '')];
   }
   // WTSD / W$SD / WWSF: у алиаса — по всем банкам с флопом (TOTAL), иначе / по просьбе «один на один» — HU
@@ -338,7 +338,7 @@ function answerFor(P, ql, intent, rows0, spec) {
       const rows = [], T = [0, 0, 0];
       for (const p of ['BB', 'SB', 'BTN', 'CO', 'MP', 'UTG']) { const x = P.ext.pos[p]; if (!x) continue; T[0] += x[0]; T[1] += x[1]; T[2] += x[2]; rows.push([p, String(x[0]), f1(x[1] / x[0] * 100), f1(x[2] / x[0] * 100)]); }
       rows.push(['ИТОГ', String(T[0]), f1(T[1] / T[0] * 100), f1(T[2] / T[0] * 100)]);
-      blocks.push({ type: 'table', title: title(P) + ' — винрейт по позициям', note: 'позиции как в Hand2Note (UTG — только при полном столе); «реально» — как «бб/100» в Hand2Note; «с поправкой» — олл-ины по эквити (у Hand2Note своя формула EV, цифры могут отличаться)' + (P.ext.dup ? '; дубли раздач убраны: ' + P.ext.dup : ''), table: { head: ['позиция', 'руки', 'бб/100 реально', 'бб/100 с поправкой'], rows, signed: true } });
+      blocks.push({ type: 'table', title: title(P) + ' — винрейт по позициям', note: 'UTG — только при полном столе; «реально» — фактический выигрыш; «с поправкой» — олл-ины по эквити' + (P.ext.dup ? '; дубли раздач убраны: ' + P.ext.dup : ''), table: { head: ['позиция', 'руки', 'бб/100 реально', 'бб/100 с поправкой'], rows, signed: true } });
     }
   }
   else if (intent === 'river') { const c = card(P); blocks.push({ type: 'card', title: title(P) + ' — ривер (один на один)', stats: c.stats.filter(r => r.label && /river/i.test(r.label)) }); }
@@ -353,15 +353,15 @@ function answerFor(P, ql, intent, rows0, spec) {
     const RS = G || (byBand ? BANDS.map(b => [b + ' bb', [b]]) : null);
     const rows = RS ? RS.map(([l, bs]) => [l, ...cols.map(p => cell(S.get(p, bs), 'nai'))]).filter(r => r.slice(1).some(c => c.n))
       : [['RFI', ...cols.map(p => cell(S.get(p, bands), 'tot'))], ['NAI', ...cols.map(p => cell(S.get(p, bands), 'nai'))]];
-    const posNote = S.h2n ? '' : ' · у игроков базы позиции пока крупнее (EP — все ранние, MP — HJ и место перед ним)';
-    blocks.push({ type: 'table', title: title(P) + ' — RFI' + (PL ? ' · ' + cols.map(lab).join(', ') : ' по позициям') + (RS ? ' по стекам' : ''), note: (RS ? 'без олл-инов, как в Hand2Note; стек — свой, без анте' : 'RFI — с олл-инами, NAI — без') + posNote, table: { head: ['', ...cols.map(lab)], rows, grid: true } });
+    const posNote = S.h2n ? '' : ' · EP — все ранние места, MP — HJ и место перед ним';
+    blocks.push({ type: 'table', title: title(P) + ' — RFI' + (PL ? ' · ' + cols.map(lab).join(', ') : ' по позициям') + (RS ? ' по стекам' : ''), note: (RS ? 'без олл-инов; стек — свой, без анте' : 'RFI — с олл-инами, NAI — без') + posNote, table: { head: ['', ...cols.map(lab)], rows, grid: true } });
     if (!rows.length) blocks.push({ type: 'text', text: 'В этой ситуации у игрока нет раздач.' });
   }
   else if (intent === 'rfi') {
     // один стат — одна цифра; «по стекам» / «по позициям» / без позиции — таблица (владелец, 23.11.2026)
     const S = rfiSrc(P), pos = posOf(ql), total = /общ|в целом|всего|итог|tot/.test(ql);
     const stackTxt = bands0 ? (bands0.num != null ? 'стек ' + String(bands0.num).replace('.', ',') + ' bb (в диапазоне ' + bands0[0] + ' bb)' : bnote) : 'все стеки';
-    const posNote = S.h2n ? '' : ' · у игроков базы позиции пока крупнее (EP — все ранние, MP — HJ и место перед ним); как в Hand2Note — после пересчёта';
+    const posNote = S.h2n ? '' : ' · EP — все ранние места, MP — HJ и место перед ним';
     const p1 = pos || (total || !(byBand || WANT_TABLE.test(ql)) ? 'TOT' : null); // без позиции и без просьбы о таблице — одна цифра
     if (p1 && !byBand) {
       const x = S.get(p1, bands);
@@ -370,10 +370,10 @@ function answerFor(P, ql, intent, rows0, spec) {
       const T = { head: ['стек', 'RFI', 'NAI'], rows: [], grid: true };
       for (const b of bands) { const x = S.get(p1, [b]); if (x.n) T.rows.push([b + ' bb', { v: pctS(x.tot, x.n), n: x.n }, { v: pctS(x.nai, x.n), n: x.n }]); }
       blocks.push({ type: 'table', title: title(P) + ' — RFI ' + (p1 === 'TOT' ? 'общий' : 'с ' + p1) + ' по стекам', note: 'NAI — без олл-инов' + posNote, table: T });
-    } else blocks.push({ type: 'table', title: title(P) + ' — RFI по позициям', note: stackTxt + (byBand ? ' · по стекам, без олл-инов (как в Hand2Note); стек — свой, без анте' : ' · NAI — без олл-инов') + posNote, table: rfiGrid(P, bands, byBand && !(bands0 && bands0.length === 1)) });
+    } else blocks.push({ type: 'table', title: title(P) + ' — RFI по позициям', note: stackTxt + (byBand ? ' · по стекам, без олл-инов; стек — свой, без анте' : ' · NAI — без олл-инов') + posNote, table: rfiGrid(P, bands, byBand && !(bands0 && bands0.length === 1)) });
   }  else {
     const t = famTable(P, intent, bands, byBand, G);
-    blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T[intent], note: bnote + (intent === 'vso' ? ' · BTN, CO, HJ пока одной группой (разделим при следующем пересчёте)' : ''), table: t });
+    blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T[intent], note: bnote + (intent === 'vso' ? ' · BTN, CO, HJ — одной группой' : ''), table: t });
     if (!t.rows.length) blocks.push({ type: 'text', text: 'В этой ситуации у игрока нет раздач' + (bands0 ? ' при таком стеке' : '') + '.' });
   }
   return { key: P.key, player: title(P), group: P.cl != null ? CLU.GROUP[P.cl] : null, intent, blocks, sugg: others };
