@@ -21,7 +21,7 @@ const pct = (a, b) => (b > 0 ? Math.round(a / b * 1000) / 10 : null);
 // ---------- данные игрока ----------
 function load(row) {
   const pf = new Float64Array(ST.PF_SLOTS); if (row.pf) for (const s of row.pf.split(',')) { const [o, v] = s.split(':'); pf[+o] = +v; }
-  return Object.assign({}, row, { cls: JSON.parse(row.cls || '[]'), pf, r: JSON.parse(row.r || '[]') });
+  return Object.assign({}, row, { cls: JSON.parse(row.cls || '[]'), pf, r: JSON.parse(row.r || '[]'), ext: row.ext ? JSON.parse(row.ext) : null });
 }
 const clStat = (P, name) => { const s = ST.CL.indexOf(name); let o0 = 0, h = 0; for (let k = 0; k < 4; k++) { const o = (k * NCL + s) * 2; o0 += P.cls[o] || 0; h += P.cls[o + 1] || 0; } return { n: o0, h, p: pct(h, o0) }; };
 function winrate(r, off) { // r: [n,Σ,Σ²] ×(A,B) с отступом off
@@ -48,11 +48,16 @@ function card(P) {
   rows.push(['Выиграл, увидев флоп (WWSF)', HU ? pct(WS.h + WN.h, HU) + '%' : '—', String(HU), 'один на один после флопа']);
   add('Ставка на ривере (HU)', clStat(P, 'BetRiverHU'), 'один на один');
   add('Фолд на ставку ривера (HU)', clStat(P, 'FoldRiverBetHU'), 'один на один');
-  const w = winrate(P.r, 0), wf = { 'фризаут': winrate(P.r, 6), 'PKO': winrate(P.r, 12), 'Mystery': winrate(P.r, 18) };
+  // винрейт: у алиаса — реальный выигрыш фишек (как «бб/100» в Hand2Note), рядом — с поправкой на олл-ины по эквити;
+  // у игроков базы хранится только с поправкой (так копит конвейер — для отбора топов без удачи)
+  const R0 = P.ext && P.ext.raw ? P.ext.raw : P.r, real = !!(P.ext && P.ext.raw);
+  const w = winrate(R0, 0), wf = { 'фризаут': winrate(R0, 6), 'PKO': winrate(R0, 12), 'Mystery': winrate(R0, 18) };
+  const wev = real ? winrate(P.r, 0) : null;
   return {
     type: 'card', title: title(P),
-    sub: [P.n.toLocaleString('ru') + ' рук', P.ns ? 'шорт-столы ' + P.ns.toLocaleString('ru') : '', g ? 'кластер К' + P.cl + ' · ' + (GR_RU[g] || g) + (P.rel === 0 ? ' (предварительно)' : '') : (P.room === 'alias' ? 'ники: ' + (P.nicks || '') : 'кластер не определён')].filter(Boolean),
-    group: g, wr: w, wrFmt: Object.entries(wf).filter(([, v]) => v && v.n >= 200).map(([k, v]) => ({ k, ...v })),
+    sub: [P.n.toLocaleString('ru') + ' рук', P.ns ? 'шорт-столы ' + P.ns.toLocaleString('ru') : '', g ? 'кластер К' + P.cl + ' · ' + (GR_RU[g] || g) + (P.rel === 0 ? ' (предварительно)' : '') : (P.room === 'alias' ? 'ники: ' + (P.nicks || '') : 'кластер не определён'), P.ext && P.ext.dup ? 'дублей убрано ' + P.ext.dup : ''].filter(Boolean),
+    group: g, wr: w, wrLabel: real ? 'реально — как «бб/100» в Hand2Note' : 'с поправкой на олл-ины по эквити', wrEv: wev,
+    wrFmt: Object.entries(wf).filter(([, v]) => v && v.n >= 200).map(([k, v]) => ({ k, ...v })),
     table: { head: ['стат', '%', 'раз', ''], rows },
   };
 }
@@ -100,7 +105,7 @@ function intentOf(q) {
   if (/опен|открыт|первым|rfi|рфи|стил/.test(q)) return 'rfi';
   if (/изо|лимп|limp|iso/.test(q)) return 'iso';
   if (/олл-?ин|пуш|all-?in/.test(q)) return 'ai';
-  if (/винрейт|winrate|выигр|bb\/100|бб\/100|результат|профит/.test(q)) return 'wr';
+  if (/винрейт|winrate|выигр|bb\/100|бб\/100|результат|профит/.test(q)) return /позиц/.test(q) ? 'wrpos' : 'wr';
   if (/ривер/.test(q)) return 'river';
   return 'card';
 }
@@ -143,7 +148,17 @@ function answerFor(P, ql, intent, rows0) {
   const bands0 = bandsOf(ql), bands = bands0 || BANDS, byBand = /по стек|стек/.test(ql) && !bands0;
   const bnote = bands0 ? 'стек ' + (bands0.length > 1 ? bands0[0] + ' … ' + bands0[bands0.length - 1] : bands0[0]) + ' bb' : 'все стеки';
   if (intent === 'card') blocks.push(card(P));
-  else if (intent === 'wr') { const c = card(P); blocks.push({ type: 'card', title: c.title, sub: c.sub, group: c.group, wr: c.wr, wrFmt: c.wrFmt }); }
+  else if (intent === 'wr') { const c = card(P); blocks.push({ type: 'card', title: c.title, sub: c.sub, group: c.group, wr: c.wr, wrLabel: c.wrLabel, wrEv: c.wrEv, wrFmt: c.wrFmt }); }
+  else if (intent === 'wrpos') {
+    if (!P.ext || !P.ext.pos) blocks.push({ type: 'text', title: title(P), text: 'Винрейт по позициям пока посчитан только для вашего алиаса (по вашим раздачам). Для игроков базы он появится после следующего прохода по базе.' });
+    else {
+      const f1 = (v) => (v > 0 ? '+' : '') + v.toFixed(1).replace('.', ',');
+      const rows = [], T = [0, 0, 0];
+      for (const p of ['BB', 'SB', 'BTN', 'CO', 'MP', 'UTG']) { const x = P.ext.pos[p]; if (!x) continue; T[0] += x[0]; T[1] += x[1]; T[2] += x[2]; rows.push([p, String(x[0]), f1(x[1] / x[0] * 100), f1(x[2] / x[0] * 100)]); }
+      rows.push(['ИТОГ', String(T[0]), f1(T[1] / T[0] * 100), f1(T[2] / T[0] * 100)]);
+      blocks.push({ type: 'table', title: title(P) + ' — винрейт по позициям', note: 'позиции как в Hand2Note (UTG — только при полном столе); «реально» — как «бб/100» в Hand2Note; «с поправкой» — олл-ины по эквити (у Hand2Note своя формула EV, цифры могут отличаться)' + (P.ext.dup ? '; дубли раздач убраны: ' + P.ext.dup : ''), table: { head: ['позиция', 'руки', 'бб/100 реально', 'бб/100 с поправкой'], rows, signed: true } });
+    }
+  }
   else if (intent === 'river') { const c = card(P); blocks.push({ type: 'table', title: title(P) + ' — ривер (один на один)', table: { head: c.table.head, rows: c.table.rows.filter(r => /ривер/i.test(r[0])) } }); }
   else if (intent === 'postflop') blocks.push({ type: 'text', title: title(P), text: 'Постфлоп-статы (c-bet, донк, чек-рейз, флоп / тёрн) ещё не посчитаны — это следующий этап: сначала отрабатываем на ваших раздачах, потом один проход по всей базе. Сейчас есть только ривер один на один — скажите «ривер».' });
   else {

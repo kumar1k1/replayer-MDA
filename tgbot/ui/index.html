@@ -140,7 +140,8 @@ function tableEl(T, group) {
       const td = el('td');
       if (k === 0) td.textContent = c;
       else if (/%$/.test(c)) { td.className = 'pc'; td.style.setProperty('--w', Math.min(100, parseFloat(c)) + '%'); if (group && BAR[group]) td.style.setProperty('--bar', BAR[group]); td.append(el('span', null, c.replace('.', ','))); }
-      else if (T.head[k] === 'раз' || /^\d+$/.test(c)) { td.className = 'n'; td.textContent = (+c).toLocaleString('ru'); }
+      else if (/^[+-]\d/.test(c)) { td.textContent = c; td.style.color = c[0] === '+' ? 'var(--good)' : 'var(--bad)'; td.style.fontWeight = '700'; }
+      else if (T.head[k] === 'раз' || T.head[k] === 'руки' || /^\d+$/.test(c)) { td.className = 'n'; td.textContent = (+c).toLocaleString('ru'); }
       else { td.className = c ? 'hint' : ''; td.textContent = c; }
       tr.append(td);
     });
@@ -156,7 +157,8 @@ function botMsg(a, holder) {
     if (B.sub) { const s = el('div', 'sub'); B.sub.forEach(x => s.append(el('span', null, x))); box.append(s); }
     if (B.wr) {
       const w = el('div', 'wr'), L = el('div'); const v = B.wr.bb100;
-      L.append(el('div', 'big ' + (v > 0 ? 'p' : v < 0 ? 'm' : ''), (v > 0 ? '+' : '') + String(v).replace('.', ',') + ' bb/100'), el('div', 'lab', '± ' + String(B.wr.ci).replace('.', ',') + ' · ' + B.wr.n.toLocaleString('ru') + ' рук'));
+      L.append(el('div', 'big ' + (v > 0 ? 'p' : v < 0 ? 'm' : ''), (v > 0 ? '+' : '') + String(v).replace('.', ',') + ' bb/100'), el('div', 'lab', '± ' + String(B.wr.ci).replace('.', ',') + ' · ' + B.wr.n.toLocaleString('ru') + ' рук' + (B.wrLabel ? ' · ' + B.wrLabel : '')));
+      if (B.wrEv) L.append(el('div', 'lab', 'с поправкой на олл-ины по эквити: ' + (B.wrEv.bb100 > 0 ? '+' : '') + String(B.wrEv.bb100).replace('.', ',') + ' bb/100'));
       w.append(L);
       if (B.wrFmt && B.wrFmt.length) { const f = el('div', 'fmt'); B.wrFmt.forEach(x => { const d = el('div', null, (x.bb100 > 0 ? '+' : '') + String(x.bb100).replace('.', ',')); d.style.color = x.bb100 > 0 ? 'var(--good)' : x.bb100 < 0 ? 'var(--bad)' : ''; d.append(el('small', null, x.k + ' · ' + x.n.toLocaleString('ru'))); f.append(d); }); w.append(f); }
       box.append(w);
@@ -169,7 +171,7 @@ function botMsg(a, holder) {
   if (a.sugg && a.sugg.length) { const s = el('div', 'sugg'); a.sugg.forEach(x => { const c = el('button', 'chip', x.label); c.onclick = () => ask(x.label.split(' · ')[0], false, x.key); s.append(c); }); b.append(s); }
   if (a.key) {
     const s = el('div', 'sugg');
-    [['3-беты по позициям'], ['опены по позициям'], ['фолд на 3-бет'], ['сквиз'], ['изо'], ['колл олл-ина'], ['винрейт']].forEach(([x]) => { const c = el('button', 'chip', x); c.onclick = () => ask(x); s.append(c); });
+    [['3-беты по позициям'], ['опены по позициям'], ['фолд на 3-бет'], ['сквиз'], ['изо'], ['колл олл-ина'], ['винрейт'], ['винрейт по позициям']].forEach(([x]) => { const c = el('button', 'chip', x); c.onclick = () => ask(x); s.append(c); });
     b.append(s);
   }
   holder.append(el('div', 'time', now() + (a.ms != null ? ' · ' + a.ms + ' мс' : '')));
