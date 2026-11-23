@@ -16,7 +16,6 @@ const log = (s) => console.log(new Date().toTimeString().slice(0, 8) + ' ' + s);
 
 const NCL = ST.CL.length, NPF = ST.PF_SLOTS;
 const sparse = (a) => { const o = []; for (let i = 0; i < a.length; i++) if (a[i]) o.push(i + ':' + a[i]); return o.join(','); };
-
 // ---------- алиас владельца: статы по его раздачам ----------
 function aliasStats() {
   const cfgF = path.join(ROOT, 'data', 'practice_alias.json');
@@ -25,7 +24,12 @@ function aliasStats() {
   const mine = new Set(Object.keys(cfg['ники'] || {})); // «рум:ник»
   const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
   const acc = {}; // рум → { pf, cl, f, n, ns, nf }
-  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, n: 0, ns: 0, nf: 0, nicks: new Set() };
+  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
+  // 3-бет как в Hand2Note (сверено 23.11.2026 с его поп-апом владельца, все позиции): против ровно одного рейза,
+  // без коллеров (сквиз — отдельно), опен не олл-ином, на BB — не против опена с SB (блайнд против блайнда — отдельно)
+  const HF = require(path.join(ROOT, 'lib', 'handfix.js'));
+  const distPos = (lab, n) => { if (lab === 'SB' || lab === 'BTN/SB') return 'SB'; if (lab === 'BB' || lab === 'BTN') return lab; const L = HF.POS_NAMES[Math.min(Math.max(n, 2), 9)], d = L.length - L.indexOf(lab); return d === 1 ? 'CO' : d === 2 ? 'HJ' : 'MP'; };
+  const tsOf = (d) => { const m = /(\d{4})[\/-](\d\d)[\/-](\d\d)[ T](\d{1,2}):(\d\d):(\d\d)/.exec(String(d || '')); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : 0; };
   // позиция как в Hand2Note: UTG — только при полном столе (6 из 6, 8 из 8…), иначе первые места — MP; блайнды, BTN, CO — как есть
   const h2nPos = (lab, n, max) => (lab === 'BB' || lab === 'SB' || lab === 'BTN' || lab === 'CO' ? lab : lab === 'BTN/SB' ? 'SB' : lab === 'UTG' && max && n >= max ? 'UTG' : 'MP');
   const sigs = new Set(); let dupN = 0; // одна раздача под разными номерами (выгрузка GG дважды) — считаем один раз
@@ -52,11 +56,20 @@ function aliasStats() {
       const SD = {}; for (const [k, v] of Object.entries(rp.sh || {})) { const c = K.parseCards(v); if (c && c.length === 2) SD[+k] = { c }; }
       const net = C.netAdjusted(rp, fin, SD).net, b = net[hero] / rp.bb, rb = (fin.stacks[hero] - rp.stacks[hero]) / rp.bb; // b — с поправкой на олл-ин, rb — реально (как Hand2Note)
       const r = ST.handStats(rp, fr), ps = h2nPos(rp.pl[hero][0], rp.n, C.tableFormat(h).max);
+      // 3-бет (Hand2Note), общие исходы флопа, точка графика
+      let h3 = null; { let limped = false; for (const d of C.preflopDecisions(rp, () => '')) { if (d.i !== hero) continue; if (d.nR === 1 && !limped && d.tbl !== 'AI' && (!d.C || d.C === 'C0')) { const p3 = distPos(rp.pl[hero][0], rp.n); if (!(p3 === 'BB' && /^(SB|BTN\/SB)$/.test(d.oppPos || ''))) h3 = [p3, /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct), /^3bet/.test(d.act) || d.act === 'shove' || d.act === 'raise']; } if (d.act === 'limp') limped = true; } }
+      const flF = fr.find(x => x.street === 1), sawFl = !!(flF && (rp.bd || []).length >= 3 && !flF.folded[hero]);
+      const wentSD = !fin.folded[hero] && fin.folded.filter(x => !x).length >= 2, wonH = fin.won[hero] > 0, preAI = rp.ev.some(e => e.st === 0 && e.ai);
+      const pt = [tsOf(rp.date), rb, b, wentSD ? 1 : 0];
       for (const a of [A('все'), A(room)]) {
         a.n++; if (fi === 0) a.ns++; else a.nf++; a.nicks.add(rp.nm[hero]);
         a.f[half]++; a.f[half + 1] += b; a.f[half + 2] += b * b; a.f[fo + half]++; a.f[fo + half + 1] += b; a.f[fo + half + 2] += b * b;
         a.raw[half]++; a.raw[half + 1] += rb; a.raw[half + 2] += rb * rb; a.raw[fo + half]++; a.raw[fo + half + 1] += rb; a.raw[fo + half + 2] += rb * rb;
         const P = a.pos[ps] = a.pos[ps] || [0, 0, 0, 0]; P[0]++; P[1] += rb; P[2] += b; P[3] += rb * rb;
+        if (h3) for (const k of [h3[0], 'TOT']) { const X = a.h3[k] = a.h3[k] || [0, 0, 0]; X[0]++; if (h3[1]) X[1]++; if (h3[2]) X[2]++; }
+        // исходы флопа по ВСЕМ банкам (любое число игроков): с олл-инами префлоп и без
+        if (sawFl) { const T = a.tot; T.fl++; if (wentSD) { T.sd++; if (wonH) T.sdw++; } if (wonH) T.won++; if (!preAI) { T.fl2++; if (wentSD) { T.sd2++; if (wonH) T.sdw2++; } if (wonH) T.won2++; } }
+        a.ser.push(pt);
         for (const [i, s, hit] of r.cl) if (i === hero) { const o = ((hA * 2 + fi) * NCL + ST.CL.indexOf(s)) * 2; a.cl[o]++; if (hit) a.cl[o + 1]++; }
         for (const [i, o, x] of r.slots) if (i === hero) { a.pf[o]++; if (x >= 0) a.pf[x]++; }
       }
@@ -65,7 +78,14 @@ function aliasStats() {
   }
   log('алиас: файлов ' + files.length + ', раздач ' + hands + ', дублей (та же раздача под другим номером) ' + dupN + ', пропущено ' + skipped);
   const r2 = (a) => Array.from(a, v => Math.round(v * 100) / 100);
-  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN }) }));
+  // график: раздачи по времени, накопительно (bb): выиграл всего, по EV (олл-ины по эквити), на вскрытии, без вскрытия; ≤ 1500 точек
+  const graph = (ser) => {
+    ser.sort((x, y) => x[0] - y[0]); const N = ser.length, step = Math.max(1, Math.ceil(N / 1500)), out = [];
+    let w = 0, e = 0, s = 0, ns = 0;
+    ser.forEach((p, k) => { w += p[1]; e += p[2]; if (p[3]) s += p[1]; else ns += p[1]; if ((k + 1) % step === 0 || k === N - 1) out.push([k + 1, Math.round(w), Math.round(e), Math.round(s), Math.round(ns)]); });
+    return out;
+  };
+  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, tot: a.tot, graph: graph(a.ser) }) }));
 }
 
 // ---------- сборка ----------

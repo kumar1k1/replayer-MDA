@@ -34,20 +34,30 @@ function title(P) { return P.room === 'alias' ? P.nick : P.nick + ' · ' + (ROOM
 // ---------- карточка ----------
 function card(P) {
   const g = P.cl != null ? CLU.GROUP[P.cl] : null;
-  const rows = [];
+  const rows = [], f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const add = (label, st, hint) => rows.push([label, st.p == null ? '—' : st.p + '%', String(st.n), hint || '']);
-  add('VPIP', clStat(P, 'VPIP'), 'вход в банк добровольно');
-  add('PFR', clStat(P, 'PFR'), 'рейз префлоп');
-  add('3-бет (не олл-ин)', clStat(P, '3BetNAI'), 'против одного рейза');
+  const VP = clStat(P, 'VPIP'), PR = clStat(P, 'PFR');
+  rows.push(['VPIP / PFR', VP.p == null ? '—' : f1(VP.p) + ' / ' + f1(PR.p), String(VP.n), 'вход в банк / рейзом']);
+  add('3-бет NAI (тренер)', clStat(P, '3BetNAI'), 'против одного рейза, с коллерами и против олл-ина');
   add('Фолд на 3-бет', clStat(P, 'F3Bet'), 'после своего опена');
   add('Лимп (не SB)', clStat(P, 'LimpNSB'), 'первым в банк');
-  // WS / LS / WN / LN — только банки один на один после флопа (флоп видели ровно двое, без олл-ина префлоп), lib/stats.js
-  const WS = clStat(P, 'WS'), LS = clStat(P, 'LS'), WN = clStat(P, 'WN'), HU = WS.n;
-  rows.push(['Дошёл до вскрытия (WTSD)', HU ? pct(WS.h + LS.h, HU) + '%' : '—', String(HU), 'один на один после флопа']);
-  rows.push(['Выиграл на вскрытии (W$SD)', WS.h + LS.h ? pct(WS.h, WS.h + LS.h) + '%' : '—', String(WS.h + LS.h), 'из дошедших до вскрытия']);
-  rows.push(['Выиграл, увидев флоп (WWSF)', HU ? pct(WS.h + WN.h, HU) + '%' : '—', String(HU), 'один на один после флопа']);
-  add('Ставка на ривере (HU)', clStat(P, 'BetRiverHU'), 'один на один');
-  add('Фолд на ставку ривера (HU)', clStat(P, 'FoldRiverBetHU'), 'один на один');
+  // WS / LS / WN / LN — банки один на один после флопа (флоп видели ровно двое, без олл-ина префлоп), lib/stats.js
+  const WS = clStat(P, 'WS'), LS = clStat(P, 'LS'), WN = clStat(P, 'WN'), LN = clStat(P, 'LN'), HU = WS.n;
+  // TOTAL — все банки с флопом (любое число игроков, с олл-инами до флопа): есть только у алиаса (по его раздачам)
+  const T = P.ext && P.ext.tot;
+  if (T && T.fl) rows.push(['WTSD · дошёл до вскрытия', pct(T.sd, T.fl) + '%', String(T.fl), 'TOTAL · все банки с флопом']);
+  rows.push(['WTSD · дошёл до вскрытия', HU ? pct(WS.h + LS.h, HU) + '%' : '—', String(HU), 'HU · флоп один на один']);
+  if (T && T.sd) rows.push(['W$SD · выиграл на вскрытии', pct(T.sdw, T.sd) + '%', String(T.sd), 'TOTAL · из дошедших до вскрытия']);
+  rows.push(['W$SD · выиграл на вскрытии', WS.h + LS.h ? pct(WS.h, WS.h + LS.h) + '%' : '—', String(WS.h + LS.h), 'HU · из дошедших до вскрытия']);
+  if (T && T.fl) rows.push(['WWSF · выиграл, увидев флоп', pct(T.won, T.fl) + '%', String(T.fl), 'TOTAL · все банки с флопом']);
+  rows.push(['WWSF · выиграл, увидев флоп', HU ? pct(WS.h + WN.h, HU) + '%' : '—', String(HU), 'HU · флоп один на один']);
+  add('Ставка на ривере', clStat(P, 'BetRiverHU'), 'HU · один на один');
+  add('Фолд на ставку ривера', clStat(P, 'FoldRiverBetHU'), 'HU · один на один');
+  // квадрат тренера: 4 исхода флопа один на один, в сумме 100% (нормы — из «Документации по кластерам»)
+  const square = HU ? { n: HU, WS: pct(WS.h, HU), WN: pct(WN.h, HU), LS: pct(LS.h, HU), LN: pct(LN.h, HU), norm: { WS: [14, 15], WN: [38, 40], LS: [13, 14], LN: [33, 36] } } : null;
+  // 3-бет как в Hand2Note по позициям (только алиас): без сквизов, не против олл-ина, BB — не против SB
+  let h3 = null;
+  if (P.ext && P.ext.h3) { const H = P.ext.h3, cols = ['TOT', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB']; h3 = { head: ['', ...cols], rows: [['3bet NAI', ...cols.map(c => (H[c] ? f1(pct(H[c][1], H[c][0])) : '—'))], ['3bet', ...cols.map(c => (H[c] ? f1(pct(H[c][2], H[c][0])) : '—'))], ['раз', ...cols.map(c => (H[c] ? String(H[c][0]) : '0'))]] }; }
   // винрейт: у алиаса — реальный выигрыш фишек (как «бб/100» в Hand2Note), рядом — с поправкой на олл-ины по эквити;
   // у игроков базы хранится только с поправкой (так копит конвейер — для отбора топов без удачи)
   const R0 = P.ext && P.ext.raw ? P.ext.raw : P.r, real = !!(P.ext && P.ext.raw);
@@ -58,6 +68,7 @@ function card(P) {
     sub: [P.n.toLocaleString('ru') + ' рук', P.ns ? 'шорт-столы ' + P.ns.toLocaleString('ru') : '', g ? 'кластер К' + P.cl + ' · ' + (GR_RU[g] || g) + (P.rel === 0 ? ' (предварительно)' : '') : (P.room === 'alias' ? 'ники: ' + (P.nicks || '') : 'кластер не определён'), P.ext && P.ext.dup ? 'дублей убрано ' + P.ext.dup : ''].filter(Boolean),
     group: g, wr: w, wrLabel: real ? 'реально — как «бб/100» в Hand2Note' : 'с поправкой на олл-ины по эквити', wrEv: wev,
     wrFmt: Object.entries(wf).filter(([, v]) => v && v.n >= 200).map(([k, v]) => ({ k, ...v })),
+    square, h3, graph: P.ext && P.ext.graph ? P.ext.graph : null,
     table: { head: ['стат', '%', 'раз', ''], rows },
   };
 }
@@ -148,7 +159,7 @@ function answerFor(P, ql, intent, rows0) {
   const bands0 = bandsOf(ql), bands = bands0 || BANDS, byBand = /по стек|стек/.test(ql) && !bands0;
   const bnote = bands0 ? 'стек ' + (bands0.length > 1 ? bands0[0] + ' … ' + bands0[bands0.length - 1] : bands0[0]) + ' bb' : 'все стеки';
   if (intent === 'card') blocks.push(card(P));
-  else if (intent === 'wr') { const c = card(P); blocks.push({ type: 'card', title: c.title, sub: c.sub, group: c.group, wr: c.wr, wrLabel: c.wrLabel, wrEv: c.wrEv, wrFmt: c.wrFmt }); }
+  else if (intent === 'wr') { const c = card(P); blocks.push({ type: 'card', title: c.title, sub: c.sub, group: c.group, wr: c.wr, wrLabel: c.wrLabel, wrEv: c.wrEv, wrFmt: c.wrFmt, graph: c.graph }); }
   else if (intent === 'wrpos') {
     if (!P.ext || !P.ext.pos) blocks.push({ type: 'text', title: title(P), text: 'Винрейт по позициям пока посчитан только для вашего алиаса (по вашим раздачам). Для игроков базы он появится после следующего прохода по базе.' });
     else {
