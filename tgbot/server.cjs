@@ -218,6 +218,7 @@ function findPlayer(q, ctx) {
 // ---------- один стат — одна цифра (владелец, 23.11.2026): «покажи мой WWSF», «его VPIP», «фолд на 3-бет» ----------
 // таблица — только когда просят таблицу / «по позициям» / «по стекам». Слова — как пишет и как слышит голос.
 const STATS = [
+  ['OC', /трет[а-яё]*\s*(в\s*)?банк|четв[её]рт[а-яё]*\s*(в\s*)?банк|(колл?[а-яё]*|кол[а-яё]*|заход[а-яё]*)\s*(трет|четв[её]рт)|(трет|четв[её]рт)[а-яё]*\s*(колл?|кол|заход)|оверколл|овер-?\s*колл|overcall|колл?[а-яё]*\s*(после|за)\s*колл?ер/],
   ['CC', /колд|cold|в\s*холодн|холодн[а-яё]*\s*кол|(^|[^а-яё])кол{1,2}[а-яё]*\s*(опен|рейз|против\s*(одного\s*|1\s*)?(опен|рейз))/],
   ['FRB', /фолд[\wа-яё]*\s*(на|против)\s*(бет[\wа-яё]*|ставк[\wа-яё]*)\s*(на\s*)?ривер|fold\s*to\s*(bet\s*)?river|сброс[\wа-яё]*\s*на\s*ривер/],
   ['BR', /бет\s*ривер|бет[\wа-яё]*\s*на\s*ривер|bet\s*river|став[\wа-яё]*\s*на\s*ривер/],
@@ -313,6 +314,20 @@ function isoBlocks(P, ql, o) {
   // внизу: изолировали, рейз от игрока позади (не лимпера) — как часто сбрасываем (владелец, 24.11.2026)
   for (const L of Ls) rows.push(['Fold сзади (' + (L === 1 ? 'vs 1' : 'vs 2+') + ')', ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(x[8], x[7]), n: x[7] }; })]);
   return [{ type: 'table', title: title(P) + ' — ' + name + ' по позициям', note, ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
+}// ---------- оверколл: колл опена третьим в банк (1 коллер) и четвёртым+ (2+), по позициям (алиас — ext.oc; 24.11.2026) ----------
+function ocGet(P, pos, C, bs) { const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.oc[pos] && P.ext.oc[pos][C] && P.ext.oc[pos][C][b]; if (r) for (let j = 0; j < 4; j++) x[j] += r[j]; } return x; }
+function ocBlocks(P, ql, o) {
+  const { bands, PL, pos } = o, c3 = /трет[а-яё]*|3\s*-?\s*[ийм]/.test(ql) || /(одн[а-яё]*|1)\s*колл?ер/.test(ql), c4 = /четв[её]рт[а-яё]*|4\s*-?\s*[ыйм]|дальше|(дв[а-яё]*|2\s*\+?|нескольк[а-яё]*)\s*колл?ер/.test(ql), Cs = c3 && !c4 ? [1] : c4 && !c3 ? [2] : [1, 2];
+  // без «по позициям / таблица» и без позиции — одна цифра (TOT)
+  const cols = vPosList(PL) ? vPosList(PL) : (pos ? [pos === 'EP' ? 'MP' : pos] : o.table ? IPOS : ['TOT']), LBL = { 1: 'Колл 3-м (1 коллер)', 2: 'Колл 4-м+ (2+ коллера)' };
+  const st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '', note = 'колл одного опена (не олл-ин), когда до нас уже коллировали; лимпов до опена нет; TOT — без BB' + st, ai = 'колл — опен не олл-ин';
+  if (cols.length === 1 && (Cs.length === 1 || !o.table)) {
+    if (Cs.length === 1) { const x = ocGet(P, cols[0], Cs[0], bands); return [{ type: 'big', title: title(P) + ' — ' + LBL[Cs[0]] + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[1], x[0]) : 'нет данных', n: x[0], ai, note }]; }
+    const a = ocGet(P, cols[0], 1, bands), b = ocGet(P, cols[0], 2, bands), n = a[0] + b[0];
+    return [{ type: 'big', title: title(P) + ' — колл третьим и дальше' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: n ? pctS(a[1] + b[1], n) : 'нет данных', n, ai, note: '3-м ' + pctS(a[1], a[0]) + ' · 4-м+ ' + pctS(b[1], b[0]) + ' · ' + note }];
+  }
+  const rows = Cs.map(C => [LBL[C], ...cols.map(p => { const x = ocGet(P, p, C, bands); return { v: pctS(x[1], x[0]), n: x[0] }; })]);
+  return [{ type: 'table', title: title(P) + ' — колл третьим и четвёртым в банк', note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
 }function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
@@ -323,6 +338,7 @@ function isoBlocks(P, ql, o) {
   if (id === 'LIMP') { const a = c('LimpNSB'); return [big('лимп первым (кроме SB)', f1(a.p) + '%', a.n, '')]; }
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
+  if (id === 'OC' && P.ext && P.ext.oc && TT) return ocBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand || TT.G) });
   if (id === 'CC' && P.ext && P.ext.vso && TT) {
     // колд-колл (владелец, 24.11.2026): колл ровно одного опена без коллеров, опен не олл-ин — то же правило, что 3-бет
     const vs = P.ext.v3m ? vsInfo(ql) : null; if (vs) return v3mBlocks(P, ql, vs, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands, 'call');
