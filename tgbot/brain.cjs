@@ -25,7 +25,7 @@ const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'FOLD_3BET', 'LIMP', '
   'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'VS_3BET', 'SQUEEZE', 'ISO', 'VS_ALLIN', 'POSTFLOP', 'UNKNOWN'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room'],
+  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions'],
   properties: {
     me: { type: 'boolean', description: 'спрашивают про себя (мой, мои, у меня, моя статистика)' },
     nick: { type: 'string', description: 'ник игрока, как услышан/написан; пусто — игрок не назван (тогда «его/он» = прошлый игрок)' },
@@ -37,6 +37,8 @@ const SCHEMA = {
     by_stack: { type: 'boolean', description: 'просят разбивку по стекам' },
     heads_up: { type: 'boolean', description: 'один на один (HU)' },
     room: { type: 'string', enum: ['all', 'winamax', 'gg', 'wpn', 'stars'] },
+    stack_groups: { type: 'array', description: 'строки таблицы — группы стеков, если их назвали (короткие/средние/большие, «до 15, 15–30, больше 30»); иначе []', items: { type: 'object', additionalProperties: false, required: ['name', 'from', 'to'], properties: { name: { type: 'string' }, from: { type: ['number', 'null'] }, to: { type: ['number', 'null'] } } } },
+    positions: { type: 'array', description: 'колонки — позиции, если назвали несколько или группу позиций; иначе []', items: { type: 'string', enum: ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'] } },
   },
 };
 const SYSTEM = `Ты — разборщик вопросов бота покерной статистики (турниры, префлоп и пара постфлоп-статов). Пользователь говорит голосом
@@ -50,7 +52,10 @@ VS_OPEN (ответы на опен: колл/3-бет), VS_3BET (после с�
 POSTFLOP (c-bet, донк, чек-рейз, флоп, тёрн), card — просто показать игрока / его карточку, UNKNOWN — не про статистику.
 «Мой / мои / у меня / моя» — me=true. «Покажи мне …», «скажи мне …» — НЕ про себя (me=false): это про открытого игрока. Ник: латиница, цифры; голос может разбить ник на слова или написать по-русски — восстанови,
 как он, скорее всего, пишется латиницей (например «эф эф тони» → FFtonny); не уверен — оставь как услышал.
-Один стат без слов «таблица», «по позициям», «по стекам» — table=false, by_stack=false.`;
+Один стат без слов «таблица», «по позициям», «по стекам» — table=false, by_stack=false.
+Таблица под запрос: группы стеков → stack_groups (bb, to — не включая): «короткие» {name:'короткие',from:null,to:20}, «средние» {from:20,to:60},
+«большие/глубокие» {from:60,to:null}; свои границы — как сказали. Несколько позиций или группа → positions: «ранние позиции» = [EP];
+«средние позиции» = [MP, HJ]; «поздние позиции» = [CO, BTN]. «Средний стек» — это стек, НЕ позиция MP.`;
 
 function toPhrase(o) {
   // перевод в фразу, которую понимает разбор server.cjs

@@ -76,7 +76,7 @@ function card(P) {
 // ---------- префлоп-разрезы (lib/lineup.js: семейства слотов) ----------
 const POSN = { rfi: ['EP', 'MP', 'CO', 'BTN', 'SB'], vso: [['BB', 'BB'], ['SB', 'SB'], ['CO', 'остальные (BTN, CO, HJ, EP)']] };
 const pctS = (x, n) => n ? String(pct(x, n)).replace('.', ',') + '%' : '—';
-function famTable(P, fam, bands, byBand) {
+function famTable(P, fam, bands, byBand, G) {
   const F = LU.FAM[fam], acts = F.acts, RU = { open: 'опен', limp: 'лимп', shove: 'олл-ин', call: 'колл', '3bet': '3-бет', raise: 'рейз', fold: 'фолд', '4bet': '4-бет', iso: 'изо' };
   // клетки — { v, n } как в таблице RFI (салатовые плашки, число раздач мелко); яркость — по каждой колонке (владелец, 24.11.2026)
   const head = [''].concat(acts.map(a => RU[a] || a)).concat(F.explicitFold ? [] : ['фолд']);
@@ -88,7 +88,10 @@ function famTable(P, fam, bands, byBand) {
     return [label].concat(cells);
   };
   const rows = [];
-  if (fam === 'rfi' || fam === 'vso') {
+  if (G) { // группы стеков из запроса
+    const L = fam === 'rfi' ? POSN.rfi.map(p => [p, p]) : fam === 'vso' ? POSN.vso : null;
+    for (const [gl, bs] of G) { if (L) for (const [p, lab] of L) rows.push(rowsOf(gl + ' · ' + lab, bs.map(b => LU.slotOf(fam, b, p)))); else rows.push(rowsOf(gl, bs.map(b => LU.slotOf(fam, b, '')))); }
+  } else if (fam === 'rfi' || fam === 'vso') {
     const L = fam === 'rfi' ? POSN.rfi.map(p => [p, p]) : POSN.vso;
     if (byBand) for (const b of bands) for (const [p, lab] of L) rows.push(rowsOf(b + ' · ' + lab, [LU.slotOf(fam, b, p)]));
     else for (const [p, lab] of L) rows.push(rowsOf(lab, bands.map(b => LU.slotOf(fam, b, p))));
@@ -131,7 +134,7 @@ const POS_RE = [
   ['CO', /катоф|кат оф|cut\s*off|cutoff/, W('co|ко|со|си о|си-о')],
   ['SB', /мал[а-яё]* блайнд|смол|small\s*blind/, W('sb|сб|эс би|эсби')],
   ['HJ', /хайдж|хай дж|хайж|hi\s*jack|хиджек/, W('hj|хдж|эйч джей')],
-  ['MP', /мидл|middle|средн/, W('mp|мп|эм пи')],
+  ['MP', /мидл|middle|средн\w*\s*позиц|позиц\w*\s*средн/, W('mp|мп|эм пи')],
   ['EP', /ранн|андер|under\s*the\s*gun|early/, W('ep|еп|utg|ютг|ю ти джи')],
 ];
 function posOf(q) { for (const [p, a, b] of POS_RE) if (a.test(q) || b.test(q)) return p; return null; }
@@ -150,7 +153,29 @@ function bandsOf(q) {
   if (one) return BANDS.slice(0, idx(+one[1] - 0.01) + 1);
   return null;
 }
-function intentOf(q) {
+// ---------- таблица под запрос (владелец, 24.11.2026): строки — названные группы стеков, колонки — названные позиции ----------
+// стеки в базе копятся диапазонами BANDS; группа «от … до …» берёт диапазоны, чья середина внутри неё, подпись — реальные границы
+const BANDR = { '<12': [0, 12], '12-19': [12, 20], '20-35': [20, 36], '36-59': [36, 60], '60-99': [60, 100], '100-149': [100, 150], '150+': [150, Infinity] };
+const bandsIn = (lo, hi) => BANDS.filter(b => { const [a, z] = BANDR[b], m = z === Infinity ? 175 : (a + z) / 2; return m >= (lo == null ? 0 : lo) && m < (hi == null ? Infinity : hi); });
+const grpLabel = (name, bs) => { const a = BANDR[bs[0]][0], z = BANDR[bs[bs.length - 1]][1]; const r = a === 0 ? 'до ' + z + ' bb' : z === Infinity ? a + '+ bb' : a + '–' + (z - 1) + ' bb'; return name ? name + ' (' + r + ')' : r; };
+const SG = { short: ['короткие', 0, 20], mid: ['средние', 20, 60], deep: ['большие', 60, null] };
+function groupsRule(ql) {
+  const q = ql.replace(/больш\w*\s*блайнд\w*|\d+\s*больш\w*/g, ' ');
+  const k = /коротк/.test(q), m = /средн\w*(?!\s*позиц)/.test(q) && /ст[еэ]к|коротк|больш|глубок/.test(q), d = /больш|глубок|длинн/.test(q);
+  if ((k + m + d) < 2 && !((k || m || d) && /тип\w*|групп\w*/.test(q))) return null;
+  return [k && SG.short, m && SG.mid, d && SG.deep].filter(Boolean).map(([n, lo, hi]) => { const bs = bandsIn(lo, hi); return [grpLabel(n, bs), bs]; });
+}
+// позиции, названные во фразе (несколько)
+// группы позиций: ранние — EP; средние — MP, HJ; поздние — CO, BTN; блайнды — SB (владелец, 24.11.2026)
+function posListRule(ql) { const out = []; for (const [p, a, b] of POS_RE) if (a.test(ql) || b.test(ql)) out.push(p);
+  if (/средн\w*\s*позиц|позиц\w*\s*средн/.test(ql)) out.push('MP', 'HJ'); if (/поздн\w*\s*позиц|позиц\w*\s*поздн|поздн\w*\s*мест/.test(ql)) out.push('CO', 'BTN'); if (/ранн\w*\s*позиц|позиц\w*\s*ранн/.test(ql)) out.push('EP'); if (/блайнд\w*\s*позиц|из\s*блайнд/.test(ql)) out.push('SB'); return ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'].filter(p => out.includes(p)); }
+// описание таблицы от Claude: { stack_groups: [{name, from, to}], positions: [...] }
+function specFromBrain(o) {
+  if (!o) return null; const sp = {};
+  if (Array.isArray(o.stack_groups) && o.stack_groups.length) sp.groups = o.stack_groups.map(g => { const bs = bandsIn(g.from, g.to); return bs.length ? [grpLabel(g.name || '', bs), bs] : null; }).filter(Boolean);
+  if (Array.isArray(o.positions) && o.positions.length > 1) sp.pos = ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'].filter(p => o.positions.includes(p));
+  return sp.groups || sp.pos ? sp : null;
+}function intentOf(q) {
   if (/донк|c-?bet|кбет|конт|си-?бет|чек-?рейз|чекрейз|флоп|т[её]рн|проб|флоат|барр?ел/.test(q)) return 'postflop';
   if (/сквиз|squeeze/.test(q)) return 'sqz';
   if (/(фолд|ответ|против|на)\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет|4\s*-?\s*бет|четыр[её]х?бет|vs\s*3/.test(q)) return 'vs3';
@@ -278,11 +303,11 @@ const notFoundMsg = (q, brainNick) => {
 const normRFI = (q) => q.replace(/(^|[^a-zа-яё0-9])(?:r\s*f\s*i?|рфи|рф|рфай|эр\s*эф\s*(?:ай|и)?|эрэф(?:ай|и)?|эрфа[йи]|эрфи|р\s+ф\s+и|арфи|ар\s*фи|а\s*р\s*ф\s*и)(?=$|[^a-zа-яё0-9])/gi, '$1rfi');
 // lock (владелец, 23.11.2026): голос, когда открыта карточка игрока, — всегда про этого игрока; ники в голосе не ищем
 // (смена игрока — только набрав ник); на свою базу переключают лишь слова о себе (own — по исходной фразе)
-function answer(q, ctx, key, lock) {
+function answer(q, ctx, key, lock, spec) {
   if (lock && ctx && !key) {
     q = wordsToNum(normRFI(String(q || '')).trim()); const ql = q.toLowerCase();
     const r = lock.own ? aliasRow(lock.src) : qKey.get(ctx); if (!r) return { blocks: [{ type: 'text', text: 'Игрока не нашёл.' }] };
-    return Object.assign(answerFor(load(r), ql, statOf(ql) ? 'stat' : intentOf(ql), [r]), { heard: q, ctxUsed: !lock.own, oneOff: !!lock.own && !/^alias:/.test(ctx) }); // свой стат — разово: открытая карточка остаётся
+    return Object.assign(answerFor(load(r), ql, statOf(ql) ? 'stat' : intentOf(ql), [r], spec), { heard: q, ctxUsed: !lock.own, oneOff: !!lock.own && !/^alias:/.test(ctx) }); // свой стат — разово: открытая карточка остаётся
   }
   q = normRFI(String(q || ''));
   q = wordsToNum(String(q || '').trim()); const ql = q.toLowerCase();
@@ -291,16 +316,17 @@ function answer(q, ctx, key, lock) {
   const intent = statOf(ql) ? 'stat' : intentOf(ql);
   const f = findPlayer(q, ctx);
   if (f.none) return { nf: true, blocks: [{ type: 'text', text: 'Игрока не нашёл.' }] }; // похожие ники ищет ask() — один раз на вопрос
-  return Object.assign(answerFor(load(f.rows[0]), ql, intent, f.rows), { heard: q, ctxUsed: !!f.ctx });
+  return Object.assign(answerFor(load(f.rows[0]), ql, intent, f.rows, spec), { heard: q, ctxUsed: !!f.ctx });
 }
-function answerFor(P, ql, intent, rows0) {
+function answerFor(P, ql, intent, rows0, spec) {
   const others = rows0.slice(1).map(r => ({ label: r.nick + ' · ' + (ROOM_RU[r.room] || r.room) + ' · ' + r.n.toLocaleString('ru') + ' рук', key: r.key }));
   const blocks = [];
-  const bands0 = bandsOf(ql), bands = bands0 || BANDS, byBand = /по ст[еэ]к|ст[еэ]кам|ст[еэ]ков|разбив|сайз/.test(ql) && !(bands0 && bands0.num != null);
+  spec = spec || {}; const G = spec.groups || groupsRule(ql), PL = spec.pos || (posListRule(ql).length > 1 ? posListRule(ql) : null);
+  const bands0 = G ? null : bandsOf(ql), bands = bands0 || BANDS, byBand = /по ст[еэ]к|ст[еэ]кам|ст[еэ]ков|разбив|сайз/.test(ql) && !(bands0 && bands0.num != null);
   const bnote = bands0 ? 'стек ' + (bands0.length > 1 ? bands0[0] + ' … ' + bands0[bands0.length - 1] : bands0[0]) + ' bb' : 'все стеки';
   let sb = null;
   if (intent === 'stat' && (sb = statBlocks(P, statOf(ql), ql))) blocks.push(...sb);
-  else if (intent === 'stat') { const t = famTable(P, 'vso', bands, byBand); blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T.vso, note: bnote, table: t }); }
+  else if (intent === 'stat') { const t = famTable(P, 'vso', bands, byBand, G); blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T.vso, note: bnote, table: t }); }
   else if (intent === 'card') blocks.push(card(P));
   else if (intent === 'wr') { const c = card(P); blocks.push({ type: 'card', title: c.title, sub: c.sub, group: c.group, wr: c.wr, wrFmt: c.wrFmt, graph: c.graph }); }
   else if (intent === 'wrpos') {
@@ -315,6 +341,20 @@ function answerFor(P, ql, intent, rows0) {
   }
   else if (intent === 'river') { const c = card(P); blocks.push({ type: 'card', title: title(P) + ' — ривер (один на один)', stats: c.stats.filter(r => r.label && /river/i.test(r.label)) }); }
   else if (intent === 'postflop') blocks.push({ type: 'text', title: title(P), text: 'Постфлоп-статы (c-bet, донк, чек-рейз, флоп / тёрн) ещё не посчитаны — это следующий этап: сначала отрабатываем на ваших раздачах, потом один проход по всей базе. Сейчас есть только ривер один на один — скажите «ривер».' });
+  else if (intent === 'rfi' && (G || PL)) {
+    // таблица под запрос: строки — названные группы стеков (или все диапазоны «по стекам»), колонки — названные позиции
+    const S = rfiSrc(P);
+    // у игроков базы MP и HJ пока одной группой — одна колонка «MP/HJ» (до пересчёта)
+    let cols = PL || ['TOT', ...S.cols]; const lab = (p) => (!S.h2n && p === 'MP' && PL && (PL.includes('MP') || PL.includes('HJ')) ? 'MP/HJ' : p);
+    if (!S.h2n && PL) cols = [...new Set(cols.map(p => (p === 'HJ' ? 'MP' : p)))];
+    const cell = (x, k) => ({ v: pctS(x[k], x.n), n: x.n });
+    const RS = G || (byBand ? BANDS.map(b => [b + ' bb', [b]]) : null);
+    const rows = RS ? RS.map(([l, bs]) => [l, ...cols.map(p => cell(S.get(p, bs), 'nai'))]).filter(r => r.slice(1).some(c => c.n))
+      : [['RFI', ...cols.map(p => cell(S.get(p, bands), 'tot'))], ['NAI', ...cols.map(p => cell(S.get(p, bands), 'nai'))]];
+    const posNote = S.h2n ? '' : ' · у игроков базы позиции пока крупнее (EP — все ранние, MP — HJ и место перед ним)';
+    blocks.push({ type: 'table', title: title(P) + ' — RFI' + (PL ? ' · ' + cols.map(lab).join(', ') : ' по позициям') + (RS ? ' по стекам' : ''), note: (RS ? 'без олл-инов, как в Hand2Note; стек — свой, без анте' : 'RFI — с олл-инами, NAI — без') + posNote, table: { head: ['', ...cols.map(lab)], rows, grid: true } });
+    if (!rows.length) blocks.push({ type: 'text', text: 'В этой ситуации у игрока нет раздач.' });
+  }
   else if (intent === 'rfi') {
     // один стат — одна цифра; «по стекам» / «по позициям» / без позиции — таблица (владелец, 23.11.2026)
     const S = rfiSrc(P), pos = posOf(ql), total = /общ|в целом|всего|итог|tot/.test(ql);
@@ -330,7 +370,7 @@ function answerFor(P, ql, intent, rows0) {
       blocks.push({ type: 'table', title: title(P) + ' — RFI ' + (p1 === 'TOT' ? 'общий' : 'с ' + p1) + ' по стекам', note: 'NAI — без олл-инов' + posNote, table: T });
     } else blocks.push({ type: 'table', title: title(P) + ' — RFI по позициям', note: stackTxt + (byBand ? ' · по стекам, без олл-инов (как в Hand2Note); стек — свой, без анте' : ' · NAI — без олл-инов') + posNote, table: rfiGrid(P, bands, byBand && !(bands0 && bands0.length === 1)) });
   }  else {
-    const t = famTable(P, intent, bands, byBand);
+    const t = famTable(P, intent, bands, byBand, G);
     blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T[intent], note: bnote + (intent === 'vso' ? ' · BTN, CO, HJ пока одной группой (разделим при следующем пересчёте)' : ''), table: t });
     if (!t.rows.length) blocks.push({ type: 'text', text: 'В этой ситуации у игрока нет раздач' + (bands0 ? ' при таком стеке' : '') + '.' });
   }
@@ -372,7 +412,8 @@ async function ask(q0, ctx, key, alts, voice) {
     const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
     const B = await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick);
     let out = null, best = -1;
-    if (B && B.phrase) { out = answer(B.phrase, ctx, null, lock); out.brain = { model: BRAIN.status().model, phrase: B.phrase }; best = voiceScore(out) + 1; }
+    // Claude понял вопрос — его ответ главный (свой разбор слов — только если Claude нет); таблицу строим по его описанию
+    if (B && B.phrase) { out = answer(B.phrase, ctx, null, lock, specFromBrain(B.parsed)); out.brain = { model: BRAIN.status().model, phrase: B.phrase }; return out; }
     for (const q of [q0, ...alts]) { const o = answer(q, ctx, null, lock), sc = voiceScore(o); if (sc > best) { best = sc; out = o; } }
     return out;
   }
@@ -381,10 +422,10 @@ async function ask(q0, ctx, key, alts, voice) {
   const B = await BRAIN.understand(q0, prev);
   const cands = [];
   if (B && B.phrase) {
-    let o = answer(B.phrase, ctx, null);
+    const spec = specFromBrain(B.parsed); let o = answer(B.phrase, ctx, null, null, spec);
     // ник не нашёлся как есть — берём самый «большой» ник, который так начинается
-    if (notFound(o) && B.parsed && B.parsed.nick) { const lo = B.parsed.nick.toLowerCase().replace(/\s+/g, ''); const r = lo.length >= 3 ? qPrefix.all(lo, lo + '￿').filter(x => x.room !== 'alias')[0] : null; if (r) o = answer(B.phrase.replace(B.parsed.nick, r.nick), ctx, null); }
-    if (!notFound(o)) { o.brain = { model: BRAIN.status().model, phrase: B.phrase }; cands.push(o); }
+    if (notFound(o) && B.parsed && B.parsed.nick) { const lo = B.parsed.nick.toLowerCase().replace(/\s+/g, ''); const r = lo.length >= 3 ? qPrefix.all(lo, lo + '￿').filter(x => x.room !== 'alias')[0] : null; if (r) o = answer(B.phrase.replace(B.parsed.nick, r.nick), ctx, null, null, spec); }
+    if (!notFound(o)) { o.brain = { model: BRAIN.status().model, phrase: B.phrase }; return o; } // Claude понял — его ответ главный
   }
   let out = cands[0] || null, best = out ? voiceScore(out) + 1 : -1; // при равенстве — понимание Claude
   for (const q of [q0, ...alts]) { const o = answer(q, ctx, key), sc = voiceScore(o); if (sc > best) { best = sc; out = o; } }
