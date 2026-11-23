@@ -161,7 +161,9 @@ const grpLabel = (name, bs) => { const a = BANDR[bs[0]][0], z = BANDR[bs[bs.leng
 const SG = { short: ['короткие', 0, 20], mid: ['средние', 20, 60], deep: ['большие', 60, null] };
 function groupsRule(ql) {
   const q = ql.replace(/больш\w*\s*блайнд\w*|\d+\s*больш\w*/g, ' ');
-  const k = /коротк/.test(q), m = /средн\w*(?!\s*позиц)/.test(q) && /ст[еэ]к|коротк|больш|глубок/.test(q), d = /больш|глубок|длинн/.test(q);
+  const sup = /(супер|очень|сверх)\s*-?\s*(больш|глубок)/.test(q), q2 = q.replace(/(супер|очень|сверх)\s*-?\s*(больш|глубок)\w*/g, ' ');
+  const k = /коротк|мелк/.test(q), m = /средн\w*(?!\s*позиц)/.test(q) && /ст[еэ]к|коротк|мелк|больш|глубок|сайз/.test(q), d = /больш|глубок|длинн/.test(q2);
+  if (sup && (k + m + d) >= 1) return [k && SG.short, m && SG.mid, d && ['большие', 60, 100], ['супер большие', 100, null]].filter(Boolean).map(([n, lo, hi]) => { const bs = bandsIn(lo, hi); return [grpLabel(n, bs), bs]; });
   if ((k + m + d) < 2 && !((k || m || d) && /тип\w*|групп\w*/.test(q))) return null;
   return [k && SG.short, m && SG.mid, d && SG.deep].filter(Boolean).map(([n, lo, hi]) => { const bs = bandsIn(lo, hi); return [grpLabel(n, bs), bs]; });
 }

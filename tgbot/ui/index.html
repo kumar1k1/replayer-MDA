@@ -326,7 +326,9 @@ inp.addEventListener('input', () => {
   }, 70);
 });
 inp.addEventListener('blur', () => setTimeout(acHide, 150));
-$('#send').onclick = () => { acHide(); ask(inp.value); };
+// пока идёт запись или распознавание — черновик Edge не отправляем: во время записи «Отправить» = закончить запись, потом — ждём Whisper
+const sendTyped = () => { if (W.on) { whStop(); return; } if (W.busy) return; acHide(); ask(inp.value); };
+$('#send').onclick = sendTyped;
 inp.addEventListener('keydown', (e) => {
   if (!AC.hidden && acItems.length) {
     if (e.key === 'ArrowDown') { acSel = (acSel + 1) % acItems.length; acRender(acPart(inp.value)); e.preventDefault(); return; }
@@ -334,7 +336,7 @@ inp.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { acHide(); e.preventDefault(); return; }
     if (e.key === 'Enter' && acSel >= 0) { acPick(acSel); e.preventDefault(); return; }
   }
-  if (e.key === 'Enter') { acHide(); ask(inp.value); }
+  if (e.key === 'Enter') { e.preventDefault(); sendTyped(); }
   else if (e.key === 'ArrowUp' && hist.length) { hi = Math.min(hist.length - 1, hi + 1); inp.value = hist[hi]; e.preventDefault(); }
   else if (e.key === 'ArrowDown') { hi = Math.max(-1, hi - 1); inp.value = hi >= 0 ? hist[hi] : ''; e.preventDefault(); }
 });
@@ -398,12 +400,15 @@ async function whStop() {
   try { if (W.live) W.live.abort(); } catch (e) {}
   $('#mic').classList.remove('rec'); inp.placeholder = PH;
   if (!W.spoke()) { inp.value = ''; return; }
+  W.busy = true; setTimeout(() => { W.busy = false; }, 30000); // запасной сброс
   inp.placeholder = 'Распознаю…'; inp.classList.add('wait');
   try {
     const r = await (await fetch('/api/stt', { method: 'POST', body: toWav(W.chunks, W.rate) })).json(); inp.placeholder = PH; inp.classList.remove('wait');
-    if (r.error) { const m = typing(); botMsg({ blocks: [{ type: 'text', text: r.error }] }, m); return; }
-    if (r.text) { inp.value = r.text; await new Promise(ok => setTimeout(ok, 350)); ask(r.text, true); } // точный текст Whisper — виден в поле, потом уходит в вопрос else { const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Не расслышал — повторите, пожалуйста.' }] }, m); }
-  } catch (e) { inp.placeholder = PH; inp.classList.remove('wait'); const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Нет связи с программой — перезапустите ярлык «TG-бот».' }] }, m); }
+    if (r.error) { W.busy = false; const m = typing(); botMsg({ blocks: [{ type: 'text', text: r.error }] }, m); return; }
+    // точный текст Whisper — виден в поле, потом уходит в вопрос (до отправки «Отправить» не срабатывает)
+    if (r.text) { inp.value = r.text; await new Promise(ok => setTimeout(ok, 350)); W.busy = false; ask(r.text, true); }
+    else { W.busy = false; const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Не расслышал — повторите, пожалуйста.' }] }, m); }
+  } catch (e) { W.busy = false; inp.placeholder = PH; inp.classList.remove('wait'); const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Нет связи с программой — перезапустите ярлык «TG-бот».' }] }, m); }
 }
 const micToggle = () => (WHISPER ? (W.on ? whStop() : whStart()) : (recOn ? micStop() : micStart()));
 $('#mic').onclick = micToggle;
