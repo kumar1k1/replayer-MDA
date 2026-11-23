@@ -24,7 +24,7 @@ function aliasStats() {
   const mine = new Set(Object.keys(cfg['ники'] || {})); // «рум:ник»
   const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
   const acc = {}; // рум → { pf, cl, f, n, ns, nf }
-  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, v3m: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
+  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, v3m: {}, iso: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
   // 3-бет как в Hand2Note (сверено 23.11.2026 с его поп-апом владельца, все позиции): против ровно одного рейза,
   // без коллеров (сквиз — отдельно), опен не олл-ином, на BB — не против опена с SB (блайнд против блайнда — отдельно)
   const HF = require(path.join(ROOT, 'lib', 'handfix.js'));
@@ -64,6 +64,14 @@ function aliasStats() {
       let h3 = null, vo = null; { let limped = false; for (const d of C.preflopDecisions(rp, () => '')) { if (d.i !== hero) continue; if (d.nR === 1 && !limped && d.tbl !== 'AI' && (!d.C || d.C === 'C0')) { const p3 = distPos(rp.pl[hero][0], rp.n); const bbSb = p3 === 'BB' && /^(SB|BTN\/SB)$/.test(d.oppPos || ''); if (!bbSb) h3 = [p3, /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct), /^3bet/.test(d.act) || d.act === 'shove' || d.act === 'raise']; vo = [p3, rfiBand(d.stackTot), d.act === 'call' ? 1 : /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 2 : d.act === 'shove' || d.act === 'raise' ? 3 : 0, bbSb, p5of(d.oppPos || '', rp.n)]; } if (d.act === 'limp') limped = true; } }
       // RFI как Hand2Note: позиции EP (5+ мест до баттона) / MP (3–4) / HJ (2) / CO / BTN / SB; TOT — любой рейз первым, NAI — без олл-ина; стек — свой, в bb
       let rf = null; { const d0 = C.preflopDecisions(rp, () => '').find(d => d.i === hero); if (d0 && d0.tbl === 'RFI') { const lab = rp.pl[hero][0]; if (lab !== 'BB') { const L = HF.POS_NAMES[Math.min(Math.max(rp.n, 2), 9)], k = lab === 'BTN' ? 0 : L.length - L.indexOf(lab); const p5 = /SB/.test(lab) ? 'SB' : k === 0 ? 'BTN' : k === 1 ? 'CO' : k === 2 ? 'HJ' : k <= 4 ? 'MP' : 'EP'; rf = [p5, rfiBand(d0.stackTot), /^open/.test(d0.act) || d0.act === 'shove', /^open/.test(d0.act)]; } } }
+      // изолейт (24.11.2026): первое решение против лимперов без рейза; BB против лимпа одного SB — отдельно («BBsb»: только в TOT).
+      // iz = [поз, L 1|2, стек, изо, изо олл-ином, лимпер ответил рейзом, я сбросил на рейз лимпера, любой рейз после изо, я сбросил]
+      let iz = null; { const dd = C.preflopDecisions(rp, () => ''), d0 = dd.find(d => d.i === hero);
+        if (d0 && d0.tbl === 'ISO') { const pz = distPos(rp.pl[hero][0], rp.n), lim = new Set(dd.filter(d => d.k < d0.k && d.act === 'limp').map(d => d.i)), ai = d0.act === 'shove', iso = /^iso/.test(d0.act) || ai;
+          const sbOnly = pz === 'BB' && [...lim].every(j => /SB/.test(rp.pl[j][0]));
+          let rl = 0, fl = 0, ra = 0, fa = 0;
+          if (iso && !ai) { const nx = dd.find(d => d.i === hero && d.k > d0.k); if (nx) { const rr = rp.ev.filter((e, k) => k > d0.k && k < nx.k && e.st === 0 && e.t === 'r'), f = nx.act === 'fold' ? 1 : 0; if (rr.length) { ra = 1; fa = f; if (rr.every(e => lim.has(e.i))) { rl = 1; fl = f; } } } }
+          iz = [sbOnly ? 'BBsb' : pz, d0.L === 'L1' ? 1 : 2, rfiBand(d0.stackTot), iso ? 1 : 0, ai ? 1 : 0, rl, fl, ra, fa]; } }
       const flF = fr.find(x => x.street === 1), sawFl = !!(flF && (rp.bd || []).length >= 3 && !flF.folded[hero]);
       const wentSD = !fin.folded[hero] && fin.folded.filter(x => !x).length >= 2, wonH = fin.won[hero] > 0, preAI = rp.ev.some(e => e.st === 0 && e.ai);
       const pt = [tsOf(rp.date), rb, b, wentSD ? 1 : 0];
@@ -78,6 +86,8 @@ function aliasStats() {
         if (vo) for (const p of vo[3] ? ['TOT'] : [vo[0], 'TOT']) for (const bd of [vo[1], 'all']) { const X = (a.vso[p] = a.vso[p] || {})[bd] = a.vso[p][bd] || [0, 0, 0, 0]; X[0]++; if (vo[2]) X[vo[2]]++; }
         // v3m[моя позиция][позиция открывшего][стек] = [раз, колл, 3-бет NAI, олл-ин] — «позиция против позиции», BB против SB входит
         if (vo && vo[4]) for (const bd of [vo[1], 'all']) { const M = (a.v3m[vo[0]] = a.v3m[vo[0]] || {}), X = (M[vo[4]] = M[vo[4]] || {})[bd] = M[vo[4]][bd] || [0, 0, 0, 0]; X[0]++; if (vo[2]) X[vo[2]]++; }
+        // iso[поз][L][стек] = [раз, изо, изо олл-ином, рейз лимпера, фолд на него, любой рейз, фолд на него]
+        if (iz) for (const p of [iz[0], 'TOT']) for (const bd of [iz[2], 'all']) { const M = (a.iso[p] = a.iso[p] || {}), X = ((M[iz[1]] = M[iz[1]] || {})[bd] = M[iz[1]][bd] || [0, 0, 0, 0, 0, 0, 0]); X[0]++; for (let j = 3; j <= 8; j++) X[j - 2] += iz[j]; }
         if (h3) for (const k of [h3[0], 'TOT']) { const X = a.h3[k] = a.h3[k] || [0, 0, 0]; X[0]++; if (h3[1]) X[1]++; if (h3[2]) X[2]++; }
         // исходы флопа по ВСЕМ банкам (любое число игроков): с олл-инами префлоп и без
         if (sawFl) { const T = a.tot; T.fl++; if (wentSD) { T.sd++; if (wonH) T.sdw++; } if (wonH) T.won++; if (!preAI) { T.fl2++; if (wentSD) { T.sd2++; if (wonH) T.sdw2++; } if (wonH) T.won2++; } }
@@ -97,7 +107,7 @@ function aliasStats() {
     ser.forEach((p, k) => { w += p[1]; e += p[2]; if (p[3]) s += p[1]; else ns += p[1]; if ((k + 1) % step === 0 || k === N - 1) out.push([k + 1, Math.round(w), Math.round(e), Math.round(s), Math.round(ns)]); });
     return out;
   };
-  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, v3m: a.v3m, tot: a.tot, graph: graph(a.ser) }) }));
+  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, v3m: a.v3m, iso: a.iso, tot: a.tot, graph: graph(a.ser) }) }));
 }
 
 // ---------- сборка ----------

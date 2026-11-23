@@ -25,7 +25,7 @@ const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'FOLD_3BET', 'LIMP', '
   'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'VS_3BET', 'SQUEEZE', 'ISO', 'VS_ALLIN', 'POSTFLOP', 'UNKNOWN'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix'],
+  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers'],
   properties: {
     me: { type: 'boolean', description: 'спрашивают про себя (мой, мои, у меня, моя статистика)' },
     nick: { type: 'string', description: 'ник игрока, как услышан/написан; пусто — игрок не назван (тогда «его/он» = прошлый игрок)' },
@@ -40,6 +40,7 @@ const SCHEMA = {
     stack_groups: { type: 'array', description: 'строки таблицы — группы стеков, если их назвали (короткие/средние/большие, «до 15, 15–30, больше 30»); иначе []', items: { type: 'object', additionalProperties: false, required: ['name', 'from', 'to'], properties: { name: { type: 'string' }, from: { type: ['number', 'null'] }, to: { type: ['number', 'null'] } } } },
     opener: { type: 'string', enum: ['none', 'EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'], description: 'против чьего опена (позиция открывшего): «3-бет баттона против MP» → MP; иначе none' },
     vs_matrix: { type: 'boolean', description: '«позиция против позиции», «поза в позу», «детальный 3-бет», «против каждой позиции» — таблица моя позиция × кто открыл' },
+    limpers: { type: 'string', enum: ['any', '1', '2+'], description: 'для изолейта: против одного лимпера — 1, двух и больше — 2+; иначе any' },
     allin: { type: 'string', enum: ['any', 'without', 'only'], description: '«без олл-инов / без улынов / без пушей / NAI» — without; «только олл-ины / улыны / пуши / олл-ином / AI» — only; иначе any (голос пишет олл-ины как «улыны», «пуши»)' },
     action: { type: 'string', enum: ['any', 'call', '3bet', 'allin', 'fold'], description: 'для ответов на опен: какое одно действие спросили (колл, 3-бет, олл-ин, фолд); иначе any' },
     positions: { type: 'array', description: 'колонки — позиции, если назвали несколько или группу позиций; иначе []', items: { type: 'string', enum: ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'] } },
@@ -52,7 +53,7 @@ const SYSTEM = `Ты — разборщик вопросов бота покер
 «ранняя позиция», «андер зе ган», «UTG» = EP; «средняя» = MP. «Блайндов», «бб», «больших» — стек в bb; числа словами переводи в цифры.
 Статы: VPIP, PFR, VPIP_PFR (оба сразу), 3BET (3-бет NAI), FOLD_3BET, LIMP (лимп первым), WTSD, WSD (W$SD), WWSF, BET_RIVER, FOLD_RIVER
 (фолд на ставку на ривере), SQUARE (квадрат WS/WN/LS/LN), RFI, WINRATE (винрейт / выигрыш / bb/100), WINRATE_POS (винрейт по позициям),
-VS_OPEN (ответы на опен: колл/3-бет), VS_3BET (после своего опена против 3-бета), SQUEEZE, ISO (против лимперов), VS_ALLIN (колл олл-ина),
+VS_OPEN (ответы на опен: колл/3-бет), VS_3BET (после своего опена против 3-бета), SQUEEZE, ISO (изолейт — рейз против лимперов), VS_ALLIN (колл олл-ина),
 POSTFLOP (c-bet, донк, чек-рейз, флоп, тёрн), card — просто показать игрока / его карточку, UNKNOWN — не про статистику.
 «Мой / мои / у меня / моя» — me=true. «Покажи мне …», «скажи мне …» — НЕ про себя (me=false): это про открытого игрока. Ник: латиница, цифры; голос может разбить ник на слова или написать по-русски — восстанови,
 как он, скорее всего, пишется латиницей (например «эф эф тони» → FFtonny); не уверен — оставь как услышал.
@@ -81,6 +82,7 @@ function toPhrase(o) {
   if (o.by_stack) w.push('по стекам');
   else if (o.table) w.push(o.stat === 'WINRATE' || o.stat === 'WINRATE_POS' ? '' : 'по позициям');
   if (o.opener && o.opener !== 'none') w.push('против ' + o.opener); else if (o.vs_matrix) w.push('позиция против позиции');
+  if (o.limpers === '1') w.push('против 1 лимпера'); else if (o.limpers === '2+') w.push('против 2 лимперов');
   if (o.allin === 'without') w.push('без олл-ина'); else if (o.allin === 'only') w.push('олл-ином');
   if (o.stat === 'VS_OPEN' && o.action && o.action !== 'any') w.push({ call: 'колл', '3bet': '3-бет', allin: 'олл-ин', fold: 'фолд' }[o.action]);
   if (o.heads_up) w.push('один на один');
