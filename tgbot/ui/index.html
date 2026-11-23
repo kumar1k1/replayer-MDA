@@ -66,6 +66,12 @@ td.pc span{position:relative;z-index:1}
 td.pc::before{content:'';position:absolute;right:6px;top:22%;height:56%;width:calc(var(--w,0%) * .72);background:var(--bar,rgba(58,160,255,.22));border-radius:4px}
 tr:hover td{background:rgba(255,255,255,.025)}
 .txt{color:var(--soft)}
+.st{margin-top:10px;display:grid;grid-template-columns:1fr;max-width:560px}
+.st-r{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
+.st-l{font-weight:600}.st-v{font:600 14px var(--mono);white-space:nowrap}
+.st-v small{font:11px var(--mono);color:var(--faint);margin-left:6px;vertical-align:2px}
+.st-sec{grid-column:1/-1;margin:12px 0 2px;padding:3px 8px;font-size:11.5px;font-weight:800;letter-spacing:.8px;color:var(--accent);background:rgba(58,160,255,.08);border-radius:6px;width:max-content}
+@media (max-width:640px){.st{grid-template-columns:1fr}}
 .sec{margin:14px 0 2px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 table.h3 td{text-align:right}table.h3 th:not(:first-child){text-align:right}
 /* квадрат тренера */
@@ -178,11 +184,18 @@ function squareEl(S) {
     c.title = name + ': ' + (v == null ? '—' : v + '%') + ' · норма тренера ' + lo + '–' + hi; return c;
   };
   g.append(cell('WS', 'выиграл на вскрытии', 'win'), cell('WN', 'выиграл без вскрытия', 'win'), cell('LS', 'проиграл на вскрытии', 'loss'), cell('LN', 'проиграл без вскрытия', 'loss'));
-  const side = el('div', 'sq-s');
-  side.append(el('div', 'sq-h', 'Исходы флопа один на один'), el('div', 'sq-t', S.n.toLocaleString('ru') + ' флопов · в сумме 100%'),
-    el('div', 'sq-t', 'WS+WN — выиграл, увидев флоп (WWSF); WS+LS — дошёл до вскрытия (WTSD).'),
-    el('div', 'sq-t', 'LN — желание бороться за банк (выше нормы — тайтовее), LS — оверплей (выше — фишевее), WN — атака.'));
-  w.append(g, side); return w;
+  w.append(g); return w;
+}
+// статы карточки: название — значение и маленькой цифрой сколько раз; блоки TOTAL / HU — заголовками
+function statsEl(list) {
+  const w = el('div', 'st');
+  for (const r of list) {
+    if (r.sec) { w.append(el('div', 'st-sec', r.sec)); continue; }
+    const row = el('div', 'st-r'), v = el('span', 'st-v', r.v);
+    if (r.n != null) v.append(el('small', null, r.n.toLocaleString('ru')));
+    row.append(el('span', 'st-l', r.label), v); w.append(row);
+  }
+  return w;
 }
 // график накопительного выигрыша (bb) по раздачам: всего, по EV, на вскрытии, без вскрытия
 function graphEl(P) {
@@ -199,7 +212,7 @@ function graphEl(P) {
   const xs = step(N); for (let x = xs; x <= N; x += xs) tx(X(x), H - 10, x.toLocaleString('ru'));
   for (const [, k, c] of S.slice().reverse()) { const e = document.createElementNS(NS, 'polyline'); e.setAttribute('points', [[0, 0]].concat(P.map(p => [p[0], p[k]])).map(([x, y]) => X(x).toFixed(1) + ',' + Y(y).toFixed(1)).join(' ')); e.setAttribute('fill', 'none'); e.setAttribute('stroke', c); e.setAttribute('stroke-width', k === 1 ? 2.2 : 1.6); e.setAttribute('stroke-linejoin', 'round'); svg.append(e); }
   const w = el('div', 'gw'), lg = el('div', 'lg'), last = P[P.length - 1];
-  S.forEach(([n, k, c]) => { const s = el('span'); const d = el('i'); d.style.background = c; s.append(d, document.createTextNode(n + ' ' + (last[k] > 0 ? '+' : '') + last[k].toLocaleString('ru') + ' bb')); lg.append(s); });
+  void last; S.forEach(([n, , c]) => { const s = el('span'); const d = el('i'); d.style.background = c; s.append(d, document.createTextNode(n)); lg.append(s); });
   w.append(svg, lg); return w;
 }
 function botMsg(a, holder) {
@@ -210,8 +223,7 @@ function botMsg(a, holder) {
     if (B.sub) { const s = el('div', 'sub'); B.sub.forEach(x => s.append(el('span', null, x))); box.append(s); }
     if (B.wr) {
       const w = el('div', 'wr'), L = el('div'); const v = B.wr.bb100;
-      L.append(el('div', 'big ' + (v > 0 ? 'p' : v < 0 ? 'm' : ''), (v > 0 ? '+' : '') + String(v).replace('.', ',') + ' bb/100'), el('div', 'lab', '± ' + String(B.wr.ci).replace('.', ',') + ' · ' + B.wr.n.toLocaleString('ru') + ' рук' + (B.wrLabel ? ' · ' + B.wrLabel : '')));
-      if (B.wrEv) L.append(el('div', 'lab', 'с поправкой на олл-ины по эквити: ' + (B.wrEv.bb100 > 0 ? '+' : '') + String(B.wrEv.bb100).replace('.', ',') + ' bb/100'));
+      L.append(el('div', 'big ' + (v > 0 ? 'p' : v < 0 ? 'm' : ''), (v > 0 ? '+' : '') + String(v).replace('.', ',') + ' bb/100'));
       w.append(L);
       if (B.wrFmt && B.wrFmt.length) { const f = el('div', 'fmt'); B.wrFmt.forEach(x => { const d = el('div', null, (x.bb100 > 0 ? '+' : '') + String(x.bb100).replace('.', ',')); d.style.color = x.bb100 > 0 ? 'var(--good)' : x.bb100 < 0 ? 'var(--bad)' : ''; d.append(el('small', null, x.k + ' · ' + x.n.toLocaleString('ru'))); f.append(d); }); w.append(f); }
       box.append(w);
@@ -219,8 +231,8 @@ function botMsg(a, holder) {
     if (B.graph) box.append(graphEl(B.graph));
     if (B.note) box.append(el('div', 'note', B.note));
     if (B.square) box.append(squareEl(B.square));
+    if (B.stats) box.append(statsEl(B.stats));
     if (B.table) box.append(tableEl(B.table, a.group));
-    if (B.h3) { box.append(el('div', 'sec', '3-бет по позициям — как в Hand2Note (без сквизов, не против олл-ина, BB — не против SB)')); const t = tableEl(B.h3, a.group); t.classList.add('h3'); box.append(t); }
     if (B.text) box.append(el('div', 'txt', B.text));
     b.append(box);
   }
