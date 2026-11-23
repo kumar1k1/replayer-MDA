@@ -7,12 +7,19 @@ let Anthropic = null;
 try { Anthropic = require('@anthropic-ai/sdk'); Anthropic = Anthropic.default || Anthropic; } catch (e) { Anthropic = null; }
 
 const MODEL = process.env.TGBOT_MODEL || 'claude-opus-5-5';
-let client = null, disabledUntil = 0, lastErr = '';
+let client = null, disabledUntil = 0, lastErr = '', keySeen = null;
+// ключ: файл tgbot/data/ключ_claude.txt (папка не в git) — владелец вставляет ключ Блокнотом, бот подхватывает без перезапуска;
+// иначе — переменная ANTHROPIC_API_KEY / `ant auth login`
+const KEYF = require('path').join(__dirname, 'data', 'ключ_claude.txt');
+const fileKey = () => { try { const m = /sk-ant-[A-Za-z0-9_\-]+/.exec(require('fs').readFileSync(KEYF, 'utf8')); return m ? m[0] : ''; } catch (e) { return ''; } };
 function getClient() {
   if (!Anthropic) return null;
-  if (!client) { try { client = new Anthropic({ timeout: 20000, maxRetries: 1 }); } catch (e) { lastErr = e.message; return null; } }
+  const k = fileKey();
+  if (k !== keySeen) { keySeen = k; client = null; disabledUntil = 0; } // ключ появился / сменился — пробуем сразу
+  if (!client) { try { client = new Anthropic(Object.assign({ timeout: 20000, maxRetries: 1 }, k ? { apiKey: k } : {})); } catch (e) { lastErr = e.message; return null; } }
   return client;
 }
+try { const fs = require('fs'); if (!fs.existsSync(KEYF)) fs.writeFileSync(KEYF, 'Вставьте сюда ключ Claude (начинается с sk-ant-) и сохраните файл.\r\n'); } catch (e) {}
 
 const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'FOLD_3BET', 'LIMP', 'WTSD', 'WSD', 'WWSF', 'BET_RIVER', 'FOLD_RIVER',
   'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'VS_3BET', 'SQUEEZE', 'ISO', 'VS_ALLIN', 'POSTFLOP', 'UNKNOWN'];
@@ -85,5 +92,5 @@ async function understand(text, prevPlayer) {
     return null;
   }
 }
-const status = () => ({ sdk: !!Anthropic, model: MODEL, ready: !!getClient() && Date.now() >= disabledUntil, lastErr });
+const status = () => ({ sdk: !!Anthropic, model: MODEL, keyInFile: !!fileKey(), ready: !!getClient() && Date.now() >= disabledUntil, lastErr });
 module.exports = { understand, status, toPhrase };
