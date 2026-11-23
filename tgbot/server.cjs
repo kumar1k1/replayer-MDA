@@ -337,7 +337,7 @@ function b3iBlocks(P, ql, o) {
   const { bands, PL, pos } = o, mode = aiMode(ql), k = mode === 'nai' ? [1] : mode === 'ai' ? [2] : [1, 2], name = '3bet vs ISO' + (mode === 'nai' ? ' NAI' : mode === 'ai' ? ' AI' : '');
   const get = (p) => { let n = 0, v = 0; for (const b of bands) { const r = P.ext.b3i[p] && P.ext.b3i[p][b]; if (r) { n += r[0]; for (const j of k) v += r[j]; } } return { n, v }; };
   const cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : o.table ? IPOS : ['TOT']);
-  const note = 'до нас лимп, его изолировали рейзом (не олл-ин), коллеров нет; мы 3-бетим' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
+  const note = 'один лимпер, его изолировали (рейз не олл-ин), после изолейта никто не вошёл; мы 3-бетим' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами';
   if (cols.length === 1) { const r = get(cols[0]); return [{ type: 'big', title: title(P) + ' — ' + name + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, ai, note }]; }
   return [{ type: 'table', title: title(P) + ' — ' + name + ' по позициям', note, ai, table: { head: ['', ...cols], rows: [[name, ...cols.map(p => { const r = get(p); return { v: pctS(r.v, r.n), n: r.n }; })]], grid: true } }];

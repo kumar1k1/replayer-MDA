@@ -74,9 +74,9 @@ function aliasStats() {
           let rl = 0, fl = 0, ra = 0, fa = 0, rb = 0, fb = 0;
           if (iso && !ai) { const nx = dd.find(d => d.i === hero && d.k > d0.k); if (nx) { const rr = rp.ev.filter((e, k) => k > d0.k && k < nx.k && e.st === 0 && e.t === 'r'), f = nx.act === 'fold' ? 1 : 0; if (rr.length) { ra = 1; fa = f; if (rr.every(e => lim.has(e.i))) { rl = 1; fl = f; } else if (rr.every(e => !lim.has(e.i))) { rb = 1; fb = f; } } } }
           iz = [sbOnly ? 'BBsb' : pz, d0.L === 'L1' ? 1 : 2, rfiBand(d0.stackTot), iso ? 1 : 0, ai ? 1 : 0, rl, fl, ra, fa, rb, fb]; } }
-      // 3-бет против изолейта (24.11.2026, сверено с поп-апом владельца): первое решение — один рейз после лимпа (изолейт, не олл-ин), коллеров нет, сам не лимпил
+      // 3-бет против изолейта (24.11.2026, определение владельца): ровно один лимпер, его изолировали (рейз не олл-ин), после изолейта никто не вошёл, мы 3-бетим
       let bi = null; { const dd = C.preflopDecisions(rp, () => ''), d = dd.find(x => x.i === hero);
-        if (d && d.nR === 1 && d.tbl !== 'AI' && (!d.C || d.C === 'C0') && dd.some(x => x.k < d.k && x.act === 'limp')) bi = [distPos(rp.pl[hero][0], rp.n), rfiBand(d.stackTot), /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 1 : 0, d.act === 'shove' || (d.act === 'raise' && d.aiAct) ? 1 : 0]; }
+        if (d && d.nR === 1 && d.tbl !== 'AI' && (!d.C || d.C === 'C0') && dd.filter(x => x.k < d.k && x.act === 'limp').length === 1) bi = /* ровно один лимпер (владелец) */ [distPos(rp.pl[hero][0], rp.n), rfiBand(d.stackTot), /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 1 : 0, d.act === 'shove' || (d.act === 'raise' && d.aiAct) ? 1 : 0]; }
       const flF = fr.find(x => x.street === 1), sawFl = !!(flF && (rp.bd || []).length >= 3 && !flF.folded[hero]);
       const wentSD = !fin.folded[hero] && fin.folded.filter(x => !x).length >= 2, wonH = fin.won[hero] > 0, preAI = rp.ev.some(e => e.st === 0 && e.ai);
       const pt = [tsOf(rp.date), rb, b, wentSD ? 1 : 0];
