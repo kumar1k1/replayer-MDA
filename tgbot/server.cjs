@@ -413,6 +413,17 @@ async function ask(q0, ctx, key, alts, voice) {
   if (voice && ctx) {
     const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
     const B = await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick);
+    // явная смена игрока голосом: «… игрока X», «ник X» (или открыта своя база и назван чужой ник) — ищем X, нет — похожие ники
+    const bNick = B && B.parsed && !B.parsed.me ? String(B.parsed.nick || '').trim() : '';
+    const marker = /(^|[^a-zа-яё])(игрок[а-яё]*|ник[а-яё]*)([^a-zа-яё]|$)/i.test(src);
+    const ctxNick = ((qKey.get(ctx) || {}).nick || '').toLowerCase();
+    if (!lock.own && (marker || /^alias:/.test(ctx)) && (bNick || (!B && marker)) && bNick.toLowerCase() !== ctxNick) {
+      const spec = B ? specFromBrain(B.parsed) : null;
+      let o = B ? answer(B.phrase, null, null, null, spec) : answer(q0, null, null);
+      if (notFound(o)) o = notFoundMsg(q0, bNick || null);
+      if (B) o.brain = { model: BRAIN.status().model, phrase: B.phrase };
+      return o;
+    }
     let out = null, best = -1;
     // Claude понял вопрос — его ответ главный (свой разбор слов — только если Claude нет); таблицу строим по его описанию
     if (B && B.phrase) { out = answer(B.phrase, ctx, null, lock, specFromBrain(B.parsed)); out.brain = { model: BRAIN.status().model, phrase: B.phrase }; return out; }
