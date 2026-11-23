@@ -294,21 +294,23 @@ function v3mBlocks(P, ql, vs, bands) {
 }// ---------- изолейт по позициям (алиас — ext.iso; сверено с таблицей владельца 24.11.2026) ----------
 // строки: против 1 лимпера / ISO Fold / против 2+ лимперов / ISO Fold; ISO Fold — изолировали, лимпер ответил рейзом (3-бет / пуш), мы сбросили
 const IPOS = ['TOT', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
-function isoGet(P, pos, L, bs) { const x = [0, 0, 0, 0, 0, 0, 0]; for (const b of bs) { const r = P.ext.iso[pos] && P.ext.iso[pos][L] && P.ext.iso[pos][L][b]; if (r) for (let j = 0; j < 7; j++) x[j] += r[j]; } return x; }
+function isoGet(P, pos, L, bs) { const x = [0, 0, 0, 0, 0, 0, 0, 0, 0]; for (const b of bs) { const r = P.ext.iso[pos] && P.ext.iso[pos][L] && P.ext.iso[pos][L][b]; if (r) for (let j = 0; j < 9; j++) x[j] += r[j] || 0; } return x; }
 function isoBlocks(P, ql, o) {
   const { bands, PL, pos } = o, mode = aiMode(ql), L1 = /(одн[а-яё]*|1)\s*(-?го\s*)?лимп/.test(ql), L2 = /(дв[а-яё]*|2\s*\+?|нескольк[а-яё]*|многих|больше)\s*(и\s*больше\s*)?лимп/.test(ql), Ls = L1 && !L2 ? [1] : L2 && !L1 ? [2] : [1, 2];
   const cols = vPosList(PL) ? ['TOT', ...vPosList(PL)].filter((p, i, a) => a.indexOf(p) === i && (PL.length > 1 ? p !== 'TOT' : true)) : (pos ? [pos === 'EP' ? 'MP' : pos] : IPOS);
   const isoV = (x) => (mode === 'nai' ? x[1] - x[2] : mode === 'ai' ? x[2] : x[1]), name = mode === 'nai' ? 'ISO NAI' : mode === 'ai' ? 'ISO AI' : 'ISO';
   const st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
-  const note = 'первое решение против лимперов без рейза; BB — без лимпа одного SB (TOT — с ним); ISO Fold — изолировали, лимпер ответил 3-бетом или пушем, мы сбросили' + st;
+  const note = 'первое решение против лимперов без рейза; BB — без лимпа одного SB (TOT — с ним); ISO Fold — изолировали, лимпер ответил 3-бетом или пушем, мы сбросили; Fold сзади — изолировали, рейз от игрока позади нас, мы сбросили' + st;
   // одна цифра: без «по позициям / таблица» и без позиции — общий изолейт (1 и 2+ лимпера вместе)
   if (!o.table && !pos && !PL && Ls.length === 2) { const a = isoGet(P, 'TOT', 1, bands), b = isoGet(P, 'TOT', 2, bands), x = a.map((v, j) => v + b[j]); return [{ type: 'big', title: title(P) + ' — ' + name + ' против лимперов', big: x[0] ? pctS(isoV(x), x[0]) : 'нет данных', n: x[0], ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', note: 'vs 1 лимпер ' + pctS(isoV(a), a[0]) + ' · vs 2+ ' + pctS(isoV(b), b[0]) + (x[3] ? ' · ISO Fold ' + pctS(x[4], x[3]) + ' (' + x[3] + ' раз)' : '') + st }]; }
   if (cols.length === 1 && Ls.length === 1) { const x = isoGet(P, cols[0], Ls[0], bands); return [{ type: 'big', title: title(P) + ' — ' + name + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + ' против ' + (Ls[0] === 1 ? '1 лимпера' : '2+ лимперов'), big: x[0] ? pctS(isoV(x), x[0]) : 'нет данных', n: x[0], ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', note: (x[3] ? 'ISO Fold ' + pctS(x[4], x[3]) + ' (' + x[3] + ' раз) · ' : '') + note }]; }
   const rows = [];
   for (const L of Ls) {
-    rows.push([(L === 1 ? 'vs 1 лимпер' : 'vs 2+ лимпера') + (mode === 'all' ? '' : ' · ' + (mode === 'nai' ? 'NAI' : 'AI')), ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(isoV(x), x[0]), n: x[0] }; })]);
+    rows.push([(L === 1 ? 'vs 1 лимпер' : 'vs 2+') + (mode === 'all' ? '' : ' · ' + (mode === 'nai' ? 'NAI' : 'AI')), ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(isoV(x), x[0]), n: x[0] }; })]);
     rows.push(['ISO Fold', ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(x[4], x[3]), n: x[3] }; })]);
   }
+  // внизу: изолировали, рейз от игрока позади (не лимпера) — как часто сбрасываем (владелец, 24.11.2026)
+  for (const L of Ls) rows.push(['Fold сзади (' + (L === 1 ? 'vs 1' : 'vs 2+') + ')', ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(x[8], x[7]), n: x[7] }; })]);
   return [{ type: 'table', title: title(P) + ' — ' + name + ' по позициям', note, ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
 }function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));

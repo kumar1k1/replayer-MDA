@@ -69,9 +69,9 @@ function aliasStats() {
       let iz = null; { const dd = C.preflopDecisions(rp, () => ''), d0 = dd.find(d => d.i === hero);
         if (d0 && d0.tbl === 'ISO') { const pz = distPos(rp.pl[hero][0], rp.n), lim = new Set(dd.filter(d => d.k < d0.k && d.act === 'limp').map(d => d.i)), ai = d0.act === 'shove', iso = /^iso/.test(d0.act) || ai;
           const sbOnly = pz === 'BB' && [...lim].every(j => /SB/.test(rp.pl[j][0]));
-          let rl = 0, fl = 0, ra = 0, fa = 0;
-          if (iso && !ai) { const nx = dd.find(d => d.i === hero && d.k > d0.k); if (nx) { const rr = rp.ev.filter((e, k) => k > d0.k && k < nx.k && e.st === 0 && e.t === 'r'), f = nx.act === 'fold' ? 1 : 0; if (rr.length) { ra = 1; fa = f; if (rr.every(e => lim.has(e.i))) { rl = 1; fl = f; } } } }
-          iz = [sbOnly ? 'BBsb' : pz, d0.L === 'L1' ? 1 : 2, rfiBand(d0.stackTot), iso ? 1 : 0, ai ? 1 : 0, rl, fl, ra, fa]; } }
+          let rl = 0, fl = 0, ra = 0, fa = 0, rb = 0, fb = 0;
+          if (iso && !ai) { const nx = dd.find(d => d.i === hero && d.k > d0.k); if (nx) { const rr = rp.ev.filter((e, k) => k > d0.k && k < nx.k && e.st === 0 && e.t === 'r'), f = nx.act === 'fold' ? 1 : 0; if (rr.length) { ra = 1; fa = f; if (rr.every(e => lim.has(e.i))) { rl = 1; fl = f; } else if (rr.every(e => !lim.has(e.i))) { rb = 1; fb = f; } } } }
+          iz = [sbOnly ? 'BBsb' : pz, d0.L === 'L1' ? 1 : 2, rfiBand(d0.stackTot), iso ? 1 : 0, ai ? 1 : 0, rl, fl, ra, fa, rb, fb]; } }
       const flF = fr.find(x => x.street === 1), sawFl = !!(flF && (rp.bd || []).length >= 3 && !flF.folded[hero]);
       const wentSD = !fin.folded[hero] && fin.folded.filter(x => !x).length >= 2, wonH = fin.won[hero] > 0, preAI = rp.ev.some(e => e.st === 0 && e.ai);
       const pt = [tsOf(rp.date), rb, b, wentSD ? 1 : 0];
@@ -86,8 +86,8 @@ function aliasStats() {
         if (vo) for (const p of vo[3] ? ['TOT'] : [vo[0], 'TOT']) for (const bd of [vo[1], 'all']) { const X = (a.vso[p] = a.vso[p] || {})[bd] = a.vso[p][bd] || [0, 0, 0, 0]; X[0]++; if (vo[2]) X[vo[2]]++; }
         // v3m[моя позиция][позиция открывшего][стек] = [раз, колл, 3-бет NAI, олл-ин] — «позиция против позиции», BB против SB входит
         if (vo && vo[4]) for (const bd of [vo[1], 'all']) { const M = (a.v3m[vo[0]] = a.v3m[vo[0]] || {}), X = (M[vo[4]] = M[vo[4]] || {})[bd] = M[vo[4]][bd] || [0, 0, 0, 0]; X[0]++; if (vo[2]) X[vo[2]]++; }
-        // iso[поз][L][стек] = [раз, изо, изо олл-ином, рейз лимпера, фолд на него, любой рейз, фолд на него]
-        if (iz) for (const p of [iz[0], 'TOT']) for (const bd of [iz[2], 'all']) { const M = (a.iso[p] = a.iso[p] || {}), X = ((M[iz[1]] = M[iz[1]] || {})[bd] = M[iz[1]][bd] || [0, 0, 0, 0, 0, 0, 0]); X[0]++; for (let j = 3; j <= 8; j++) X[j - 2] += iz[j]; }
+        // iso[поз][L][стек] = [раз, изо, изо олл-ином, рейз лимпера, фолд на него, любой рейз, фолд на него, рейз позади, фолд на него]
+        if (iz) for (const p of [iz[0], 'TOT']) for (const bd of [iz[2], 'all']) { const M = (a.iso[p] = a.iso[p] || {}), X = ((M[iz[1]] = M[iz[1]] || {})[bd] = M[iz[1]][bd] || [0, 0, 0, 0, 0, 0, 0, 0, 0]); X[0]++; for (let j = 3; j <= 10; j++) X[j - 2] += iz[j]; } // [.., 7] рейз игрока позади, [8] фолд на него
         if (h3) for (const k of [h3[0], 'TOT']) { const X = a.h3[k] = a.h3[k] || [0, 0, 0]; X[0]++; if (h3[1]) X[1]++; if (h3[2]) X[2]++; }
         // исходы флопа по ВСЕМ банкам (любое число игроков): с олл-инами префлоп и без
         if (sawFl) { const T = a.tot; T.fl++; if (wentSD) { T.sd++; if (wonH) T.sdw++; } if (wonH) T.won++; if (!preAI) { T.fl2++; if (wentSD) { T.sd2++; if (wonH) T.sdw2++; } if (wonH) T.won2++; } }
