@@ -169,7 +169,8 @@ function addR(map, key, h) { let a = map.get(key); if (!a) { a = new Int32Array(
         if (rp.hero === i && rp.hc && rp.hc[i]) { const hc = K.parseCards(String(rp.hc[i])); if (hc && hc.length === 2) { const dh = K.h169(hc[0], hc[1]); addHC('D' + (coh === 'T' ? 'T' : g === 'greg' ? 'R' : 'O') + '|' + Sb + '|' + act + '|h' + dh, rel); stats.dealt = (stats.dealt || 0) + 1; } }
         if (g === 'greg') addEV('greg|' + Sb + '|' + act + '|*', rel, fa); // реги по семейству позиций — для поправки весов рук
         // стадия — слой поверх (план C9): отдельные ячейки «Z|стадия|…»; в движке стягиваются к общим, если данных мало
-        if (year) for (const c of [...CO, g === 'greg' ? 'greg' : null]) if (c && c !== 'F') { addEV('Y|' + year + '|' + c + '|' + Sb + '|' + act + '|*', rel, fa); if (d.sz && (act === 'open' || act === 'iso' || act === '3bet' || act === '4bet')) addEV('Y|' + year + '|' + c + '|' + Sb + '|' + act + '@' + d.sz + '|*', rel, fa); }
+        // год — и общий, и внутри рума («Y|2025@ps|…»): состав румов по годам разный (23.11.2026), сравнивать годы честно — внутри рума
+        if (year) for (const yk of [year, year + '@' + room]) for (const c of [...CO, g === 'greg' ? 'greg' : null]) if (c && c !== 'F') { addEV('Y|' + yk + '|' + c + '|' + Sb + '|' + act + '|*', rel, fa); if (d.sz && (act === 'open' || act === 'iso' || act === '3bet' || act === '4bet')) addEV('Y|' + yk + '|' + c + '|' + Sb + '|' + act + '@' + d.sz + '|*', rel, fa); }
         if (stage) for (const c of CO) { addEV('Z|' + stage + '|' + c + '|' + S + '|' + act + '|*', rel, fa); addEV('Z|' + stage + '|' + c + '|' + Sb + '|' + act + '|*', rel, fa); }
         // размеры (п.6 → п.8): EV и частоты по корзине сайза — «3bet@3x», чтобы выбирать размер по EV, а не только по частоте
         const sizedA = d.sz && (act === 'open' || act === 'iso' || act === '3bet' || act === '4bet') ? act + '@' + d.sz : null;

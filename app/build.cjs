@@ -41,10 +41,11 @@ const common = R(path.join(ROOT, 'pipeline', 'common.cjs'));
 const nh = common.slice(common.indexOf('function normalizeHand'), common.indexOf('\n}\n', common.indexOf('function normalizeHand')) + 3);
 W('js/parser.js', "'use strict';\n// Парсер Backing (из replayer.html) + нормализация текста (pipeline/common.cjs)\nwindow.BKP = (function () {\n" +
   'const P = (function (window, document) {\n' + html.slice(s1, s2) + posClassSrc + '\nreturn { parseHand: parseHand };\n})({}, {});\n' + nh +
-  'return { parse: (t) => P.parseHand(normalizeHand(t) + "\\n") };\n})();\n');
+  // lib/handfix.js — позиции по блайндам, игроки без карт убраны (как в конвейере: pipeline/common.cjs makeParse)
+  'return { parse: (t) => { const s = normalizeHand(t) + "\\n"; return window.HANDFIX.fix(P.parseHand(s), s); } };\n})();\n');
 
 // 3. библиотеки и движок
-for (const f of ['lib/cards.js', 'lib/spots.js', 'lib/sizing.js', 'lib/lineup.js', 'lib/stage.js', 'lib/clusters.js', 'engine/engine_v8.js']) W('js/' + path.basename(f), R(path.join(ROOT, f)));
+for (const f of ['lib/handfix.js', 'lib/cards.js', 'lib/spots.js', 'lib/sizing.js', 'lib/lineup.js', 'lib/stage.js', 'lib/clusters.js', 'engine/engine_v8.js']) W('js/' + path.basename(f), R(path.join(ROOT, f)));
 for (const f of ['shim.js', 'advisor.js', 'app.js']) W('js/' + f, R(path.join(__dirname, 'src', f)));
 
 // 4. данные (как скрипты: index.html открывается без сервера, fetch локальных файлов браузер запрещает)

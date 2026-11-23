@@ -22,7 +22,9 @@ function roomOf(t) { return /^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStarsES
 // CoinPoker в экспорте показывает у ПОБЕДИТЕЛЯ только карты, которые играют (одна карта вместо двух) —
 // вскрытия CoinPoker смещены (12% вскрытий, все — победители). Их нельзя брать в диапазоны и поправку на олл-ин.
 const SHOWDOWN_TRUSTED = (room) => room !== 'coin';
-function makeParse(parser) { return (text) => parser.parseHand(normalizeHand(text) + '\n'); }
+// после парсера — lib/handfix.js: позиции по тому, кто ставил блайнды; игроки без карт («out of hand») убираются (23.11.2026)
+const HANDFIX = require('../lib/handfix.js');
+function makeParse(parser) { return (text) => { const t = normalizeHand(text) + '\n'; return HANDFIX.fix(parser.parseHand(t), t); }; }
 
 // ---------- игрок и формат стола (п.2) ----------
 // Ключ игрока — «рум:ник»: одинаковый ник в разных румах — разные игроки (если владелец не объявит их одним, см. ALIASES).
