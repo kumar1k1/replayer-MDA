@@ -137,7 +137,9 @@ const POS_RE = [
   ['MP', /мидл|middle|средн[\wа-яё]*\s*позиц|позиц[\wа-яё]*\s*средн/, W('mp|мп|эм пи')],
   ['EP', /ранн|андер|under\s*the\s*gun|early/, W('ep|еп|utg|ютг|ю ти джи')],
 ];
-function posOf(q) { for (const [p, a, b] of POS_RE) if (a.test(q) || b.test(q)) return p; return null; }
+// BB как позиция: «бб / bb / би би / большой блайнд» без числа перед ним («60 бб» — стек)
+const BB_POS = /(?<![\d.,]\s?)(?<![\d.,])(?<![a-zа-яё0-9])(bb|бб|би\s*би)(?![a-zа-яё0-9])|(?<![\d.,]\s?)больш[а-яё]*\s*блайнд|big\s*blind/;
+function posOf(q) { for (const [p, a, b] of POS_RE) if (a.test(q) || b.test(q)) return p; return BB_POS.test(q) ? 'BB' : null; }
 const bandOfNum = (v) => { let k = 0; const E = [12, 20, 36, 60, 100, 150]; while (k < E.length && v >= E[k]) k++; return BANDS[k]; };
 function bandsOf(q) {
   const s = q.replace(',', '.');
