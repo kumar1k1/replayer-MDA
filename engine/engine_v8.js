@@ -127,12 +127,17 @@
     // EV руки: реальный уровень спота + GTO-форма (вместо смещённого EV по вскрытиям)
     function handEVgto(sp, act, h, sl, pfa, mfa) {
       const g = gtoShape(sp, h, act); if (!g) return null;
-      const raw = sl.raw.find(x => x && x.n > (x.nfa || 0)); if (!raw) return null;
-      const nc = raw.n - (raw.nfa || 0); if (nc < 30) return null;
+      // уровень продолжения — из ячейки с наименьшей погрешностью (23.11.2026). Раньше — первая по порядку с данными:
+      // SB ATs против опена суперфиша брал топов по семейству позиций (95 раздач, продолжение −3,4 ± 6,8 bb) вместо
+      // регов в точном споте (564 раздачи, +1,0 ± 2,4) — EV руки 3-бета выходил −6,2 bb при GTO-3-бете 100%
+      const seC = (x) => { const k = x.n - (x.nfa || 0); return k >= 30 ? (x.sd || 0) / Math.sqrt(k) : Infinity; };
+      const raw = sl.raw.filter(x => x && x.n - (x.nfa || 0) >= 30).sort((a, b) => seC(a) - seC(b))[0]; if (!raw) return null;
+      const nc = raw.n - (raw.nfa || 0);
       const contAll = (raw.n * raw.m - (raw.nfa || 0) * (raw.mfa || 0)) / nc;
       const pS = Math.min(0.95, sl.pfa || 0);
       const cont = contAll + g.d / (1 - pS);
       const se = Math.sqrt(((raw.sd || 0) / Math.sqrt(nc)) ** 2 + (g.se / (1 - pS)) ** 2) * (1 - pfa);
+      if (DEBUG) DEBUG.push({ evgto: act, hand: K.H169[h].label, rawN: raw.n, rawM: raw.m, nfa: raw.nfa, mfa: raw.mfa, contAll, gD: g.d, gDepths: g.depths, pS, pfa, mfaUsed: mfa, cont, m: pfa * mfa + (1 - pfa) * cont });
       return { m: pfa * mfa + (1 - pfa) * cont, se, n: Math.min(nc, g.n), src: 'GTO-поправка', gto: g, contAll };
     }
     opts = opts || {};
