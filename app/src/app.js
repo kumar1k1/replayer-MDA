@@ -6,8 +6,8 @@
   const ENG = E8.create(window.RM_MODEL, window.RM_EQ, { sizes: window.RM_SIZES, lineup: window.RM_LINEUP, gto: window.RM_GTO || null, ranges: window.RM_RANGES || null });
   const PLAYERS = window.RM_PLAYERS || {};
   // рум — как в конвейере (pipeline/common.cjs roomOf): по префиксу заголовка после перевода
-  const roomOf = (t) => (/^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStarsES Hand #/.test(t) ? 'pses' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*WPN Hand #/.test(t) ? 'wpn' : /^\s*iPoker Hand #/.test(t) ? 'ipoker' : /^\s*Chico Hand #/.test(t) ? 'chico' : /^\s*888 Hand #/.test(t) ? '888' : /^\s*Winamax Hand #/.test(t) ? 'wnmx' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other');
-  const ROOM_RU = { ps: 'PokerStars', pses: 'PokerStars.es', coin: 'CoinPoker', wpn: 'WPN', ipoker: 'iPoker', chico: 'Chico', '888': '888poker', wnmx: 'Winamax', gg: 'GGPoker', other: 'другой рум' };
+  const roomOf = (t) => (/^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStarsES Hand #/.test(t) ? 'pses' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*WPN Hand #/.test(t) ? 'wpn' : /^\s*iPoker Hand #/.test(t) ? 'ipoker' : /^\s*Chico Hand #/.test(t) ? 'chico' : /^\s*888 Hand #/.test(t) ? '888' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other');
+  const ROOM_RU = { ps: 'PokerStars', pses: 'PokerStars.es', coin: 'CoinPoker', wpn: 'WPN', ipoker: 'iPoker', chico: 'Chico', '888': '888poker', gg: 'GGPoker', other: 'другой рум' };
 
   // ---------- игроки базы: кластер, группа, счётчики для лайнапа ----------
   const pfCache = new Map();
@@ -92,12 +92,9 @@
     if (/<game\b[^>]*gamecode=/.test(t)) { CV.ipokerXmlToPS(t, (h) => out.push(h), {}); return { hands: out, bad: 0 }; }
     if (/#Game No :/.test(t.slice(0, 20000))) { let bad = 0; for (const h of t.split(/\r?\n(?=#Game No)/)) { if (!/^\s*#Game No/.test(h)) continue; const x = CV.e888ToPS(h, fname); if (x) out.push(x); else bad++; } return { hands: out, bad }; }
     if (/^\s*Game Hand #/m.test(t.slice(0, 20000))) { let bad = 0; for (const h of t.split(/\r?\n(?=Game Hand #)/)) { if (!/^\s*Game Hand #/.test(h)) continue; const x = CV.wpnToPS(h, fname); if (x) out.push(x); else bad++; } return { hands: out, bad }; }
-    if (/^\s*Winamax Poker - Tournament "/m.test(t.slice(0, 20000))) { let bad = 0; for (const h of t.split(/\r?\n(?=Winamax Poker - Tournament ")/)) { if (!/^\s*Winamax Poker - Tournament "/.test(h)) continue; const x = CV.wnmxToPS(h.trim()); if (x) out.push(x); else bad++; } return { hands: out, bad }; }
-    if (/^\s*Winamax Poker - Tournament summary/.test(t)) return { hands: [], bad: 0 }; // итог турнира, не раздачи
     let bad = 0;
     for (const s of t.split(SPLIT).map(x => x.trim())) {
       if (!/^(PokerStars |CoinPoker )?Hand #|^Poker Hand #/.test(s)) continue;
-      if (CV.isGGasPS(s)) { out.push(CV.ggToPS(s)); continue; } // GG, выгруженный в формате PokerStars
       if (/^PokerStars Hand #/.test(s) && /^Table 'CHC_/m.test(s)) { const x = CV.chicoToPS(s, fname); if (x) out.push(x); else bad++; continue; }
       if (/^PokerStars Hand #[^\n]*(€|EUR)/.test(s)) { out.push(s.replace(/^PokerStars Hand #/, 'PokerStarsES Hand #')); continue; }
       out.push(s);

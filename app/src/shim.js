@@ -6,5 +6,5 @@ function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.
 function heroLabel() { return 'Вы'; }
 // записи раздач для реплеера: заполняет app.js (HANDS[i].rec — запись в формате MDA Lab)
 window.HANDS = [];
-window.DB = { cols: { net: [], nev: [], room: [] }, rooms: ['PokerStars', 'CoinPoker', 'PokerStars.es', 'WPN', '888poker', 'iPoker', 'Chico', 'GGPoker', 'другой рум', 'Winamax'] };
+window.DB = { cols: { net: [], nev: [], room: [] }, rooms: ['PokerStars', 'CoinPoker', 'PokerStars.es', 'WPN', '888poker', 'iPoker', 'Chico', 'GGPoker', 'другой рум'] };
 async function replaysFor(ids) { const o = {}; for (const i of ids) o[i] = window.HANDS[i] ? window.HANDS[i].rec : null; return o; }
