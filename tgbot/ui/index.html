@@ -187,6 +187,8 @@ function tableEl(T, group) {
   const pv = (c) => (c && typeof c === 'object' && c.n >= 30 && /\d/.test(c.v) ? parseFloat(String(c.v).replace(',', '.')) : null);
   const vals = T.rows.flatMap(r => r.slice(1).map(pv)).filter(v => v != null), lo = Math.min(...vals), hi = Math.max(...vals);
   // heatCol: шкала своя у каждой колонки (разные действия в одной таблице: колл / 3-бет / фолд)
+  // heatRow: шкала своя у каждой строки (3-бет / без олл-ина / олл-ином — разные масштабы)
+  const rowLH = (r) => { const c = r.slice(1).map(pv).filter(v => v != null); return c.length ? [Math.min(...c), Math.max(...c)] : [lo, hi]; };
   const colLH = (k) => { const c = T.rows.map(r => pv(r[k])).filter(v => v != null); return c.length ? [Math.min(...c), Math.max(...c)] : [lo, hi]; };
   let heated = false;
   for (const r of T.rows) {
@@ -197,7 +199,7 @@ function tableEl(T, group) {
       else if (c && typeof c === 'object') {
         td.className = 'gc' + (T.head[k] === 'TOT' ? ' tot' : ''); const sp = el('span', 'gv', c.v); td.append(sp); if (c.n) td.append(el('small', null, c.n.toLocaleString('ru')));
         const v = pv(c);
-        if (v != null && vals.length > 1) { const [l1, h1] = T.heatCol ? colLH(k) : [lo, hi]; const H = heat(v, l1, h1); sp.style.color = H.fg; sp.style.background = H.bg; heated = true; }
+        if (v != null && vals.length > 1) { const [l1, h1] = T.heatCol ? colLH(k) : T.heatRow ? rowLH(r) : [lo, hi]; const H = heat(v, l1, h1); sp.style.color = H.fg; sp.style.background = H.bg; heated = true; }
         if (c.n && c.n < HEAT_N) td.classList.add(c.n < 30 ? 'few2' : 'few');
       }
       else if (/%$/.test(c)) { td.className = 'pc'; td.style.setProperty('--w', Math.min(100, parseFloat(c)) + '%'); if (group && BAR[group]) td.style.setProperty('--bar', BAR[group]); td.append(el('span', null, c.replace('.', ','))); }

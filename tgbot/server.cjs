@@ -233,7 +233,36 @@ function statOf(ql) { if (NO_STAT.test(ql)) return null; for (const [id, re] of 
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
 const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
-function statBlocks(P, id, ql) {
+// ---------- ответы на опен по каждой позиции (алиас — ext.vso, по своим раздачам; у игроков базы — после пересчёта) ----------
+// правило — как 3-бет NAI: против ровно одного опена без коллеров, опен не олл-ин, BB против SB не берём; стек — свой, без анте
+const VPOS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
+const VACT = { call: ['колл', [1]], b3: ['3-бет без олл-ина', [2]], shove: ['олл-ин', [3]], fold: ['фолд', [0]], b3all: ['3-бет', [2, 3]], b3ai: ['3-бет олл-ином', [3]] };
+function vsoGet(P, pos, bs) { let n = 0; const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.vso[pos] && P.ext.vso[pos][b]; if (r) { n += r[0]; x[1] += r[1]; x[2] += r[2]; x[3] += r[3]; } } x[0] = n - x[1] - x[2] - x[3]; return { n, x }; }
+const vCell = (r, k) => ({ v: pctS(VACT[k][1].reduce((a, i) => a + r.x[i], 0), r.n), n: r.n });
+const focusAct = (ql, dflt) => (/3\s*-?\s*бет|трибет|3bet/.test(ql) ? 'b3' : /колл|кол(?![а-яё])|уравн/.test(ql) ? 'call' : /олл|пуш|all/.test(ql) ? 'shove' : /фолд|сброс/.test(ql) ? 'fold' : dflt);
+const vPosList = (PL) => (PL ? [...new Set(PL.map(p => (p === 'EP' ? 'MP' : p)))].filter(p => VPOS.includes(p)) : null);
+VPOS.TOT = true;
+function vsoBlocks(P, ql, o) {
+  let { G, PL, bands, byBand, pos, focus } = o; const cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : null); // pos 'TOT' — одна общая цифра
+  const RS = G || (byBand ? BANDS.map(b => [b + ' bb', [b]]) : null), note = 'против одного опена без коллеров; стек — свой, без анте';
+  // 3-бет: «всего» (с олл-ином), «без олл-ина», «олл-ином»; одна цифра — всего, в подписи — разбивка
+  if (o.three) {
+    focus = /без\s*олл|без\s*пуш|nai|наи/.test(ql) ? 'b3' : /олл-?\s*ин\w*|пуш|ai(?![a-z])/.test(ql) ? 'b3ai' : 'b3all';
+    const C1 = cols || ['TOT', ...VPOS];
+    if (C1.length === 1 && !RS) { const r = vsoGet(P, C1[0], bands); return [{ type: 'big', title: title(P) + ' — ' + VACT[focus][0] + (C1[0] === 'TOT' ? '' : ' с ' + C1[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note: (r.n && focus === 'b3all' ? 'без олл-ина ' + vCell(r, 'b3').v + ' · олл-ином ' + vCell(r, 'b3ai').v + ' · ' : '') + note }]; }
+    if (!RS) { const LBL = { b3all: '3-бет', b3: 'без олл-ина', b3ai: 'олл-ином' }; const rows = ['b3all', 'b3', 'b3ai'].map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — 3-бет по позициям', note: note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
+  }
+  if (focus) { // одно действие: колонки — позиции, строки — стеки
+    const C = cols || ['TOT', ...VPOS], name = VACT[focus][0];
+    if (C.length === 1 && !RS) { const r = vsoGet(P, C[0], bands); return [{ type: 'big', title: title(P) + ' — ' + name + ' против опена' + (C[0] === 'TOT' ? '' : ' с ' + C[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note }]; }
+    const rows = (RS || [[name, bands]]).map(([l, bs]) => [l, ...C.map(p => vCell(vsoGet(P, p, bs), focus))]).filter(r => r.slice(1).some(c => c.n));
+    return [{ type: 'table', title: title(P) + ' — ' + name + (o.three ? '' : ' против опена') + (RS ? ' по стекам' : ' по позициям'), note, table: { head: ['', ...C], rows, grid: true } }];
+  }
+  // все действия: строки — позиции (и группы стеков), колонки — колл / 3-бет / олл-ин / фолд
+  const A = ['call', 'b3', 'shove', 'fold'], C = cols || VPOS, rows = [];
+  for (const [gl, bs] of RS || [['', bands]]) for (const p of C) { const r = vsoGet(P, p, bs); if (r.n) rows.push([(gl ? gl + ' · ' : '') + p, ...A.map(k => vCell(r, k))]); }
+  return [{ type: 'table', title: title(P) + ' — против опена по позициям' + (RS ? ' и стекам' : ''), note, table: { head: ['', ...A.map(k => VACT[k][0])], rows, grid: true, heatCol: true } }];
+}function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
   const c = (nm) => clStat(P, nm);
@@ -243,6 +272,11 @@ function statBlocks(P, id, ql) {
   if (id === 'LIMP') { const a = c('LimpNSB'); return [big('лимп первым (кроме SB)', f1(a.p) + '%', a.n, '')]; }
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
+  if (id === '3B' && P.ext && P.ext.vso && TT) {
+    const tbl = WANT_TABLE.test(ql) || TT.G || TT.PL || TT.byBand, pos = posOf(ql);
+    // без просьбы о таблице и без позиции — одна цифра (TOT)
+    return vsoBlocks(P, ql, { G: TT.G, PL: TT.PL, bands: TT.bands, byBand: TT.byBand, pos: tbl && !TT.PL ? null : (pos || (tbl ? null : 'TOT')), focus: 'b3', three: true });
+  }
   if (id === '3B') {
     // по позициям — как Hand2Note (у алиаса); одна позиция — одна цифра
     const H = P.ext && P.ext.h3, pos = posOf(ql), tbl = WANT_TABLE.test(ql);
@@ -327,7 +361,8 @@ function answerFor(P, ql, intent, rows0, spec) {
   const bands0 = G ? null : bandsOf(ql), bands = bands0 || BANDS, byBand = /по ст[еэ]к|ст[еэ]кам|ст[еэ]ков|разбив|сайз/.test(ql) && !(bands0 && bands0.num != null);
   const bnote = bands0 ? 'стек ' + (bands0.length > 1 ? bands0[0] + ' … ' + bands0[bands0.length - 1] : bands0[0]) + ' bb' : 'все стеки';
   let sb = null;
-  if (intent === 'stat' && (sb = statBlocks(P, statOf(ql), ql))) blocks.push(...sb);
+  if (intent === 'stat' && (sb = statBlocks(P, statOf(ql), ql, { G, PL, bands, byBand, bands0 }))) blocks.push(...sb);
+  else if ((intent === 'vso' || intent === 'stat') && P.ext && P.ext.vso) blocks.push(...vsoBlocks(P, ql, { G, PL, bands, byBand, pos: PL ? null : posOf(ql), focus: focusAct(ql, null) }));
   else if (intent === 'stat') { const t = famTable(P, 'vso', bands, byBand, G); blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T.vso, note: bnote, table: t }); }
   else if (intent === 'card') blocks.push(card(P));
   else if (intent === 'wr') { const c = card(P); blocks.push({ type: 'card', title: c.title, sub: c.sub, group: c.group, wr: c.wr, wrFmt: c.wrFmt, graph: c.graph }); }

@@ -24,7 +24,7 @@ function aliasStats() {
   const mine = new Set(Object.keys(cfg['ники'] || {})); // «рум:ник»
   const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
   const acc = {}; // рум → { pf, cl, f, n, ns, nf }
-  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
+  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
   // 3-бет как в Hand2Note (сверено 23.11.2026 с его поп-апом владельца, все позиции): против ровно одного рейза,
   // без коллеров (сквиз — отдельно), опен не олл-ином, на BB — не против опена с SB (блайнд против блайнда — отдельно)
   const HF = require(path.join(ROOT, 'lib', 'handfix.js'));
@@ -58,7 +58,8 @@ function aliasStats() {
       const net = C.netAdjusted(rp, fin, SD).net, b = net[hero] / rp.bb, rb = (fin.stacks[hero] - rp.stacks[hero]) / rp.bb; // b — с поправкой на олл-ин, rb — реально (как Hand2Note)
       const r = ST.handStats(rp, fr), ps = h2nPos(rp.pl[hero][0], rp.n, C.tableFormat(h).max);
       // 3-бет (Hand2Note), общие исходы флопа, точка графика
-      let h3 = null; { let limped = false; for (const d of C.preflopDecisions(rp, () => '')) { if (d.i !== hero) continue; if (d.nR === 1 && !limped && d.tbl !== 'AI' && (!d.C || d.C === 'C0')) { const p3 = distPos(rp.pl[hero][0], rp.n); if (!(p3 === 'BB' && /^(SB|BTN\/SB)$/.test(d.oppPos || ''))) h3 = [p3, /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct), /^3bet/.test(d.act) || d.act === 'shove' || d.act === 'raise']; } if (d.act === 'limp') limped = true; } }
+      // vo — ответ на опен тем же правилом, что 3-бет: [позиция, стек, действие call|3b|shove|fold]
+      let h3 = null, vo = null; { let limped = false; for (const d of C.preflopDecisions(rp, () => '')) { if (d.i !== hero) continue; if (d.nR === 1 && !limped && d.tbl !== 'AI' && (!d.C || d.C === 'C0')) { const p3 = distPos(rp.pl[hero][0], rp.n); const bbSb = p3 === 'BB' && /^(SB|BTN\/SB)$/.test(d.oppPos || ''); if (!bbSb) h3 = [p3, /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct), /^3bet/.test(d.act) || d.act === 'shove' || d.act === 'raise']; vo = [p3, rfiBand(d.stackTot), d.act === 'call' ? 1 : /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 2 : d.act === 'shove' || d.act === 'raise' ? 3 : 0, bbSb]; } if (d.act === 'limp') limped = true; } }
       // RFI как Hand2Note: позиции EP (5+ мест до баттона) / MP (3–4) / HJ (2) / CO / BTN / SB; TOT — любой рейз первым, NAI — без олл-ина; стек — свой, в bb
       let rf = null; { const d0 = C.preflopDecisions(rp, () => '').find(d => d.i === hero); if (d0 && d0.tbl === 'RFI') { const lab = rp.pl[hero][0]; if (lab !== 'BB') { const L = HF.POS_NAMES[Math.min(Math.max(rp.n, 2), 9)], k = lab === 'BTN' ? 0 : L.length - L.indexOf(lab); const p5 = /SB/.test(lab) ? 'SB' : k === 0 ? 'BTN' : k === 1 ? 'CO' : k === 2 ? 'HJ' : k <= 4 ? 'MP' : 'EP'; rf = [p5, rfiBand(d0.stackTot), /^open/.test(d0.act) || d0.act === 'shove', /^open/.test(d0.act)]; } } }
       const flF = fr.find(x => x.street === 1), sawFl = !!(flF && (rp.bd || []).length >= 3 && !flF.folded[hero]);
@@ -70,6 +71,9 @@ function aliasStats() {
         a.raw[half]++; a.raw[half + 1] += rb; a.raw[half + 2] += rb * rb; a.raw[fo + half]++; a.raw[fo + half + 1] += rb; a.raw[fo + half + 2] += rb * rb;
         const P = a.pos[ps] = a.pos[ps] || [0, 0, 0, 0]; P[0]++; P[1] += rb; P[2] += b; P[3] += rb * rb;
         if (rf) for (const p of [rf[0], 'TOT']) for (const bd of [rf[1], 'all']) { const X = (a.rfi[p] = a.rfi[p] || {})[bd] = a.rfi[p][bd] || [0, 0, 0]; X[0]++; if (rf[2]) X[1]++; if (rf[3]) X[2]++; }
+        // vso[pos][band] = [раз, колл, 3-бет NAI, олл-ин] (фолд — остаток)
+        // BB против SB — только в TOT (в колонке BB их нет), как в поп-апе владельца
+        if (vo) for (const p of vo[3] ? ['TOT'] : [vo[0], 'TOT']) for (const bd of [vo[1], 'all']) { const X = (a.vso[p] = a.vso[p] || {})[bd] = a.vso[p][bd] || [0, 0, 0, 0]; X[0]++; if (vo[2]) X[vo[2]]++; }
         if (h3) for (const k of [h3[0], 'TOT']) { const X = a.h3[k] = a.h3[k] || [0, 0, 0]; X[0]++; if (h3[1]) X[1]++; if (h3[2]) X[2]++; }
         // исходы флопа по ВСЕМ банкам (любое число игроков): с олл-инами префлоп и без
         if (sawFl) { const T = a.tot; T.fl++; if (wentSD) { T.sd++; if (wonH) T.sdw++; } if (wonH) T.won++; if (!preAI) { T.fl2++; if (wentSD) { T.sd2++; if (wonH) T.sdw2++; } if (wonH) T.won2++; } }
@@ -89,7 +93,7 @@ function aliasStats() {
     ser.forEach((p, k) => { w += p[1]; e += p[2]; if (p[3]) s += p[1]; else ns += p[1]; if ((k + 1) % step === 0 || k === N - 1) out.push([k + 1, Math.round(w), Math.round(e), Math.round(s), Math.round(ns)]); });
     return out;
   };
-  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, tot: a.tot, graph: graph(a.ser) }) }));
+  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, tot: a.tot, graph: graph(a.ser) }) }));
 }
 
 // ---------- сборка ----------
