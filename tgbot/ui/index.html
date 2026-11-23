@@ -66,6 +66,7 @@ td.pc span{position:relative;z-index:1}
 td.pc::before{content:'';position:absolute;right:6px;top:22%;height:56%;width:calc(var(--w,0%) * .72);background:var(--bar,rgba(58,160,255,.22));border-radius:4px}
 tr:hover td{background:rgba(255,255,255,.025)}
 .txt{color:var(--soft)}
+.bigv{display:flex;align-items:baseline;gap:10px;margin:10px 0 4px}.bigv b{font:700 34px/1 var(--mono);color:var(--accent)}.bigv small{font:12px var(--mono);color:var(--faint)}
 td.gc{text-align:right}td.gc .gv{font:600 14px var(--mono)}td.gc small{font:11px var(--mono);color:var(--faint);margin-left:6px;vertical-align:2px}
 .st{margin-top:10px;display:grid;grid-template-columns:1fr;max-width:560px}
 .st-r{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
@@ -239,6 +240,7 @@ function botMsg(a, holder) {
       if (B.wrFmt && B.wrFmt.length) { const f = el('div', 'fmt'); B.wrFmt.forEach(x => { const d = el('div', null, (x.bb100 > 0 ? '+' : '') + String(x.bb100).replace('.', ',')); d.style.color = x.bb100 > 0 ? 'var(--good)' : x.bb100 < 0 ? 'var(--bad)' : ''; d.append(el('small', null, x.k + ' · ' + x.n.toLocaleString('ru'))); f.append(d); }); w.append(f); }
       box.append(w);
     }
+    if (B.big) { const g = el('div', 'bigv'); g.append(el('b', null, B.big)); if (B.n) g.append(el('small', null, B.n.toLocaleString('ru') + ' раз')); box.append(g); }
     if (B.graph) box.append(graphEl(B.graph));
     if (B.note) box.append(el('div', 'note', B.note));
     if (B.square) box.append(squareEl(B.square));
