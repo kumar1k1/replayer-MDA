@@ -5,13 +5,18 @@
   const SP = window.RMSpots, E8 = window.RMEngine8, K = window.RMCards, CLU = window.RMClusters, STG = window.STAGE;
   const ENG = E8.create(window.RM_MODEL, window.RM_EQ, { sizes: window.RM_SIZES, lineup: window.RM_LINEUP, gto: window.RM_GTO || null, ranges: window.RM_RANGES || null });
   const PLAYERS = window.RM_PLAYERS || {};
-  const roomOf = (t) => (/^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other');
-  const ROOM_RU = { ps: 'PokerStars', coin: 'CoinPoker', gg: 'GGPoker' };
+  // рум — как в конвейере (pipeline/common.cjs roomOf): по префиксу заголовка после перевода
+  const roomOf = (t) => (/^\s*CoinPoker/.test(t) ? 'coin' : /^\s*PokerStarsES Hand #/.test(t) ? 'pses' : /^\s*PokerStars/.test(t) ? 'ps' : /^\s*WPN Hand #/.test(t) ? 'wpn' : /^\s*iPoker Hand #/.test(t) ? 'ipoker' : /^\s*Chico Hand #/.test(t) ? 'chico' : /^\s*888 Hand #/.test(t) ? '888' : /^\s*Poker Hand #/.test(t) ? 'gg' : 'other');
+  const ROOM_RU = { ps: 'PokerStars', pses: 'PokerStars.es', coin: 'CoinPoker', wpn: 'WPN', ipoker: 'iPoker', chico: 'Chico', '888': '888poker', gg: 'GGPoker', other: 'другой рум' };
 
   // ---------- игроки базы: кластер, группа, счётчики для лайнапа ----------
   const pfCache = new Map();
+  // PokerStars и PS.es — разные пулы; рум PS.es узнаётся по евро в заголовке — если ник не найден, пробуем соседний
+  const ALT = { ps: 'pses', pses: 'ps' };
   function player(room, nick) {
-    const k = room + ':' + nick, p = PLAYERS[k]; if (!p) return null;
+    let k = room + ':' + nick, p = PLAYERS[k];
+    if (!p && ALT[room]) { k = ALT[room] + ':' + nick; p = PLAYERS[k]; }
+    if (!p) return null;
     let pf = pfCache.get(k);
     if (!pf) { pf = new Int32Array(315); if (p[5]) for (const s of p[5].split(',')) { const [o, v] = s.split(':'); pf[+o] = +v; } pfCache.set(k, pf); }
     return { cl: p[0], d: p[1], cl2: p[2], hands: p[3], reliable: !!p[4], pf, grp: CLU.GROUP[p[0]] || 'unk' };
@@ -42,7 +47,11 @@
     const rp = H.rp, room = H.room;
     const grpOf = (nick) => { const p = player(room, nick); return p ? p.grp : 'unk'; };
     const ctx = tourCtx(H);
+    // бай-ин и формат: из раздачи и имени файла (как в базе — из папки архива); указанные вручную — главнее
+    const ov = TOV.get(H.tid) || {};
+    // имя файла уже учтено переводчиком (WPN / 888 / Chico: бай-ин и формат вписаны в заголовок, как в базе из папки)
     const ds = E8.decisionsBacking(rp, grpOf, '', room, ctx);
+    if (ov.buyin || ov.kind) for (const d of ds) { if (ov.buyin) d.st = SP.stratumOf('$' + ov.buyin, ''); if (ov.kind) d.kd = ov.kind; }
     const info = (j) => player(room, rp.nm[j]);
     H.adv = ds.map(d => {
       const cs = d.i === H.hero ? (H.rec.hc || null) : (H.rec.sh[d.i] || null);
@@ -73,18 +82,55 @@
   }
 
   // ---------- загрузка ----------
+  // Формат файла — по содержимому, перевод — тем же кодом, что и база (pipeline/convert.cjs → js/convert.js):
+  // iPoker / RedStar — XML; 888 — «#Game No :»; WPN — «Game Hand #»; Chico — формат PokerStars со столами «CHC_»;
+  // PokerStars.es — формат PokerStars, бай-ин в евро; PokerStars, CoinPoker, GG — как есть.
   const SPLIT = /\r?\n(?=(?:PokerStars Hand #|CoinPoker Hand #|Poker Hand #))/;
-  function load(text) {
-    const parts = text.replace(/^﻿/, '').split(SPLIT).map(s => s.trim()).filter(s => /^(PokerStars |CoinPoker )?Hand #|^Poker Hand #/.test(s));
+  const CV = window.ROOMCONV;
+  function splitFile(text, fname) {
+    const t = text.replace(/^﻿/, ''), out = [];
+    if (/<game\b[^>]*gamecode=/.test(t)) { CV.ipokerXmlToPS(t, (h) => out.push(h), {}); return { hands: out, bad: 0 }; }
+    if (/#Game No :/.test(t.slice(0, 20000))) { let bad = 0; for (const h of t.split(/\r?\n(?=#Game No)/)) { if (!/^\s*#Game No/.test(h)) continue; const x = CV.e888ToPS(h, fname); if (x) out.push(x); else bad++; } return { hands: out, bad }; }
+    if (/^\s*Game Hand #/m.test(t.slice(0, 20000))) { let bad = 0; for (const h of t.split(/\r?\n(?=Game Hand #)/)) { if (!/^\s*Game Hand #/.test(h)) continue; const x = CV.wpnToPS(h, fname); if (x) out.push(x); else bad++; } return { hands: out, bad }; }
     let bad = 0;
-    for (const t of parts) {
+    for (const s of t.split(SPLIT).map(x => x.trim())) {
+      if (!/^(PokerStars |CoinPoker )?Hand #|^Poker Hand #/.test(s)) continue;
+      if (/^PokerStars Hand #/.test(s) && /^Table 'CHC_/m.test(s)) { const x = CV.chicoToPS(s, fname); if (x) out.push(x); else bad++; continue; }
+      if (/^PokerStars Hand #[^\n]*(€|EUR)/.test(s)) { out.push(s.replace(/^PokerStars Hand #/, 'PokerStarsES Hand #')); continue; }
+      out.push(s);
+    }
+    return { hands: out, bad };
+  }
+  function load(text, fname) {
+    const sp = splitFile(text, fname || '');
+    let bad = sp.bad;
+    for (const t of sp.hands) {
       let rp = null; try { rp = window.BKP.parse(t); } catch (e) { rp = null; }
       if (rp) rp.text = t; // нужен движку: баунти у мест, формат турнира
       if (!rp || !rp.n || !rp.bb || !rp.pl || rp.pl.length < 2) { bad++; continue; }
       const tm = t.match(/Tournament #(\d+)/), dt = String(rp.date || '');
-      window.HANDS.push({ text: t, rp, room: roomOf(t), tid: tm ? tm[1] : '—', date: dt, hero: -1, rec: null, adv: null });
+      window.HANDS.push({ text: t, rp, room: roomOf(t), tid: tm ? tm[1] : '—', date: dt, hero: -1, rec: null, adv: null, fp: fname || '' });
     }
-    return { added: parts.length - bad, bad };
+    return { added: sp.hands.length + sp.bad - bad, bad };
+  }
+  // бай-ин и формат турнира, указанные вручную: tid → { buyin, kind }
+  const TOV = new Map();
+  function refreshTourInfo() {
+    const tid = $('#tour').value, H0 = tid ? window.HANDS.find(H => H.tid === tid) : null;
+    $('#tinfo').hidden = $('#tkindl').hidden = !H0; if (!H0) return;
+    const ov = TOV.get(tid) || {}, bi = SP.buyinOf('', H0.rp.title), kd = SP.kindOf(H0.rp, H0.text, '');
+    $('#tbuyin').value = ov.buyin || (bi ? +bi.toFixed(2) : '');
+    $('#tbuyin').placeholder = bi ? '' : 'нет';
+    $('#tkind').value = ov.kind || '';
+    $('#tkind').options[0].textContent = 'авто: ' + ({ n: 'фризаут', k: 'PKO', m: 'Mystery' })[kd];
+  }
+  function setTourOverride() {
+    const tid = $('#tour').value; if (!tid) return;
+    const buyin = +$('#tbuyin').value || 0, kind = $('#tkind').value || '';
+    const H0 = window.HANDS.find(H => H.tid === tid), bi = H0 ? SP.buyinOf('', H0.rp.title) : 0;
+    TOV.set(tid, { buyin: buyin && Math.abs(buyin - bi) > 0.005 ? buyin : 0, kind });
+    for (const H of window.HANDS) if (H.tid === tid) H.adv = null;
+    render();
   }
   // герой: ник «Dealt to» (ваши раздачи) или выбранный в списке; без героя — игрок, чьи карты известны
   function setHero(nick) {
@@ -93,7 +139,7 @@
       if (h < 0 && rp.hero != null && rp.hero >= 0) h = rp.hero;
       if (h < 0) { const k = Object.keys(rp.sh || {}).find(k => rp.sh[k]); h = k != null ? +k : 0; }
       H.hero = h; H.rec = toRec(rp, h); H.adv = null;
-      window.DB.cols.room[i] = H.room === 'coin' ? 1 : 0;
+      window.DB.cols.room[i] = Math.max(0, window.DB.rooms.indexOf(ROOM_RU[H.room] || ''));
       const net = netOf(H); window.DB.cols.net[i] = Math.round(net * 10); window.DB.cols.nev[i] = Math.round(net * 10);
     });
   }
@@ -162,18 +208,19 @@
     if (replace) { window.HANDS.length = 0; window.DB.cols = { net: [], nev: [], room: [] }; }
     TOURS.clear();
     let add = 0, bad = 0;
-    for (const f of files) { const r = load(await f.text()); add += r.added; bad += r.bad; }
+    for (const f of files) { const r = load(await f.text(), f.name); add += r.added; bad += r.bad; }
     window.HANDS.sort((a, b) => (a.tid < b.tid ? -1 : a.tid > b.tid ? 1 : a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.rp.handId).localeCompare(String(b.rp.handId))));
     $('#msg').textContent = (replace ? 'Турнир загружен: ' : 'Добавлено: ') + add + ' раздач' + (bad ? ' · не разобрано: ' + bad : '');
-    refreshTours(); refreshHero();
+    refreshTours(); refreshHero(); refreshTourInfo();
   }
   window.addEventListener('DOMContentLoaded', () => {
+    $('#tbuyin').onchange = setTourOverride; $('#tkind').onchange = setTourOverride;
     let replace = true;
     $('#file').onchange = (e) => { readFiles(Array.from(e.target.files || []), replace); e.target.value = ''; };
     $('#open').onclick = () => { replace = true; $('#file').click(); };
     $('#add').onclick = () => { replace = false; $('#file').click(); };
     if ($('#open2')) $('#open2').onclick = () => { replace = true; $('#file').click(); };
-    $('#tour').onchange = () => render();
+    $('#tour').onchange = () => { refreshTourInfo(); render(); };
     $('#hero').onchange = () => { setHero($('#hero').value); render(); };
     document.body.addEventListener('dragover', (e) => e.preventDefault());
     document.body.addEventListener('drop', (e) => { e.preventDefault(); readFiles(Array.from(e.dataTransfer.files || []), true); });

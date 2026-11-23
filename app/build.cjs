@@ -44,6 +44,11 @@ W('js/parser.js', "'use strict';\n// Парсер Backing (из replayer.html) +
   // lib/handfix.js — позиции по блайндам, игроки без карт убраны (как в конвейере: pipeline/common.cjs makeParse)
   'return { parse: (t) => { const s = normalizeHand(t) + "\\n"; return window.HANDFIX.fix(P.parseHand(s), s); } };\n})();\n');
 
+// 2б. переводчики румов (888, WPN, iPoker XML, Chico → формат PokerStars) — тот же код, что переводил базу
+//     (pipeline/convert.cjs), в обёртке: свои имена не пересекаются с остальными скриптами страницы
+W('js/convert.js', "'use strict';\n// Переводчики историй румов в формат PokerStars — pipeline/convert.cjs как есть\nwindow.ROOMCONV = (function () { const module = { exports: {} };\n" +
+  R(path.join(ROOT, 'pipeline', 'convert.cjs')).replace(/^'use strict';\s*/, '') + '\nreturn module.exports;\n})();\n');
+
 // 3. библиотеки и движок
 for (const f of ['lib/handfix.js', 'lib/cards.js', 'lib/spots.js', 'lib/sizing.js', 'lib/lineup.js', 'lib/stage.js', 'lib/clusters.js', 'engine/engine_v8.js']) W('js/' + path.basename(f), R(path.join(ROOT, f)));
 for (const f of ['shim.js', 'advisor.js', 'app.js']) W('js/' + f, R(path.join(__dirname, 'src', f)));
