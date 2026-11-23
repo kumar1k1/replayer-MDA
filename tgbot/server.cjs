@@ -272,9 +272,11 @@ function vsoBlocks(P, ql, o) {
 }// ---------- 3-бет «позиция против позиции» (алиас — ext.v3m; сверено с таблицей владельца 24.11.2026: общий 3-бет) ----------
 // строки — моя позиция, колонки — кто открыл; «3-бет баттона против MP» — одна цифра. Слева от «против» — моя позиция, справа — открывший
 const V3H = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'], V3O = ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'], ORD = ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
-function posIn(t) { const out = []; for (const [p, a, b] of POS_RE) if (a.test(t) || b.test(t)) out.push(p); if (/\bbb\b|(^|[^а-яё])бб(?![а-яё0-9])|больш[\wа-яё]*\s*блайнд/.test(t) && !/\d\s*(bb|бб)/.test(t)) out.push('BB'); return ORD.filter(p => out.includes(p)); }
+function posIn(t) { const out = []; for (const [p, a, b] of POS_RE) if (a.test(t) || b.test(t)) out.push(p); if (/(?<![\d.,]\s?)(?<![\d.,])(?<![a-zа-яё0-9])(bb|бб|би\s*би)(?![a-zа-яё0-9])|(?<![\d.,]\s?)больш[а-яё]*\s*блайнд|big\s*blind/.test(t)) out.push('BB'); /* «бб» без числа перед ним — позиция, «50 бб» — стек */ return ORD.filter(p => out.includes(p)); }
 function vsInfo(ql) {
-  const m = /(против|vs\.?|versus|на\s*опен[\wа-яё]*|на\s*открыт[\wа-яё]*)/.exec(ql), matrix = /позици[\wа-яё]*\s*против\s*позици|поз[аыу]?\s*в\s*поз|детальн|против\s*(кажд|всех\s*позиц)|по\s*открывающ|по\s*опенер/.test(ql);
+  // «против опена / открытия» — не разделитель позиций, если дальше есть ещё «против X»
+  const all = [...ql.matchAll(/(против|vs\.?|versus|на\s*опен[\wа-яё]*|на\s*открыт[\wа-яё]*)/g)], pick = all.filter(x => !/^против$/.test(x[0]) || !/^\s*(опен|открыт)/.test(ql.slice(x.index + x[0].length)));
+  const m = pick.length ? pick[pick.length - 1] : all[0], matrix = /позици[\wа-яё]*\s*против\s*позици|поз[аыу]?\s*в\s*поз|детальн|против\s*(кажд|всех\s*позиц)|по\s*открывающ|по\s*опенер/.test(ql);
   if (!m && !matrix) return null;
   const left = m ? posIn(ql.slice(0, m.index)) : [], right = m ? posIn(ql.slice(m.index + m[0].length)) : [];
   if (!matrix && !right.length) return null;
@@ -285,6 +287,8 @@ function v3mBlocks(P, ql, vs, bands) {
   const get = (h, o) => { let n = 0, a = 0, b = 0; for (const bd of bands) { const x = M[h] && M[h][o] && M[h][o][bd]; if (x) { n += x[0]; a += x[2]; b += x[3]; } } return { n, v: k === 'all' ? a + b : k === 'nai' ? a : b, a, b }; };
   const H = vs.hero.length ? vs.hero : V3H, O = vs.opp.length ? vs.opp : V3O, note = 'строки — моя позиция, колонки — кто открыл; против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   if (H.length === 1 && O.length === 1) { const r = get(H[0], O[0]); return [{ type: 'big', title: title(P) + ' — ' + name + ' с ' + H[0] + ' против ' + O[0], big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, note: (r.n && k === 'all' ? 'NAI ' + pctS(r.a, r.n) + ' · AI ' + pctS(r.b, r.n) + ' · ' : '') + 'против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '') }]; }
+  // осталась одна клетка (одна моя позиция с данными против одного опенера) — одна цифра
+  if (O.length === 1) { const Hd = H.filter(h => ORD.indexOf(O[0]) < ORD.indexOf(h) && get(h, O[0]).n); if (Hd.length === 1) return v3mBlocks(P, ql, { hero: Hd, opp: O }, bands); }
   const rows = H.map(h => [h, ...O.map(o => { if (ORD.indexOf(o) >= ORD.indexOf(h)) return ''; const r = get(h, o); return r.n ? { v: pctS(r.v, r.n), n: r.n } : { v: '—', n: 0 }; })]).filter(r => r.slice(1).some(c => c && c.n));
   return [{ type: 'table', title: title(P) + ' — ' + name + ': позиция против позиции', note, table: { head: ['', ...O], rows, grid: true } }];
 }function statBlocks(P, id, ql, TT) {
