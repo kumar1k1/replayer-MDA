@@ -580,7 +580,21 @@ function clarify(out, q0, key) {
 }
 // прошлый вопрос даём Claude только для уточнений: в новом вопросе назван стат и нет слов «эту / то же самое / а … / теперь» — это новый вопрос
 const REFINE = /(^|[^а-яё])(эт[уоаиы]|то\s*же|тоже|теперь|так\s*же|ещё|еще)([^а-яё]|$)|^\s*(а|и|но|нет)[\s,]/;
-async function ask(q0, ctx, key, alts, voice, prevQ) { const ql0 = String(q0 || '').toLowerCase(); if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ), q0, key); }async function ask0(q0, ctx, key, alts, voice, prevQ) {
+async function ask(q0, ctx, key, alts, voice, prevQ) { const ql0 = String(q0 || '').toLowerCase();
+  if (!key && (NOBRAIN || !BRAIN.status().ready)) { const parts = splitParts(q0); if (parts) { const src = ql0, own = isOwn(src); return multiAnswer(parts, ctx, voice && ctx ? { own, src } : null, own); } } if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ), q0, key); }// ---------- несколько просьб в одном вопросе (владелец, 24.11.2026): все ответы подряд в одном сообщении ----------
+const partId = (p) => { const l = wordsToNum(normRFI(String(p))).toLowerCase(); return statOf(l) || (intentOf(l) !== 'card' ? intentOf(l) : null); };
+// запасной разбор (без Claude): делим по «и», запятым, «а также», «плюс», если в частях РАЗНЫЕ статы
+function splitParts(q) {
+  const segs = String(q || '').split(/\s*(?:,|;|\s+и\s+|\s+а\s+также\s+|\s+плюс\s+|\s+ещё\s+|\s+еще\s+)\s*/i).filter(Boolean), parts = [];
+  for (const sg of segs) { const id = partId(sg); if (id && (!parts.length || parts[parts.length - 1].id !== id)) parts.push({ t: sg, id }); else if (parts.length) parts[parts.length - 1].t += ' ' + sg; else parts.push({ t: sg, id }); }
+  const real = parts.filter(p => p.id); return real.length > 1 ? real.map(p => p.t) : null; // вступление без стата («покажи два…») отбрасываем
+}
+function multiAnswer(parts, ctx, lock, own) {
+  // игрок из первой части переносится на остальные: «мои 3-беты … и колд-коллы …» — оба про меня
+  const outs = parts.map(p => { const pl = String(p).toLowerCase(), lk = lock ? { own: lock.own || isOwn(pl), src: lock.src } : null; return answer((own && !isOwn(pl) ? 'мой ' : '') + p, ctx, null, lk); });
+  const base = outs.find(o => !notFound(o)) || outs[0];
+  return Object.assign({}, base, { intent: 'multi', blocks: outs.flatMap(o => o.blocks || []), heard: outs.map(o => o.heard).filter(Boolean).join(' · ') });
+}async function ask0(q0, ctx, key, alts, voice, prevQ) {
   if (key || !q0) return answer(q0, ctx, key);
   if (voice && ctx) {
     const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
@@ -596,6 +610,7 @@ async function ask(q0, ctx, key, alts, voice, prevQ) { const ql0 = String(q0 || 
       if (B) o.brain = { model: BRAIN.status().model, phrase: B.phrase };
       return o;
     }
+    if (B && B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1) { const o = multiAnswer(B.parsed.parts, ctx, lock, lock.own); o.brain = { model: BRAIN.status().model, phrase: o.heard }; return o; }
     let out = null, best = -1;
     // Claude понял вопрос — его ответ главный (свой разбор слов — только если Claude нет); таблицу строим по его описанию
     if (B && B.phrase) { out = answer(B.phrase, ctx, null, lock, specFromBrain(B.parsed)); out.brain = { model: BRAIN.status().model, phrase: B.phrase }; return out; }
@@ -606,6 +621,7 @@ async function ask(q0, ctx, key, alts, voice, prevQ) { const ql0 = String(q0 || 
   const prev = ctx ? (qKey.get(ctx) || {}).nick : null;
   const B = await BRAIN.understand(q0, prev, prevQ);
   const cands = [];
+  if (B && B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1) { const o = multiAnswer(B.parsed.parts, ctx, null, isOwn(String(q0).toLowerCase())); o.brain = { model: BRAIN.status().model, phrase: o.heard }; return o; }
   if (B && B.phrase) {
     const spec = specFromBrain(B.parsed); let o = answer(B.phrase, ctx, null, null, spec);
     // ник не нашёлся как есть — берём самый «большой» ник, который так начинается

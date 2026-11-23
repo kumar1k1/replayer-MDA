@@ -25,7 +25,7 @@ const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'COLD_CALL', 'OVERCALL
   'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'VS_3BET', 'SQUEEZE', 'ISO', 'VS_ALLIN', 'POSTFLOP', 'UNKNOWN'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers'],
+  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers', 'parts'],
   properties: {
     me: { type: 'boolean', description: 'спрашивают про себя (мой, мои, у меня, моя статистика)' },
     nick: { type: 'string', description: 'ник игрока, как услышан/написан; пусто — игрок не назван (тогда «его/он» = прошлый игрок)' },
@@ -40,6 +40,7 @@ const SCHEMA = {
     stack_groups: { type: 'array', description: 'строки таблицы — группы стеков, если их назвали (короткие/средние/большие, «до 15, 15–30, больше 30»); иначе []', items: { type: 'object', additionalProperties: false, required: ['name', 'from', 'to'], properties: { name: { type: 'string' }, from: { type: ['number', 'null'] }, to: { type: ['number', 'null'] } } } },
     opener: { type: 'string', enum: ['none', 'EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'], description: 'против чьего опена (позиция открывшего): «3-бет баттона против MP» → MP; иначе none' },
     vs_matrix: { type: 'boolean', description: '«позиция против позиции», «поза в позу», «детальный 3-бет», «против каждой позиции» — таблица моя позиция × кто открыл' },
+    parts: { type: 'array', items: { type: 'string' }, description: 'если в вопросе НЕСКОЛЬКО отдельных просьб (два-три разных стата / таблицы) — каждая отдельной короткой фразой с игроком, в стиле «мой 3-бет по позициям», «мой колд-колл по позициям», «FFtonny VPIP»; одна просьба — []' },
     callers: { type: 'string', enum: ['any', '1', '2+'], description: 'для оверколла: третьим в банк (1 коллер) — 1, четвёртым и дальше — 2+; иначе any' },
     limpers: { type: 'string', enum: ['any', '1', '2+'], description: 'для изолейта: против одного лимпера — 1, двух и больше — 2+; иначе any' },
     allin: { type: 'string', enum: ['any', 'without', 'only'], description: '«без олл-инов / без улынов / без пушей / NAI» — without; «только олл-ины / улыны / пуши / олл-ином / AI» — only; иначе any (голос пишет олл-ины как «улыны», «пуши»)' },
@@ -59,6 +60,8 @@ POSTFLOP (c-bet, донк, чек-рейз, флоп, тёрн), card — про
 «Мой / мои / у меня / моя» — me=true. «Покажи мне …», «скажи мне …» — НЕ про себя (me=false): это про открытого игрока. Ник: латиница, цифры; голос может разбить ник на слова или написать по-русски — восстанови,
 как он, скорее всего, пишется латиницей (например «эф эф тони» → FFtonny); не уверен — оставь как услышал.
 Один стат без слов «таблица», «по позициям», «по стекам» — table=false, by_stack=false.
+Несколько просьб в одном вопросе («покажи мои 3-беты по позициям и колд-коллы по позициям», «VPIP, PFR и винрейт») — заполни parts, по фразе на каждую;
+остальные поля — по первой просьбе. «3-беты по коротким и большим стекам», «колл третьим и четвёртым» — одна просьба (parts = []).
 Уточнение прошлого вопроса («эту таблицу», «то же самое», «тоже самое», «а теперь…», «а для…», «а без олл-инов», «а на 40–80 бб») —
 возьми стат, таблицу, позиции и всё прочее из прошлого вопроса и измени только то, что уточнили. Повтор одной фразы дважды — это одна фраза.
 Если же в новом вопросе сам назван стат (3-бет, RFI, VPIP…) и нет слов-уточнений («эту», «то же самое», «а теперь», «а для», «а без», «а только») —
