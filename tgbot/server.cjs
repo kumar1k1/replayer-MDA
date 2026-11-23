@@ -237,7 +237,7 @@ const STATS = [
   ['SQ', /квадрат|фиат/],
 ];
 const NO_STAT = /rfi|опен|открыт|первым|стил|сквиз|изо|изол|iso|против\s*(опен|лимп|олл)|колл\s*опен|на\s*опен|винрейт|winrate|выигрыш|профит|bb\/100|бб\/100/;
-function statOf(ql) { if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
+function statOf(ql) { if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
 const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -331,6 +331,16 @@ function ocBlocks(P, ql, o) {
   }
   const rows = Cs.map(C => [LBL[C], ...cols.map(p => { const x = ocGet(P, p, C, bands); return { v: pctS(x[1], x[0]), n: x[0] }; })]);
   return [{ type: 'table', title: title(P) + ' — колл ' + (Cs.length === 2 ? 'третьим и четвёртым' : Cs[0] === 1 ? 'третьим' : 'четвёртым и дальше') + ' в банк' + (cols.length > 1 ? ' по позициям' : ''), note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
+}// ---------- 3-бет против изолейта (алиас — ext.b3i): до меня лимп, его изолировали (не олл-ин), коллеров нет, я 3-бечу ----------
+const B3I_RE = /(3\s*-?\s*бет[а-яё]*|трибет[а-яё]*|3b(et)?)\s*(против|vs\.?|на)\s*(изо|изол|iso)|против\s*изол[а-яё]*/;
+function b3iBlocks(P, ql, o) {
+  const { bands, PL, pos } = o, mode = aiMode(ql), k = mode === 'nai' ? [1] : mode === 'ai' ? [2] : [1, 2], name = '3bet vs ISO' + (mode === 'nai' ? ' NAI' : mode === 'ai' ? ' AI' : '');
+  const get = (p) => { let n = 0, v = 0; for (const b of bands) { const r = P.ext.b3i[p] && P.ext.b3i[p][b]; if (r) { n += r[0]; for (const j of k) v += r[j]; } } return { n, v }; };
+  const cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : o.table ? IPOS : ['TOT']);
+  const note = 'до нас лимп, его изолировали рейзом (не олл-ин), коллеров нет; мы 3-бетим' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
+  const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами';
+  if (cols.length === 1) { const r = get(cols[0]); return [{ type: 'big', title: title(P) + ' — ' + name + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, ai, note }]; }
+  return [{ type: 'table', title: title(P) + ' — ' + name + ' по позициям', note, ai, table: { head: ['', ...cols], rows: [[name, ...cols.map(p => { const r = get(p); return { v: pctS(r.v, r.n), n: r.n }; })]], grid: true } }];
 }function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
@@ -341,6 +351,7 @@ function ocBlocks(P, ql, o) {
   if (id === 'LIMP') { const a = c('LimpNSB'); return [big('лимп первым (кроме SB)', f1(a.p) + '%', a.n, '')]; }
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
+  if (id === 'B3I') { if (!(P.ext && P.ext.b3i)) return [{ type: 'text', text: '3-бет против изолейта пока посчитан только по вашей базе.' }]; return b3iBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }); }
   if (id === 'OC' && P.ext && P.ext.oc && TT) return ocBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand || TT.G) });
   if (id === 'CC' && P.ext && P.ext.vso && TT) {
     // колд-колл (владелец, 24.11.2026): колл ровно одного опена без коллеров, опен не олл-ин — то же правило, что 3-бет
