@@ -156,7 +156,10 @@ function bandsOf(q) {
 // ---------- таблица под запрос (владелец, 24.11.2026): строки — названные группы стеков, колонки — названные позиции ----------
 // стеки в базе копятся диапазонами BANDS; группа «от … до …» берёт диапазоны, чья середина внутри неё, подпись — реальные границы
 const BANDR = { '<12': [0, 12], '12-19': [12, 20], '20-35': [20, 36], '36-59': [36, 60], '60-99': [60, 100], '100-149': [100, 150], '150+': [150, Infinity] };
-const bandsIn = (lo, hi) => BANDS.filter(b => { const [a, z] = BANDR[b], m = z === Infinity ? 175 : (a + z) / 2; return m >= (lo == null ? 0 : lo) && m < (hi == null ? Infinity : hi); });
+// диапазон стеков берём, если он хотя бы наполовину внутри названного интервала (40–80 → 36–59 и 60–99)
+const bandsIn = (lo, hi) => BANDS.filter(b => { const [a, z0] = BANDR[b], z = z0 === Infinity ? 200 : z0, L = lo == null ? 0 : lo, H = hi == null ? Infinity : hi; const ov = Math.min(z, H) - Math.max(a, L); return ov > 0 && ov / (z - a) >= 0.5; });
+// Whisper иногда повторяет фразу дважды — убираем повтор
+const dedupPhrase = (q) => { const p = String(q || '').split(/(?<=[.!?])\s+/); const out = p.filter((x, i) => i === 0 || x.trim().toLowerCase() !== p[i - 1].trim().toLowerCase()); return out.join(' '); };
 const grpLabel = (name, bs) => { const a = BANDR[bs[0]][0], z = BANDR[bs[bs.length - 1]][1]; const r = a === 0 ? 'до ' + z + ' bb' : z === Infinity ? a + '+ bb' : a + '–' + (z - 1) + ' bb'; return name ? name + ' (' + r + ')' : r; };
 const SG = { short: ['короткие', 0, 20], mid: ['средние', 20, 60], deep: ['большие', 60, null] };
 function groupsRule(ql) {
@@ -469,11 +472,24 @@ async function transcribe(wav) {
 const readBody = (req, max) => new Promise((ok, no) => { const ch = []; let n = 0; req.on('data', (c) => { n += c.length; if (n > max) { no(new Error('слишком длинная запись')); req.destroy(); } else ch.push(c); }); req.on('end', () => ok(Buffer.concat(ch))); req.on('error', no); });
 
 const notFound = (o) => !o || o.nf || (o.blocks || []).some(b => b.text === 'Игрока не нашёл.');
-async function ask(q0, ctx, key, alts, voice) {
+// непонятный вопрос — не карточка, а просьба уточнить (владелец, 24.11.2026). Карточка — только если её просили:
+// «покажи игрока / статистику / карточку», «кто такой», или во фразе только ник и служебные слова
+const CARD_WORDS = /карточк|статистик|(^|[^а-яё])стат(ы|ов)?([^а-яё]|$)|кто\s*(такой|это)|профил|всё\s*(о|про)|все\s*(о|про)|(^|[^а-яё])(покажи|найди|открой|дай)\s+(мне\s+)?(его|её|ее|игрока|ника?|алиас)|мой\s*алиас|(^|[^а-яё])алиас/;
+const FILLER = new Set('покажи покажите показать найди открой дай мне его её ее игрока игрок ник ника пожалуйста ну а и так давай хочу хотел узнать посмотреть скажи это эту этого про о по'.split(' '));
+function clarify(out, q0, key) {
+  if (key || !out || out.intent !== 'card' || out.nf) return out;
+  const ql = String(q0 || '').toLowerCase();
+  if (CARD_WORDS.test(ql)) return out;
+  const nk = nnorm(((qKey.get(out.key) || {}).nick) || '');
+  const left = ql.replace(/[.,!?«»"]+/g, ' ').split(/\s+/).filter(t => t && !FILLER.has(t) && !STOP.has(t) && !(nk && nnorm(t).length >= 2 && nk.includes(nnorm(t))));
+  if (!left.length) return out; // только ник — карточка
+  return { key: out.key, player: out.player, group: out.group, intent: 'clarify', heard: out.heard, brain: out.brain, blocks: [{ type: 'text', text: 'Не понял, что показать' + (out.player ? ' по ' + out.player : '') + '. Уточните, например: «VPIP», «3-беты по позициям», «RFI по стекам», «фолд на 3-бет», «винрейт» или «карточка».' }] };
+}
+async function ask(q0, ctx, key, alts, voice, prevQ) { return clarify(await ask0(q0, ctx, key, alts, voice, prevQ), q0, key); }async function ask0(q0, ctx, key, alts, voice, prevQ) {
   if (key || !q0) return answer(q0, ctx, key);
   if (voice && ctx) {
     const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
-    const B = await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick);
+    const B = await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick, prevQ);
     // явная смена игрока голосом: «… игрока X», «ник X» (или открыта своя база и назван чужой ник) — ищем X, нет — похожие ники
     const bNick = B && B.parsed && !B.parsed.me ? String(B.parsed.nick || '').trim() : '';
     const marker = /(^|[^a-zа-яё])(игрок[а-яё]*|ник[а-яё]*)([^a-zа-яё]|$)/i.test(src);
@@ -493,7 +509,7 @@ async function ask(q0, ctx, key, alts, voice) {
   }
   // мозг (Claude): понимает вопрос любыми словами → точная фраза; цифры — из базы. Нет ключа — свой разбор слов.
   const prev = ctx ? (qKey.get(ctx) || {}).nick : null;
-  const B = await BRAIN.understand(q0, prev);
+  const B = await BRAIN.understand(q0, prev, prevQ);
   const cands = [];
   if (B && B.phrase) {
     const spec = specFromBrain(B.parsed); let o = answer(B.phrase, ctx, null, null, spec);
@@ -520,7 +536,7 @@ const srv = http.createServer(async (req, res) => {
     const t0 = Date.now(); let out;
     const q0 = u.searchParams.get('q'), ctx = u.searchParams.get('ctx'), key = u.searchParams.get('key');
     let alts = []; try { alts = JSON.parse(u.searchParams.get('alts') || '[]').filter(x => typeof x === 'string').slice(0, 12); } catch (e) { alts = []; }
-    try { out = await ask(q0, ctx, key, alts, !!u.searchParams.get('voice')); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; }
+    try { out = await ask(dedupPhrase(q0), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || ''); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; }
     try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, brain: out.brain || null, heard: out.heard, intent: out.intent, player: out.player || null }) + '\n'); } catch (e) {}
     out.ms = Date.now() - t0;
     return J(out);

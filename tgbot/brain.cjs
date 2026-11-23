@@ -57,6 +57,8 @@ POSTFLOP (c-bet, донк, чек-рейз, флоп, тёрн), card — про
 «Мой / мои / у меня / моя» — me=true. «Покажи мне …», «скажи мне …» — НЕ про себя (me=false): это про открытого игрока. Ник: латиница, цифры; голос может разбить ник на слова или написать по-русски — восстанови,
 как он, скорее всего, пишется латиницей (например «эф эф тони» → FFtonny); не уверен — оставь как услышал.
 Один стат без слов «таблица», «по позициям», «по стекам» — table=false, by_stack=false.
+Уточнение прошлого вопроса («эту таблицу», «то же самое», «тоже самое», «а теперь…», «а для…», «а без олл-инов», «а на 40–80 бб») —
+возьми стат, таблицу, позиции и всё прочее из прошлого вопроса и измени только то, что уточнили. Повтор одной фразы дважды — это одна фраза.
 Таблица под запрос: группы стеков → stack_groups (bb, to — не включая): «короткие» {name:'короткие',from:null,to:20}, «средние» {from:20,to:60},
 «большие/глубокие» {from:60,to:null}; «супер большие», «очень большие», «очень глубокие» {from:100,to:null}; «мелкие» = короткие;
 «очень короткие» {from:null,to:12}; свои границы — как сказали. Названы «большие» и «супер большие» вместе — большие {from:60,to:100}. Несколько позиций или группа → positions: «ранние позиции» = [EP];
@@ -84,7 +86,7 @@ function toPhrase(o) {
 }
 
 // текст → { phrase, parsed } или null (тогда бот разбирает слова сам)
-async function understand(text, prevPlayer) {
+async function understand(text, prevPlayer, prevQ) {
   const c = getClient(); if (!c || Date.now() < disabledUntil) return null;
   try {
     const r = await c.beta.messages.create({
@@ -92,7 +94,7 @@ async function understand(text, prevPlayer) {
       betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
       output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
       system: SYSTEM,
-      messages: [{ role: 'user', content: (prevPlayer ? 'Прошлый игрок в разговоре: ' + prevPlayer + '\n' : '') + 'Вопрос: ' + text }],
+      messages: [{ role: 'user', content: (prevPlayer ? 'Прошлый игрок в разговоре: ' + prevPlayer + '\n' : '') + (prevQ ? 'Прошлый вопрос: ' + prevQ + '\n' : '') + 'Вопрос: ' + text }],
     });
     if (r.stop_reason === 'refusal') return null;
     const t = (r.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
