@@ -621,6 +621,17 @@
           if (ch && ch.oppFold) row.oppFold = ch.oppFold;
         }
         if (size && !size.none) { row.size = size; row.ru = RU[act] + ' до ' + size.to + ' bb'; if (size.allin) row.asShove = true; }
+        // EV каждого размера из окна размеров (владелец, 23.11.2026): EV топов этим размером всеми их руками (BB к фолду),
+        // ячейка «T|спот|действие@корзина»; сумма «до» → корзина размера (lib/sizing.js). От 50 раздач, иначе нет
+        if (row.size && row.size.dist) {
+          const sa = SZACT(act, sp), { S, Sb } = keys(sp);
+          row.size = Object.assign({}, row.size, { dist: row.size.dist.map(d => {
+            const b = sa ? SZ.bucketOf(sa, SZ.measure(sa, +d.to, sp.refTo, sp.nLimp)) : null;
+            let c = null, lvl = null;
+            if (b) for (const [pref, L] of [[S, 'точно'], [Sb, 'по семейству позиций']]) { const x = evOK(cellEV('T|' + pref + '|' + act + '@' + b + '|*')); if (x && x.n >= 50) { c = x; lvl = L; break; } if (x && !c) c = x; }
+            return Object.assign({}, d, { bucket: b, ev: c && c.n >= 50 ? c.m : null, evN: c ? c.n : 0, evLvl: lvl });
+          }) });
+        }
         if (cards && act === 'shove' && sp.tbl !== 'AI' && sp.others) { const r = shoveEV(sp, cards, info); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, pFold: r.pFold, bounty: r.bounty, sd: r.sd, risk: r.risk, pMulti: r.pMulti, estErr: r.estErr }); }
         if (cards && act === 'call' && sp.tbl === 'AI') { const r = callAllinEV(sp, cards); return Object.assign(row, { ev: r.m, se: r.se, src: r.src, n: r.n, eq: r.eq, bounty: r.bounty, bountyBB: r.bountyBB, estErr: r.estErr }); }
         const sl = spotLevel('T', sp, act);

@@ -22,13 +22,19 @@ const SZ_VS = { r: 'против рега', n: 'против нита', f: 'пр
       const who = SZ_WHO[String(z.src || '').split(':')[0]] || 'у топов';
       szBox.append(el('div', 'rm-szh', 'Размеры «' + (SZ_RU[row.act] || row.act) + '» ' + who + ' здесь' + (z.vsRef ? ' против рейза до ' + z.vsRef + ' bb' : '') + (z.vs != null && SZ_VS[z.vs] ? ' ' + SZ_VS[z.vs] : '')));
       const best = Math.max(...z.dist.map(d => d.share));
+      { const h = el('div', 'rm-szr rm-szhd'); h.append(el('span', null, 'рейз до'), el('span'), el('span', 'rm-szs', 'доля'), el('span', 'rm-sze', 'EV топов'), el('span')); szBox.append(h); }
       for (const d of z.dist) {
         const on = +d.to === +z.to, r = el('div', 'rm-szr' + (on ? ' on' : ''));
         const bar = el('span', 'rm-szb'); bar.style.width = Math.max(2, Math.round(d.share / best * 100)) + '%';
-        r.append(el('span', 'rm-szt', 'до ' + String(d.to).replace('.', ',') + ' bb'), el('span', 'rm-szw'), el('span', 'rm-szs', d.share + '%'));
-        r.children[1].append(bar); if (on) r.append(el('span', 'rm-szo', 'совет')); szBox.append(r);
+        const ev = el('span', 'rm-sze' + (d.ev == null ? ' x' : d.ev > 0.05 ? ' p' : d.ev < -0.05 ? ' m' : ''), d.ev == null ? '—' : sgn(d.ev));
+        r.append(el('span', 'rm-szt', String(d.to).replace('.', ',') + ' bb'), el('span', 'rm-szw'), el('span', 'rm-szs', d.share + '%'), ev, el('span', 'rm-szo', on ? 'совет' : ''));
+        r.children[1].append(bar); szBox.append(r);
       }
-      szBox.append(el('div', 'rm-szn', 'Совет — самый частый размер. Доли — от всех рейзов «' + (SZ_RU[row.act] || row.act) + '» ' + who + ' в этом споте.'));
+      // в списке — только размеры от 5% (у 3-бета / сквиза / 4-бета — 5 самых частых сумм): остальное — одной строкой
+      const rest = 100 - z.dist.reduce((s2, d) => s2 + d.share, 0);
+      if (rest >= 1) { const r = el('div', 'rm-szr rm-szrest'); r.append(el('span', 'rm-szt', 'прочие'), el('span'), el('span', 'rm-szs', rest + '%'), el('span', 'rm-sze x', ''), el('span')); szBox.append(r); }
+      const shared = new Set(); { const seen = {}; for (const d of z.dist) if (d.bucket) { if (seen[d.bucket]) shared.add(d.bucket); seen[d.bucket] = 1; } }
+      szBox.append(el('div', 'rm-szn', 'Каждая строка — отдельный размер (общая ставка «рейз до N bb»), не накопительно; «прочие» — редкие размеры (меньше 5% каждый). Совет — самый частый размер' + (row.asShove ? ' (здесь он больше 90% стека — поэтому олл-ин)' : '') + '. Доля — от всех рейзов «' + (SZ_RU[row.act] || row.act) + '» ' + who + ' в этом споте. EV топов — сколько им этот размер в среднем приносит их руками (BB к фолду, не EV вашей руки); «—» — меньше 50 раздач.' + (shared.size ? ' Соседние размеры с одинаковым EV — в базе одна корзина размера.' : '')));
       document.body.append(szBox);
       const b = td.getBoundingClientRect(), w = szBox.offsetWidth, h = szBox.offsetHeight;
       let x = b.left - w - 8; if (x < 8) x = Math.min(window.innerWidth - w - 8, b.right + 8);
