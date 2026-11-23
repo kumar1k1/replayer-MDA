@@ -693,6 +693,24 @@
         const top = Object.entries(hw.w).sort((a, b) => b[1] - a[1])[0];
         if (top && top[0] !== rec.act && rowOf(top[0])) { rec = { act: top[0], why: 'по тому, как ' + hw.who + ' играют ' + K.H169[h].label + ' в этом споте' }; best = rowOf(top[0]); }
       }
+      // ---- фолд вопреки GTO без подтверждения базой (владелец, 23.11.2026: «отклонение от GTO — только если плюс
+      // подтверждён базой»). Фолд по одним частотам (рука на границе диапазона топов), а GTO эту руку в основном играет
+      // и EV руки этим действием не в минус — советуем действие GTO. Фолд остаётся, если по базе надёжно видно,
+      // что все варианты хуже фолда, или EV руки действия GTO не в плюс.
+      if (cards && rec.act === 'fold' && !rows.some(r => r.reliable && r.act !== 'fold')) {
+        const gf = gtoFreq(sp, h);
+        const evHand = (r) => (r && r.ev != null && !r.biased && (r.src === 'GTO-поправка' || /^эквити/.test(r.src)) ? r.ev : null);
+        if (gf) {
+          const RZ = ['4bet', '3bet', 'iso', 'open'].find(a => acts.indexOf(a) >= 0);
+          const mapA = (a) => (a === 'raise' ? RZ : a), main = Object.entries(gf.f).filter(([a]) => a !== 'fold').sort((x, y) => y[1] - x[1])[0];
+          const gr = main && main[1] >= 0.5 ? rowOf(mapA(main[0])) : null;
+          if (gr && !gr.asShove && (evHand(gr) == null || evHand(gr) > 0)) {
+            const evT = evHand(gr) != null ? '; EV руки ' + (RU[gr.act] || gr.act) + ' ' + (evHand(gr) > 0 ? '+' : '') + Math.round(evHand(gr) * 100) / 100 + ' bb' : '';
+            rec = { act: gr.act, why: 'GTO: ' + (RU[gr.act] || gr.act) + ' ' + Math.round(main[1] * 100) + '% — по базе фолд не подтверждён (' + rec.why + ')' + evT, byGto: true };
+            best = gr;
+          }
+        }
+      }
       const recRow = rowOf(rec.act);
       if (recRow && recRow.asShove && rowOf('shove')) { rec = { act: 'shove', why: rec.why + '; ' + recRow.size.why }; best = rowOf('shove'); }
       // ---- только плюсовые действия (владелец, 19.11.2026) ----
