@@ -108,7 +108,7 @@ function rfiGrid(P, bands, byBand) {
   const S = rfiSrc(P), head = ['', 'TOT', ...S.cols], rows = [];
   const row = (lab, bs, k) => [lab, ...['TOT', ...S.cols].map(p => { const x = S.get(p, bs); return { v: pctS(x[k], x.n), n: x.n }; })];
   if (!byBand) { rows.push(row('RFI', bands, 'tot')); rows.push(row('NAI', bands, 'nai')); }
-  else for (const b of bands) { const r = row(b + ' bb', [b], 'tot'); if (r[1].n) { rows.push(r); } }
+  else for (const b of bands) { const r = row(b + ' bb', [b], 'nai'); if (r[1].n) { rows.push(r); } } // по стекам — без олл-инов, как таблица Hand2Note (сверено 23.11)
   return { head, rows, grid: true };
 }const FAM_T = { rfi: 'Первым в банк (опен / лимп / олл-ин) по позициям', vso: 'Против опена: колл / 3-бет / олл-ин по позициям', vs3: 'После своего опена против 3-бета', sqz: 'Сквиз (опен и колл перед ним)', iso: 'Против лимперов: изо / овер-лимп', ai: 'Против олл-ина: колл' };
 
@@ -282,7 +282,7 @@ function answerFor(P, ql, intent, rows0) {
       const T = { head: ['стек', 'RFI', 'NAI'], rows: [], grid: true };
       for (const b of bands) { const x = S.get(p1, [b]); if (x.n) T.rows.push([b + ' bb', { v: pctS(x.tot, x.n), n: x.n }, { v: pctS(x.nai, x.n), n: x.n }]); }
       blocks.push({ type: 'table', title: title(P) + ' — RFI ' + (p1 === 'TOT' ? 'общий' : 'с ' + p1) + ' по стекам', note: 'NAI — без олл-инов' + posNote, table: T });
-    } else blocks.push({ type: 'table', title: title(P) + ' — RFI по позициям', note: stackTxt + (byBand ? ' · по стекам, с олл-инами' : ' · NAI — без олл-инов') + posNote, table: rfiGrid(P, bands, byBand && !(bands0 && bands0.length === 1)) });
+    } else blocks.push({ type: 'table', title: title(P) + ' — RFI по позициям', note: stackTxt + (byBand ? ' · по стекам, без олл-инов (как в Hand2Note); стек — свой, без анте' : ' · NAI — без олл-инов') + posNote, table: rfiGrid(P, bands, byBand && !(bands0 && bands0.length === 1)) });
   }  else {
     const t = famTable(P, intent, bands, byBand);
     blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T[intent], note: bnote + (intent === 'vso' ? ' · BTN, CO, HJ пока одной группой (разделим при следующем пересчёте)' : ''), table: t });
