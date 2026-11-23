@@ -254,14 +254,16 @@ function botMsg(a, holder) {
   if (a.key) setCtx(a.key, a.player, a.group);
   scroll();
 }
-async function ask(text, voice, key) {
+async function ask(text, voice, key, alts) {
   text = String(text || '').trim(); if (!text && !key) return;
   me(text || '…', voice); inp.value = '';
   if (text) { hist.unshift(text); hi = -1; }
   const t = typing();
   try {
-    const u = '/api/ask?q=' + encodeURIComponent(text) + (ctx ? '&ctx=' + encodeURIComponent(ctx) : '') + (key ? '&key=' + encodeURIComponent(key) : '');
-    const a = await (await fetch(u)).json(); botMsg(a, t);
+    const u = '/api/ask?q=' + encodeURIComponent(text) + (ctx ? '&ctx=' + encodeURIComponent(ctx) : '') + (key ? '&key=' + encodeURIComponent(key) : '') + (voice ? '&voice=1' : '') + (alts && alts.length ? '&alts=' + encodeURIComponent(JSON.stringify(alts.slice(0, 12))) : '');
+    const a = await (await fetch(u)).json();
+    if (voice && a.heard && a.heard.toLowerCase() !== text.toLowerCase()) (a.blocks = a.blocks || []).push({ type: 'text', text: 'Понял как: «' + a.heard + '»' });
+    botMsg(a, t);
   } catch (e) { t.querySelector('.bub').textContent = 'Нет связи с программой — перезапустите ярлык «TG-бот».'; }
 }
 // ---------- подсказки ников при вводе латиницей ----------
@@ -310,16 +312,23 @@ inp.addEventListener('keydown', (e) => {
 });
 
 // ---------- голос: распознавание речи браузера (ru-RU) ----------
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition; let rec = null, recOn = false, heard = '';
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition; let rec = null, recOn = false, heard = '', alts = []; const PH = 'Ник или вопрос — «мой алиас», «покажи FFtonny», «его 3-беты по позициям до 20 бб»';
 function micStart() {
   if (!SR) { const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Голос в этом окне не поддерживается — запускайте программу ярлыком «TG-бот» (окно Edge).' }] }, m); return; }
-  rec = new SR(); rec.lang = 'ru-RU'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1; heard = '';
-  rec.onresult = (e) => { let s = ''; for (let i = 0; i < e.results.length; i++) s += e.results[i][0].transcript; heard = s; inp.value = s; };
+  // слушаем всю фразу: паузы внутри не обрывают запись; конец — 1,8 с тишины или повторное нажатие
+  rec = new SR(); rec.lang = 'ru-RU'; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 5; heard = ''; alts = [];
+  let quiet = null; const arm = () => { clearTimeout(quiet); quiet = setTimeout(() => { if (recOn) rec.stop(); }, 1800); };
+  rec.onresult = (e) => {
+    let s = ''; const fin = [];
+    for (let i = 0; i < e.results.length; i++) { s += e.results[i][0].transcript; if (e.results[i].isFinal) fin.push(Array.from(e.results[i], x => x.transcript)); }
+    heard = s; inp.value = s; arm();
+    // варианты распознавания всей фразы: подменяем по одному куску на его запасной вариант
+    alts = []; if (fin.length) { const top = fin.map(v => v[0]); fin.forEach((v, k) => v.slice(1).forEach(x => { const t = top.slice(); t[k] = x; alts.push(t.join(' ')); })); }
+  };
   rec.onerror = (e) => { if (e.error === 'not-allowed') { const m = typing(); botMsg({ blocks: [{ type: 'text', text: 'Нет доступа к микрофону — разрешите его в окне (значок замка слева от адреса) или в настройках Windows.' }] }, m); } };
-  rec.onend = () => { recOn = false; $('#mic').classList.remove('rec'); if (heard.trim()) ask(heard, true); };
-  rec.start(); recOn = true; $('#mic').classList.add('rec'); inp.value = ''; inp.placeholder = 'Говорите…';
-}
-function micStop() { if (rec) rec.stop(); inp.placeholder = 'Ник или вопрос — «мой алиас», «покажи FFtonny», «его 3-беты по позициям до 20 бб»'; }
+  rec.onend = () => { clearTimeout(quiet); recOn = false; $('#mic').classList.remove('rec'); inp.placeholder = PH; if (heard.trim()) ask(heard, true, null, alts); };
+  rec.start(); recOn = true; $('#mic').classList.add('rec'); inp.value = ''; inp.placeholder = 'Говорите… (пауза 2 секунды — отправлю)'; arm();
+}function micStop() { if (rec) rec.stop(); inp.placeholder = 'Ник или вопрос — «мой алиас», «покажи FFtonny», «его 3-беты по позициям до 20 бб»'; }
 $('#mic').onclick = () => (recOn ? micStop() : micStart());
 document.addEventListener('keydown', (e) => { if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); recOn ? micStop() : micStart(); } });
 
