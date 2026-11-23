@@ -134,7 +134,7 @@ const POS_RE = [
   ['CO', /катоф|кат оф|cut\s*off|cutoff/, W('co|ко|со|си о|си-о')],
   ['SB', /мал[а-яё]* блайнд|смол|small\s*blind/, W('sb|сб|эс би|эсби')],
   ['HJ', /хайдж|хай дж|хайж|hi\s*jack|хиджек/, W('hj|хдж|эйч джей')],
-  ['MP', /мидл|middle|средн\w*\s*позиц|позиц\w*\s*средн/, W('mp|мп|эм пи')],
+  ['MP', /мидл|middle|средн[\wа-яё]*\s*позиц|позиц[\wа-яё]*\s*средн/, W('mp|мп|эм пи')],
   ['EP', /ранн|андер|under\s*the\s*gun|early/, W('ep|еп|utg|ютг|ю ти джи')],
 ];
 function posOf(q) { for (const [p, a, b] of POS_RE) if (a.test(q) || b.test(q)) return p; return null; }
@@ -142,7 +142,7 @@ const bandOfNum = (v) => { let k = 0; const E = [12, 20, 36, 60, 100, 150]; whil
 function bandsOf(q) {
   const s = q.replace(',', '.');
   // один стек числом: «стек 42 блайнда», «42 бб», «на 42 больших», «стеком 42»
-  const one1 = /(?:стек\w*|стэк\w*|глубин\w*)\s*(?:в\s*)?(\d{1,3}(?:\.\d+)?)/.exec(s) || /(\d{1,3}(?:\.\d+)?)\s*(?:бб|bb|б\.б|блайнд|больш|биг)/.exec(s);
+  const one1 = /(?:стек[\wа-яё]*|стэк[\wа-яё]*|глубин[\wа-яё]*)\s*(?:в\s*)?(\d{1,3}(?:\.\d+)?)/.exec(s) || /(\d{1,3}(?:\.\d+)?)\s*(?:бб|bb|б\.б|блайнд|больш|биг)/.exec(s);
   if (one1 && !/(\d+)\s*(?:-|–)\s*\d+/.test(s) && !/до\s*\d/.test(s)) return Object.assign([bandOfNum(+one1[1])], { num: +one1[1] });
   if (/коротк/.test(s)) return ['<12', '12-19'];
   if (/глубок/.test(s)) return ['60-99', '100-149', '150+'];
@@ -160,17 +160,17 @@ const bandsIn = (lo, hi) => BANDS.filter(b => { const [a, z] = BANDR[b], m = z =
 const grpLabel = (name, bs) => { const a = BANDR[bs[0]][0], z = BANDR[bs[bs.length - 1]][1]; const r = a === 0 ? 'до ' + z + ' bb' : z === Infinity ? a + '+ bb' : a + '–' + (z - 1) + ' bb'; return name ? name + ' (' + r + ')' : r; };
 const SG = { short: ['короткие', 0, 20], mid: ['средние', 20, 60], deep: ['большие', 60, null] };
 function groupsRule(ql) {
-  const q = ql.replace(/больш\w*\s*блайнд\w*|\d+\s*больш\w*/g, ' ');
-  const sup = /(супер|очень|сверх)\s*-?\s*(больш|глубок)/.test(q), q2 = q.replace(/(супер|очень|сверх)\s*-?\s*(больш|глубок)\w*/g, ' ');
-  const k = /коротк|мелк/.test(q), m = /средн\w*(?!\s*позиц)/.test(q) && /ст[еэ]к|коротк|мелк|больш|глубок|сайз/.test(q), d = /больш|глубок|длинн/.test(q2);
+  const q = ql.replace(/больш[\wа-яё]*\s*блайнд[\wа-яё]*|\d+\s*больш[\wа-яё]*/g, ' ');
+  const sup = /(супер|очень|сверх)\s*-?\s*(больш|глубок)/.test(q), q2 = q.replace(/(супер|очень|сверх)\s*-?\s*(больш|глубок)[\wа-яё]*/g, ' ');
+  const k = /коротк|мелк/.test(q), m = /средн[\wа-яё]*(?!\s*позиц)/.test(q) && /ст[еэ]к|коротк|мелк|больш|глубок|сайз/.test(q), d = /больш|глубок|длинн/.test(q2);
   if (sup && (k + m + d) >= 1) return [k && SG.short, m && SG.mid, d && ['большие', 60, 100], ['супер большие', 100, null]].filter(Boolean).map(([n, lo, hi]) => { const bs = bandsIn(lo, hi); return [grpLabel(n, bs), bs]; });
-  if ((k + m + d) < 2 && !((k || m || d) && /тип\w*|групп\w*/.test(q))) return null;
+  if ((k + m + d) < 2 && !((k || m || d) && /тип[\wа-яё]*|групп[\wа-яё]*/.test(q))) return null;
   return [k && SG.short, m && SG.mid, d && SG.deep].filter(Boolean).map(([n, lo, hi]) => { const bs = bandsIn(lo, hi); return [grpLabel(n, bs), bs]; });
 }
 // позиции, названные во фразе (несколько)
 // группы позиций: ранние — EP; средние — MP, HJ; поздние — CO, BTN; блайнды — SB (владелец, 24.11.2026)
 function posListRule(ql) { const out = []; for (const [p, a, b] of POS_RE) if (a.test(ql) || b.test(ql)) out.push(p);
-  if (/средн\w*\s*позиц|позиц\w*\s*средн/.test(ql)) out.push('MP', 'HJ'); if (/поздн\w*\s*позиц|позиц\w*\s*поздн|поздн\w*\s*мест/.test(ql)) out.push('CO', 'BTN'); if (/ранн\w*\s*позиц|позиц\w*\s*ранн/.test(ql)) out.push('EP'); if (/блайнд\w*\s*позиц|из\s*блайнд/.test(ql)) out.push('SB'); return ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'].filter(p => out.includes(p)); }
+  if (/средн[\wа-яё]*\s*позиц|позиц[\wа-яё]*\s*средн/.test(ql)) out.push('MP', 'HJ'); if (/поздн[\wа-яё]*\s*позиц|позиц[\wа-яё]*\s*поздн|поздн[\wа-яё]*\s*мест/.test(ql)) out.push('CO', 'BTN'); if (/ранн[\wа-яё]*\s*позиц|позиц[\wа-яё]*\s*ранн/.test(ql)) out.push('EP'); if (/блайнд[\wа-яё]*\s*позиц|из\s*блайнд/.test(ql)) out.push('SB'); return ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'].filter(p => out.includes(p)); }
 // описание таблицы от Claude: { stack_groups: [{name, from, to}], positions: [...] }
 function specFromBrain(o) {
   if (!o) return null; const sp = {};
@@ -215,15 +215,15 @@ function findPlayer(q, ctx) {
 // ---------- один стат — одна цифра (владелец, 23.11.2026): «покажи мой WWSF», «его VPIP», «фолд на 3-бет» ----------
 // таблица — только когда просят таблицу / «по позициям» / «по стекам». Слова — как пишет и как слышит голос.
 const STATS = [
-  ['FRB', /фолд\w*\s*(на|против)\s*(бет\w*|ставк\w*)\s*(на\s*)?ривер|fold\s*to\s*(bet\s*)?river|сброс\w*\s*на\s*ривер/],
-  ['BR', /бет\s*ривер|бет\w*\s*на\s*ривер|bet\s*river|став\w*\s*на\s*ривер/],
-  ['F3', /фолд\w*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3|ф3б/],
-  ['WWSF', /wwsf|ввсф|в\s*в\s*с\s*ф|вэ\s*вэ\s*эс\s*эф|ввсэф|дабл\w*\s*дабл\w*|выигр\w*\s*(когда|после|если)\s*(увид\w*\s*)?флоп|won\s*when\s*saw/],
-  ['WSD', /w\s*\$\s*sd|wssd|w\$sd|в\s*\$\s*сд|в\s*доллар\w*\s*с\s*д|вссд|в\s*с\s*с\s*д|вдсд|вин\s*доллар|w\s*money|выигр\w*\s*на\s*(шоу\s*даун\w*|вскрыти\w*)|won\s*at\s*showdown/],
-  ['WTSD', /wtsd|втсд|в\s*т\s*с\s*д|вэ\s*тэ\s*эс\s*дэ|went\s*to\s*show|доход\w*\s*до\s*(шоу\s*даун\w*|вскрыти\w*)|ход\w*\s*на\s*(шоу\s*даун|вскрыти)|шоу\s*даун|шоудаун|вскрыти/],
+  ['FRB', /фолд[\wа-яё]*\s*(на|против)\s*(бет[\wа-яё]*|ставк[\wа-яё]*)\s*(на\s*)?ривер|fold\s*to\s*(bet\s*)?river|сброс[\wа-яё]*\s*на\s*ривер/],
+  ['BR', /бет\s*ривер|бет[\wа-яё]*\s*на\s*ривер|bet\s*river|став[\wа-яё]*\s*на\s*ривер/],
+  ['F3', /фолд[\wа-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3|ф3б/],
+  ['WWSF', /wwsf|ввсф|в\s*в\s*с\s*ф|вэ\s*вэ\s*эс\s*эф|ввсэф|дабл[\wа-яё]*\s*дабл[\wа-яё]*|выигр[\wа-яё]*\s*(когда|после|если)\s*(увид[\wа-яё]*\s*)?флоп|won\s*when\s*saw/],
+  ['WSD', /w\s*\$\s*sd|wssd|w\$sd|в\s*\$\s*сд|в\s*доллар[\wа-яё]*\s*с\s*д|вссд|в\s*с\s*с\s*д|вдсд|вин\s*доллар|w\s*money|выигр[\wа-яё]*\s*на\s*(шоу\s*даун[\wа-яё]*|вскрыти[\wа-яё]*)|won\s*at\s*showdown/],
+  ['WTSD', /wtsd|втсд|в\s*т\s*с\s*д|вэ\s*тэ\s*эс\s*дэ|went\s*to\s*show|доход[\wа-яё]*\s*до\s*(шоу\s*даун[\wа-яё]*|вскрыти[\wа-яё]*)|ход[\wа-яё]*\s*на\s*(шоу\s*даун|вскрыти)|шоу\s*даун|шоудаун|вскрыти/],
   ['VPIPPFR', /(vpip|впип|в\s*п\s*и\s*п|випип).{0,12}(pfr|пфр|п\s*ф\s*р)/],
   ['VPIP', /vpip|впип|в\s*п\s*и\s*п|вэ\s*пэ\s*ай\s*пи|ви\s*пи\s*ай\s*пи|випиай|випип|вип\b/],
-  ['PFR', /pfr|пфр|п\s*ф\s*р|пэ\s*эф\s*эр|пи\s*эф\s*ар|префлоп\w*\s*рейз/],
+  ['PFR', /pfr|пфр|п\s*ф\s*р|пэ\s*эф\s*эр|пи\s*эф\s*ар|префлоп[\wа-яё]*\s*рейз/],
   ['3B', /(3|три|тр[её]х)\s*-?\s*бет|трибет|3bet|три\s*бэт/],
   ['LIMP', /лимп|limp/],
   ['SQ', /квадрат|фиат/],
@@ -242,12 +242,13 @@ const vCell = (r, k) => ({ v: pctS(VACT[k][1].reduce((a, i) => a + r.x[i], 0), r
 const focusAct = (ql, dflt) => (/3\s*-?\s*бет|трибет|3bet/.test(ql) ? 'b3' : /колл|кол(?![а-яё])|уравн/.test(ql) ? 'call' : /олл|пуш|all/.test(ql) ? 'shove' : /фолд|сброс/.test(ql) ? 'fold' : dflt);
 const vPosList = (PL) => (PL ? [...new Set(PL.map(p => (p === 'EP' ? 'MP' : p)))].filter(p => VPOS.includes(p)) : null);
 VPOS.TOT = true;
+const RS0 = (G, byBand) => !!(G || byBand);
 function vsoBlocks(P, ql, o) {
   let { G, PL, bands, byBand, pos, focus } = o; const cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : null); // pos 'TOT' — одна общая цифра
-  const RS = G || (byBand ? BANDS.map(b => [b + ' bb', [b]]) : null), note = 'против одного опена без коллеров; стек — свой, без анте';
+  const RS = G || (byBand ? bands.map(b => [b + ' bb', [b]]) : null), note = 'против одного опена без коллеров; стек — свой, без анте' + (!RS0(G, byBand) && bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   // 3-бет: «всего» (с олл-ином), «без олл-ина», «олл-ином»; одна цифра — всего, в подписи — разбивка
   if (o.three) {
-    focus = /без\s*олл|без\s*пуш|nai|наи/.test(ql) ? 'b3' : /олл-?\s*ин\w*|пуш|ai(?![a-z])/.test(ql) ? 'b3ai' : 'b3all';
+    focus = /без\s*олл|без\s*пуш|nai|наи/.test(ql) ? 'b3' : /олл-?\s*ин[\wа-яё]*|пуш|ai(?![a-z])/.test(ql) ? 'b3ai' : 'b3all';
     const C1 = cols || ['TOT', ...VPOS];
     if (C1.length === 1 && !RS) { const r = vsoGet(P, C1[0], bands); return [{ type: 'big', title: title(P) + ' — ' + VACT[focus][0] + (C1[0] === 'TOT' ? '' : ' с ' + C1[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note: (r.n && focus === 'b3all' ? 'NAI ' + vCell(r, 'b3').v + ' · AI ' + vCell(r, 'b3ai').v + ' · ' : '') + note }]; }
     if (!RS) { const LBL = { b3all: '3bet', b3: '3bet NAI', b3ai: '3bet AI' }; const rows = ['b3all', 'b3', 'b3ai'].map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — 3bet по позициям', note: 'NAI — без олл-ина, AI — олл-ином; ' + note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
@@ -262,6 +263,24 @@ function vsoBlocks(P, ql, o) {
   const A = ['call', 'b3', 'shove', 'fold'], C = cols || VPOS, rows = [];
   for (const [gl, bs] of RS || [['', bands]]) for (const p of C) { const r = vsoGet(P, p, bs); if (r.n) rows.push([(gl ? gl + ' · ' : '') + p, ...A.map(k => vCell(r, k))]); }
   return [{ type: 'table', title: title(P) + ' — против опена по позициям' + (RS ? ' и стекам' : ''), note, table: { head: ['', ...A.map(k => VACT[k][0])], rows, grid: true, heatCol: true } }];
+}// ---------- 3-бет «позиция против позиции» (алиас — ext.v3m; сверено с таблицей владельца 24.11.2026: общий 3-бет) ----------
+// строки — моя позиция, колонки — кто открыл; «3-бет баттона против MP» — одна цифра. Слева от «против» — моя позиция, справа — открывший
+const V3H = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'], V3O = ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'], ORD = ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
+function posIn(t) { const out = []; for (const [p, a, b] of POS_RE) if (a.test(t) || b.test(t)) out.push(p); if (/\bbb\b|(^|[^а-яё])бб(?![а-яё0-9])|больш[\wа-яё]*\s*блайнд/.test(t) && !/\d\s*(bb|бб)/.test(t)) out.push('BB'); return ORD.filter(p => out.includes(p)); }
+function vsInfo(ql) {
+  const m = /(против|vs\.?|versus|на\s*опен[\wа-яё]*|на\s*открыт[\wа-яё]*)/.exec(ql), matrix = /позици[\wа-яё]*\s*против\s*позици|поз[аыу]?\s*в\s*поз|детальн|против\s*(кажд|всех\s*позиц)|по\s*открывающ|по\s*опенер/.test(ql);
+  if (!m && !matrix) return null;
+  const left = m ? posIn(ql.slice(0, m.index)) : [], right = m ? posIn(ql.slice(m.index + m[0].length)) : [];
+  if (!matrix && !right.length) return null;
+  return { hero: left.filter(p => V3H.includes(p === 'EP' ? 'MP' : p)).map(p => (p === 'EP' ? 'MP' : p)), opp: right.filter(p => V3O.includes(p)) };
+}
+function v3mBlocks(P, ql, vs, bands) {
+  const M = P.ext.v3m, k = /без\s*олл|без\s*пуш|nai|наи/.test(ql) ? 'nai' : /олл-?\s*ин[\wа-яё]*|пуш|(^|[^a-z])ai([^a-z]|$)/.test(ql) ? 'ai' : 'all', name = { all: '3bet', nai: '3bet NAI', ai: '3bet AI' }[k];
+  const get = (h, o) => { let n = 0, a = 0, b = 0; for (const bd of bands) { const x = M[h] && M[h][o] && M[h][o][bd]; if (x) { n += x[0]; a += x[2]; b += x[3]; } } return { n, v: k === 'all' ? a + b : k === 'nai' ? a : b, a, b }; };
+  const H = vs.hero.length ? vs.hero : V3H, O = vs.opp.length ? vs.opp : V3O, note = 'строки — моя позиция, колонки — кто открыл; против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
+  if (H.length === 1 && O.length === 1) { const r = get(H[0], O[0]); return [{ type: 'big', title: title(P) + ' — ' + name + ' с ' + H[0] + ' против ' + O[0], big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, note: (r.n && k === 'all' ? 'NAI ' + pctS(r.a, r.n) + ' · AI ' + pctS(r.b, r.n) + ' · ' : '') + 'против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '') }]; }
+  const rows = H.map(h => [h, ...O.map(o => { if (ORD.indexOf(o) >= ORD.indexOf(h)) return ''; const r = get(h, o); return r.n ? { v: pctS(r.v, r.n), n: r.n } : { v: '—', n: 0 }; })]).filter(r => r.slice(1).some(c => c && c.n));
+  return [{ type: 'table', title: title(P) + ' — ' + name + ': позиция против позиции', note, table: { head: ['', ...O], rows, grid: true } }];
 }function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
@@ -272,6 +291,7 @@ function vsoBlocks(P, ql, o) {
   if (id === 'LIMP') { const a = c('LimpNSB'); return [big('лимп первым (кроме SB)', f1(a.p) + '%', a.n, '')]; }
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
+  if (id === '3B' && P.ext && P.ext.v3m && TT) { const vs = vsInfo(ql); if (vs) return v3mBlocks(P, ql, vs, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands); }
   if (id === '3B' && P.ext && P.ext.vso && TT) {
     const tbl = WANT_TABLE.test(ql) || TT.G || TT.PL || TT.byBand, pos = posOf(ql);
     // без просьбы о таблице и без позиции — одна цифра (TOT)
@@ -324,7 +344,7 @@ function similarNicks(cands, lim) {
 }
 // что искать как ник: ник от Claude и слова фразы без служебных
 function nickParts(q, brainNick) {
-  const toks = String(q || '').replace(/[.,!?«»"]+/g, ' ').split(/\s+/).filter(t => t && !STOP.has(t.toLowerCase()) && !/^(игрок\w*|ник\w*|покаж\w*|найд\w*|открой|дай|карточк\w*)$/i.test(t));
+  const toks = String(q || '').replace(/[.,!?«»"]+/g, ' ').split(/\s+/).filter(t => t && !STOP.has(t.toLowerCase()) && !/^(игрок[\wа-яё]*|ник[\wа-яё]*|покаж[\wа-яё]*|найд[\wа-яё]*|открой|дай|карточк[\wа-яё]*)$/i.test(t));
   const out = []; if (brainNick) out.push(brainNick); if (toks.length) out.push(toks.join(' ')); return [...new Set(out)];
 }
 const notFoundMsg = (q, brainNick) => {
@@ -362,6 +382,7 @@ function answerFor(P, ql, intent, rows0, spec) {
   const bnote = bands0 ? 'стек ' + (bands0.length > 1 ? bands0[0] + ' … ' + bands0[bands0.length - 1] : bands0[0]) + ' bb' : 'все стеки';
   let sb = null;
   if (intent === 'stat' && (sb = statBlocks(P, statOf(ql), ql, { G, PL, bands, byBand, bands0 }))) blocks.push(...sb);
+  else if ((intent === 'vso' || intent === 'stat') && P.ext && P.ext.v3m && focusAct(ql, null) === 'b3' && vsInfo(ql)) blocks.push(...v3mBlocks(P, ql, vsInfo(ql), (G && G.length === 1 ? G[0][1] : null) || bands));
   else if ((intent === 'vso' || intent === 'stat') && P.ext && P.ext.vso) blocks.push(...vsoBlocks(P, ql, { G, PL, bands, byBand, pos: PL ? null : posOf(ql), focus: focusAct(ql, null) }));
   else if (intent === 'stat') { const t = famTable(P, 'vso', bands, byBand, G); blocks.push({ type: 'table', title: title(P) + ' — ' + FAM_T.vso, note: bnote, table: t }); }
   else if (intent === 'card') blocks.push(card(P));
@@ -385,7 +406,7 @@ function answerFor(P, ql, intent, rows0, spec) {
     let cols = PL || ['TOT', ...S.cols]; const lab = (p) => (!S.h2n && p === 'MP' && PL && (PL.includes('MP') || PL.includes('HJ')) ? 'MP/HJ' : p);
     if (!S.h2n && PL) cols = [...new Set(cols.map(p => (p === 'HJ' ? 'MP' : p)))];
     const cell = (x, k) => ({ v: pctS(x[k], x.n), n: x.n });
-    const RS = G || (byBand ? BANDS.map(b => [b + ' bb', [b]]) : null);
+    const RS = G || (byBand ? bands.map(b => [b + ' bb', [b]]) : null);
     const rows = RS ? RS.map(([l, bs]) => [l, ...cols.map(p => cell(S.get(p, bs), 'nai'))]).filter(r => r.slice(1).some(c => c.n))
       : [['RFI', ...cols.map(p => cell(S.get(p, bands), 'tot'))], ['NAI', ...cols.map(p => cell(S.get(p, bands), 'nai'))]];
     const posNote = S.h2n ? '' : ' · EP — все ранние места, MP — HJ и место перед ним';
