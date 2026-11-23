@@ -328,7 +328,7 @@ function ocBlocks(P, ql, o) {
     return [{ type: 'big', title: title(P) + ' — колл третьим и дальше' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: n ? pctS(a[1] + b[1], n) : 'нет данных', n, ai, note: '3-м ' + pctS(a[1], a[0]) + ' · 4-м+ ' + pctS(b[1], b[0]) + ' · ' + note }];
   }
   const rows = Cs.map(C => [LBL[C], ...cols.map(p => { const x = ocGet(P, p, C, bands); return { v: pctS(x[1], x[0]), n: x[0] }; })]);
-  return [{ type: 'table', title: title(P) + ' — колл третьим и четвёртым в банк', note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
+  return [{ type: 'table', title: title(P) + ' — колл ' + (Cs.length === 2 ? 'третьим и четвёртым' : Cs[0] === 1 ? 'третьим' : 'четвёртым и дальше') + ' в банк' + (cols.length > 1 ? ' по позициям' : ''), note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
 }function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
