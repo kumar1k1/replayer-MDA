@@ -22,6 +22,14 @@
 .rm-vchip.ok{color:var(--good);border-color:rgba(var(--good-rgb),.5)}.rm-vchip.near{color:var(--ice);border-color:rgba(var(--ice-rgb),.5)}
 .rm-vchip.warn{color:var(--amber);border-color:rgba(var(--amber-rgb),.5)}.rm-vchip.bad{color:var(--bad);border-color:rgba(var(--bad-rgb),.6);background:rgba(var(--bad-rgb),.08)}
 .rm-side{overflow-y:auto}
+/* окно реплеера с панелью «Сейчас ход» — постоянной высоты (владелец, 23.11.2026): панель на каждом шаге разной длины,
+   окно прыгало и кнопки уезжали из-под мышки. Высота — по экрану, панель прокручивается внутри. */
+@media (min-width:1101px){
+.rv.rv-wide{height:calc(100vh - 32px)}
+.rv.rv-wide>.rv-main{flex:1 1 auto;min-height:0}
+.rv.rv-wide>.rv-main.rv-side-on{height:100%}
+.rv.rv-wide .tv-side.rm-side{max-height:none;height:100%;min-height:0;overflow-y:auto}
+}
 .rm-body{width:100%;gap:8px}
 .rm-sec{gap:6px}
 .rm-who,.rm-li,.rm-last{display:flex;align-items:center;gap:8px;min-width:0}
