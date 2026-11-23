@@ -237,7 +237,7 @@ const STATS = [
   ['SQ', /квадрат|фиат/],
 ];
 const NO_STAT = /rfi|опен|открыт|первым|стил|сквиз|изо|изол|iso|против\s*(опен|лимп|олл)|колл\s*опен|на\s*опен|винрейт|winrate|выигрыш|профит|bb\/100|бб\/100/;
-function statOf(ql) { if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
+function statOf(ql) { if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (CC3_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
 const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -374,6 +374,28 @@ function f3Blocks(P, ql, o) {
   if (cols.length === 1 && !o.table) { const a = val(get(cols[0], 'all')), i = val(get(cols[0], 'ip')), oo = val(get(cols[0], 'oop')); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: a[1] ? pctS(a[0], a[1]) : 'нет данных', n: a[1], ai, note: 'в позиции ' + pctS(i[0], i[1]) + ' · без позиции ' + pctS(oo[0], oo[1]) + ' · ' + note }]; }
   const rows = wSel.map(w => [LBL[w], ...cols.map(p => { const v = val(get(p, w)); return { v: pctS(v[0], v[1]), n: v[1] }; })]);
   return [{ type: 'table', title: title(P) + ' — фолд на 3-бет по позициям' + kind, note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
+}// ---------- колл 3-бета в холодную (ext.c3) и наши 4-беты после своего опена (ext.f3[..][6] — 4-бет олл-ином); 24.11.2026 ----------
+const CC3_RE = /(колл?|кол|колд[\s-]*колл?)[а-яё]*\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет[а-яё]*|(3|три)\s*-?\s*бет[а-яё]*\s*в\s*холодн|в\s*холодн[а-яё]*\s*(на\s*)?(3|три)\s*-?\s*бет/;
+const B4_RE = /(?<!(на|против)\s*)(^|[^а-яё0-9])(4|четыр[её]х)\s*-?\s*бет|4\s*bet|фор\s*бет/;
+function cc3Blocks(P, ql, o) {
+  const { bands, PL, pos } = o, cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : o.table ? IPOS : ['TOT']);
+  const get = (p) => { const x = [0, 0, 0]; for (const b of bands) { const r = P.ext.c3[p] && P.ext.c3[p][b]; if (r) for (let j = 0; j < 3; j++) x[j] += r[j]; } return x; };
+  const note = 'кто-то открылся, другой 3-бетнул (не олл-ин), мы ещё не вкладывались и коллируем; до нас никто не коллировал' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : ''), ai = 'колл — 3-бет не олл-ин';
+  if (cols.length === 1) { const x = get(cols[0]); return [{ type: 'big', title: title(P) + ' — колл 3-бета в холодную' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[1], x[0]) : 'нет данных', n: x[0], ai, note }]; }
+  return [{ type: 'table', title: title(P) + ' — колл 3-бета в холодную по позициям', note, ai, table: { head: ['', ...cols], rows: [['Cold call 3bet', ...cols.map(p => { const x = get(p); return { v: pctS(x[1], x[0]), n: x[0] }; })]], grid: true } }];
+}
+function b4Blocks(P, ql, o) {
+  if (o.pos === 'BB') return [{ type: 'text', title: title(P) + ' — 4-бет с BB', text: 'С BB 4-бета после своего опена не бывает: открыться первым с BB нельзя. Можно спросить «3-бет с BB» или «колд-колл с BB».' }];
+  const { bands, PL, pos } = o, mode = aiMode(ql);
+  const hasOop = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)/.test(ql), hasIp = /(^|[^а-яёa-z])(в\s*позиц|ip)([^a-z]|$)/.test(ql.replace(/не\s*в\s*позиц/g, ' ')), w = hasIp && !hasOop ? 'ip' : hasOop && !hasIp ? 'oop' : 'all';
+  const get = (p) => { const x = [0, 0, 0, 0, 0, 0, 0]; for (const b of bands) { const r = P.ext.f3[p] && P.ext.f3[p][w] && P.ext.f3[p][w][b]; if (r) for (let j = 0; j < 7; j++) x[j] += r[j] || 0; } return x; };
+  const K = { all: ['4bet', x => x[3]], nai: ['4bet NAI', x => x[3] - x[6]], ai: ['4bet AI', x => x[6]] }, rowsK = mode === 'all' ? ['all', 'nai', 'ai'] : [mode];
+  const cols = vPosList(PL) ? PL.filter(p => F3POS.includes(p)) : (pos ? [pos] : o.table ? F3POS : ['TOT']);
+  const wTxt = w === 'ip' ? ' в позиции' : w === 'oop' ? ' без позиции' : '';
+  const note = 'мы открылись, никто не вошёл, нас 3-бетнули — мы 4-бетим; NAI — не олл-ином, AI — олл-ином; TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
+  const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : '4bet — с олл-инами · NAI — без · AI — только олл-ины';
+  if (cols.length === 1 && !o.table) { const x = get(cols[0]), k = rowsK[0]; return [{ type: 'big', title: title(P) + ' — ' + K[k][0] + wTxt + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(K[k][1](x), x[0]) : 'нет данных', n: x[0], ai: mode === 'all' ? 'с олл-инами' : ai, note: (mode === 'all' && x[0] ? 'NAI ' + pctS(K.nai[1](x), x[0]) + ' · AI ' + pctS(K.ai[1](x), x[0]) + ' · ' : '') + note }]; }
+  return [{ type: 'table', title: title(P) + ' — 4-беты по позициям' + wTxt, note, ai, table: { head: ['', ...cols], rows: rowsK.map(k => [K[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(K[k][1](x), x[0]), n: x[0] }; })]), grid: true, heatRow: true } }];
 }function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
@@ -385,6 +407,8 @@ function f3Blocks(P, ql, o) {
   if (id === 'F3' && P.ext && P.ext.f3 && TT) return f3Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) });
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
+  if (id === 'CC3') { if (!(P.ext && P.ext.c3)) return [{ type: 'text', text: 'Колл 3-бета в холодную пока посчитан только по вашей базе.' }]; return cc3Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }); }
+  if (id === 'B4') { if (!(P.ext && P.ext.f3)) return [{ type: 'text', text: '4-беты пока посчитаны только по вашей базе.' }]; return b4Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }); }
   if (id === 'S3') { if (!(P.ext && P.ext.s3)) return [{ type: 'text', text: 'Размеры 3-бета пока посчитаны только по вашей базе.' }]; return s3Blocks(P, ql, { bands: TT.bands, pos: posOf(ql) }); }
   if (id === 'B3I') { if (!(P.ext && P.ext.b3i)) return [{ type: 'text', text: '3-бет против изолейта пока посчитан только по вашей базе.' }]; return b3iBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }); }
   if (id === 'OC' && P.ext && P.ext.oc && TT) return ocBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand || TT.G) });
