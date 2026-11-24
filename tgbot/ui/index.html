@@ -454,7 +454,8 @@ async function hmShow(target) {
   for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) {
     const c = hmCls(i, j), v = D.cells[c] || [0, 0], f = v[0] ? v[1] / v[0] : 0, d = el('div', 'hmc' + (v[0] ? '' : ' e'));
     // делали этой рукой — зелёно-салатовая (ярче — чаще), тёмные буквы; остальные — белые буквы на тёмном фоне
-    d.textContent = c.replace(/[so]$/, ''); if (v[1]) { const t = Math.min(1, 0.35 + f * 0.9); d.style.background = `hsl(${120 - t * 35}, ${55 + t * 30}%, ${30 + t * 22}%)`; d.style.color = '#071204'; d.classList.add('on'); }
+    // градиент по частоте: редко — тёмно-зелёная, часто — ярко-салатовая (владелец 25.11.2026: должно быть видно, где чаще)
+    d.textContent = c.replace(/[so]$/, ''); if (v[1]) { const t = Math.max(0, Math.min(1, f)); d.style.background = `hsl(${145 - t * 62}, ${38 + t * 52}%, ${17 + t * 38}%)`; d.style.color = t >= 0.45 ? '#071204' : '#eaffd8'; d.classList.add('on'); }
     d.title = c + ': ' + (v[0] ? v[1] + ' из ' + v[0] + ' (' + Math.round(f * 100) + '%)' : 'не было');
     g.append(d);
   }
