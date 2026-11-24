@@ -169,7 +169,7 @@ function groupsRule(ql) {
   const sup = /(супер|очень|сверх)\s*-?\s*(больш|глубок)/.test(q), q2 = q.replace(/(супер|очень|сверх)\s*-?\s*(больш|глубок)[\wа-яё]*/g, ' ');
   const k = /коротк|мелк/.test(q), m = /средн[\wа-яё]*(?!\s*позиц)/.test(q) && /ст[еэ]к|коротк|мелк|больш|глубок|сайз/.test(q), d = /больш|глубок|длинн/.test(q2);
   if (sup && (k + m + d) >= 1) return [k && SG.short, m && SG.mid, d && ['большие', 60, 100], ['супер большие', 100, null]].filter(Boolean).map(([n, lo, hi]) => { const bs = bandsIn(lo, hi); return [grpLabel(n, bs), bs]; });
-  if ((k + m + d) < 2 && !((k || m || d) && /тип[\wа-яё]*|групп[\wа-яё]*/.test(q))) return null;
+  if ((k + m + d) < 2 && !((k || m || d) && /тип[\wа-яё]*|групп[\wа-яё]*|ст[еэ]к|сайз/.test(q))) return null; // одна группа со словом «стек» — фильтр
   return [k && SG.short, m && SG.mid, d && SG.deep].filter(Boolean).map(([n, lo, hi]) => { const bs = bandsIn(lo, hi); return [grpLabel(n, bs), bs]; });
 }
 // позиции, названные во фразе (несколько)
@@ -262,7 +262,7 @@ function vsoBlocks(P, ql, o) {
     focus = { nai: 'b3', ai: 'b3ai', all: 'b3all' }[aiMode(ql)];
     const C1 = cols || ['TOT', ...VPOS];
     if (C1.length === 1 && !RS) { const r = vsoGet(P, C1[0], bands); return [{ type: 'big', title: title(P) + ' — ' + VACT[focus][0] + (C1[0] === 'TOT' ? '' : ' с ' + C1[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note: (r.n && focus === 'b3all' ? 'NAI ' + vCell(r, 'b3').v + ' · AI ' + vCell(r, 'b3ai').v + ' · ' : '') + note }]; }
-    if (!RS) { const LBL = { b3all: '3bet', b3: '3bet NAI', b3ai: '3bet AI' }; const rows = (focus === 'b3all' ? ['b3all', 'b3', 'b3ai'] : [focus]).map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — 3bet по позициям', note: 'NAI — без олл-ина, AI — олл-ином; ' + note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
+    if (!RS) { const LBL = { b3all: '3bet', b3: '3bet NAI', b3ai: '3bet AI' }; const rows = (focus === 'b3all' ? ['b3all', 'b3', 'b3ai'] : [focus]).map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — ' + (focus === 'b3all' ? '3bet' : VACT[focus][0]) + ' по позициям', note: 'NAI — без олл-ина, AI — олл-ином; ' + note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
   }
   if (focus) { // одно действие: колонки — позиции, строки — стеки
     const C = cols || ['TOT', ...VPOS], name = VACT[focus][0];
@@ -307,7 +307,7 @@ function isoBlocks(P, ql, o) {
   const st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
   const note = 'первое решение против лимперов без рейза; BB — без лимпа одного SB (TOT — с ним); ISO Fold — изолировали, лимпер ответил 3-бетом или пушем, мы сбросили; Fold сзади — изолировали, рейз от игрока позади нас, мы сбросили' + st;
   // одна цифра: без «по позициям / таблица» и без позиции — общий изолейт (1 и 2+ лимпера вместе)
-  if (!o.table && !pos && !PL && Ls.length === 2) { const a = isoGet(P, 'TOT', 1, bands), b = isoGet(P, 'TOT', 2, bands), x = a.map((v, j) => v + b[j]); return [{ type: 'big', title: title(P) + ' — ' + name + ' против лимперов', big: x[0] ? pctS(isoV(x), x[0]) : 'нет данных', n: x[0], ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', note: 'vs 1 лимпер ' + pctS(isoV(a), a[0]) + ' · vs 2+ ' + pctS(isoV(b), b[0]) + (x[3] ? ' · ISO Fold ' + pctS(x[4], x[3]) + ' (' + x[3] + ' раз)' : '') + st }]; }
+  if (!o.table && !PL && Ls.length === 2) { const PP = pos ? (pos === 'EP' ? 'MP' : pos) : 'TOT', a = isoGet(P, PP, 1, bands), b = isoGet(P, PP, 2, bands), x = a.map((v, j) => v + b[j]); return [{ type: 'big', title: title(P) + ' — ' + name + (PP === 'TOT' ? '' : ' с ' + PP) + ' против лимперов', big: x[0] ? pctS(isoV(x), x[0]) : 'нет данных', n: x[0], ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', note: 'vs 1 лимпер ' + pctS(isoV(a), a[0]) + ' · vs 2+ ' + pctS(isoV(b), b[0]) + (x[3] ? ' · ISO Fold ' + pctS(x[4], x[3]) + ' (' + x[3] + ' раз)' : '') + st }]; }
   if (cols.length === 1 && Ls.length === 1) { const x = isoGet(P, cols[0], Ls[0], bands); return [{ type: 'big', title: title(P) + ' — ' + name + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + ' против ' + (Ls[0] === 1 ? '1 лимпера' : '2+ лимперов'), big: x[0] ? pctS(isoV(x), x[0]) : 'нет данных', n: x[0], ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', note: (x[3] ? 'ISO Fold ' + pctS(x[4], x[3]) + ' (' + x[3] + ' раз) · ' : '') + note }]; }
   const rows = [];
   for (const L of Ls) {
@@ -394,6 +394,7 @@ function b4Blocks(P, ql, o) {
   const wTxt = w === 'ip' ? ' в позиции' : w === 'oop' ? ' без позиции' : '';
   const note = 'мы открылись, никто не вошёл, нас 3-бетнули — мы 4-бетим; NAI — не олл-ином, AI — олл-ином; TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : '4bet — с олл-инами · NAI — без · AI — только олл-ины';
+  if (hasIp && hasOop && cols.length === 1 && !o.table) return ['ip', 'oop'].map(ww => b4Blocks(P, ql.replace(/без\s*позиц[а-яё]*|(^|[^а-яё])в\s*позиц[а-яё]*/g, ' ') + (ww === 'ip' ? ' в позиции' : ' без позиции'), o)[0]);
   if (cols.length === 1 && !o.table) { const x = get(cols[0]), k = rowsK[0]; return [{ type: 'big', title: title(P) + ' — ' + K[k][0] + wTxt + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(K[k][1](x), x[0]) : 'нет данных', n: x[0], ai: mode === 'all' ? 'с олл-инами' : ai, note: (mode === 'all' && x[0] ? 'NAI ' + pctS(K.nai[1](x), x[0]) + ' · AI ' + pctS(K.ai[1](x), x[0]) + ' · ' : '') + note }]; }
   return [{ type: 'table', title: title(P) + ' — 4-беты по позициям' + wTxt, note, ai, table: { head: ['', ...cols], rows: rowsK.map(k => [K[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(K[k][1](x), x[0]), n: x[0] }; })]), grid: true, heatRow: true } }];
 }function statBlocks(P, id, ql, TT) {
@@ -405,6 +406,7 @@ function b4Blocks(P, ql, o) {
   if (id === 'VPIP' || id === 'PFR') { const a = c(id); return [big(id, f1(a.p) + '%', a.n, '')]; }
   if (id === 'LIMP') { const a = c('LimpNSB'); return [big('лимп первым (кроме SB)', f1(a.p) + '%', a.n, '')]; }
   if (id === 'F3' && P.ext && P.ext.f3 && TT) return f3Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) });
+  if (id === 'F3' && /в\s*позиц|без\s*позиц|oop|(^|[^a-z])ip([^a-z]|$)/.test(ql) && !(P.ext && P.ext.f3)) { const a = c('F3Bet'); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет', big: f1(a.p) + '%', n: a.n, note: 'в позиции / без позиции отдельно пока посчитано только по вашей базе — здесь общий фолд на 3-бет' }]; }
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
   if (id === 'CC3') { if (!(P.ext && P.ext.c3)) return [{ type: 'text', text: 'Колл 3-бета в холодную пока посчитан только по вашей базе.' }]; return cc3Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }); }
@@ -519,7 +521,7 @@ function aiTag(B) {
   // одна названная группа стеков — это фильтр всей таблицы, а не строка (владелец, 24.11.2026)
   const G1 = G && G.length === 1 ? G[0][1] : null; if (G1) G = null;
   const bands0 = G ? null : (G1 || bandsOf(ql)), bands = bands0 || BANDS, byBand = /по ст[еэ]к|ст[еэ]кам|ст[еэ]ков|разбив|сайз/.test(ql) && !(bands0 && bands0.num != null);
-  const bnote = bands0 ? 'стек ' + (bands0.length > 1 ? bands0[0] + ' … ' + bands0[bands0.length - 1] : bands0[0]) + ' bb' : 'все стеки';
+  const bnote = bands0 ? 'стек ' + grpLabel('', bands0) : 'все стеки';
   let sb = null;
   if (intent === 'stat' && (sb = statBlocks(P, statOf(ql), ql, { G, PL, bands, byBand, bands0 }))) blocks.push(...sb);
   else if (intent === 'iso' && P.ext && P.ext.iso) blocks.push(...isoBlocks(P, ql, { bands, PL, pos: PL ? null : posOf(ql), table: WANT_TABLE.test(ql) || byBand }));
