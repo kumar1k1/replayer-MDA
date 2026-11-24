@@ -392,11 +392,11 @@ function b4Blocks(P, ql, o) {
   const K = { all: ['4bet', x => x[3]], nai: ['4bet NAI', x => x[3] - x[6]], ai: ['4bet AI', x => x[6]] }, rowsK = mode === 'all' ? ['all', 'nai', 'ai'] : [mode];
   const cols = vPosList(PL) ? PL.filter(p => F3POS.includes(p)) : (pos ? [pos] : o.table ? F3POS : ['TOT']);
   const wTxt = w === 'ip' ? ' в позиции' : w === 'oop' ? ' без позиции' : '';
-  const note = 'мы открылись, никто не вошёл, нас 3-бетнули (не олл-ином — на олл-ин 4-бет невозможен) — мы 4-бетим; NAI — не олл-ином, AI — олл-ином; TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
+  const note = 'мы открылись, никто не вошёл, нас 3-бетнули — мы 4-бетим; NAI — не олл-ином, AI — олл-ином; TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : '4bet — с олл-инами · NAI — без · AI — только олл-ины';
   if (hasIp && hasOop && cols.length === 1 && !o.table) return ['ip', 'oop'].map(ww => b4Blocks(P, ql.replace(/без\s*позиц[а-яё]*|(^|[^а-яё])в\s*позиц[а-яё]*/g, ' ') + (ww === 'ip' ? ' в позиции' : ' без позиции'), o)[0]);
-  if (cols.length === 1 && !o.table) { const x = get(cols[0]), k = rowsK[0]; return [{ type: 'big', title: title(P) + ' — ' + K[k][0] + wTxt + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] - x[4] ? pctS(K[k][1](x), x[0] - x[4]) : 'нет данных', n: x[0] - x[4], ai: mode === 'all' ? 'с олл-инами' : ai, note: (mode === 'all' && x[0] - x[4] ? 'NAI ' + pctS(K.nai[1](x), x[0] - x[4]) + ' · AI ' + pctS(K.ai[1](x), x[0] - x[4]) + ' · ' : '') + note }]; }
-  return [{ type: 'table', title: title(P) + ' — 4-беты по позициям' + wTxt, note, ai, table: { head: ['', ...cols], rows: rowsK.map(k => [K[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(K[k][1](x), x[0] - x[4]), n: x[0] - x[4] }; })]), grid: true, heatRow: true } }];
+  if (cols.length === 1 && !o.table) { const x = get(cols[0]), k = rowsK[0]; return [{ type: 'big', title: title(P) + ' — ' + K[k][0] + wTxt + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(K[k][1](x), x[0]) : 'нет данных', n: x[0], ai: mode === 'all' ? 'с олл-инами' : ai, note: (mode === 'all' && x[0] ? 'NAI ' + pctS(K.nai[1](x), x[0]) + ' · AI ' + pctS(K.ai[1](x), x[0]) + ' · ' : '') + note }]; }
+  return [{ type: 'table', title: title(P) + ' — 4-беты по позициям' + wTxt, note, ai, table: { head: ['', ...cols], rows: rowsK.map(k => [K[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(K[k][1](x), x[0]), n: x[0] }; })]), grid: true, heatRow: true } }];
 }function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
