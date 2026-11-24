@@ -20,6 +20,9 @@ const sparse = (a) => { const o = []; for (let i = 0; i < a.length; i++) if (a[i
 // образцы для ручной проверки: по 6 случайных раздач на стат (резервуар)
 const SAMPLE = !!process.env.TGBOT_SAMPLE, SMP = {}, SMPN = {}, AUDIT = !!process.env.TGBOT_AUDIT, AUD = [];
 function smp(k, s) { SMPN[k] = (SMPN[k] || 0) + 1; const A = SMP[k] = SMP[k] || []; if (A.length < 6) A.push(s); else { const j = Math.floor(Math.random() * SMPN[k]); if (j < 6) A[j] = s; } }
+// класс руки: AA / AKs / AKo (ряд и колонка 13×13: одномастные выше диагонали, разномастные ниже)
+const RK = 'AKQJT98765432', HM = {};
+function handClass(a, b) { const r1 = RK.indexOf(a[0].toUpperCase()), r2 = RK.indexOf(b[0].toUpperCase()); if (r1 < 0 || r2 < 0) return null; const hi = Math.min(r1, r2), lo = Math.max(r1, r2); return hi === lo ? RK[hi] + RK[lo] : RK[hi] + RK[lo] + (a[1].toLowerCase() === b[1].toLowerCase() ? 's' : 'o'); }
 function aliasStats() {
   const cfgF = path.join(ROOT, 'data', 'practice_alias.json');
   if (!fs.existsSync(cfgF)) { log('алиаса нет (data/practice_alias.json) — пропускаю'); return []; }
@@ -138,7 +141,22 @@ function aliasStats() {
       const flF = fr.find(x => x.street === 1), sawFl = !!(flF && (rp.bd || []).length >= 3 && !flF.folded[hero]);
       const wentSD = !fin.folded[hero] && fin.folded.filter(x => !x).length >= 2, wonH = fin.won[hero] > 0, preAI = rp.ev.some(e => e.st === 0 && e.ai);
       const pt = [tsOf(rp.date), rb, b, wentSD ? 1 : 0];
-      for (const a of [A('все'), A(room)]) {
+      // матрицы рук (25.11.2026): по каждому стату / позиции / стеку — какой рукой была ситуация (d) и действие (n); только «все румы»
+      { const cm = /^Dealt to .+? \[(\S\S) (\S\S)\]/m.exec(h), CLS = cm ? handClass(cm[1], cm[2]) : null;
+        if (CLS) {
+          const H = (path, band, metric, num) => { for (const bd of [band, 'all']) { const o = ((HM[path] = HM[path] || {})[metric] = HM[path][metric] || {})[bd] = HM[path][metric][bd] || {}; const c = o[CLS] = o[CLS] || [0, 0]; c[0]++; if (num) c[1]++; } };
+          if (rf) for (const p of rf[0] === 'SB' ? ['SB'] : [rf[0], 'TOT']) { /* RFI TOT — без SB, как в таблице */ H('rfi|' + p, rf[1], 'tot', rf[2]); H('rfi|' + p, rf[1], 'nai', rf[3]); }
+          if (vo) { const keys = vo[3] ? ['TOT'] : vo[0] === 'BB' ? ['BB', 'TOT'] : [vo[0], 'TOT', 'TOTnb'], M = { call: vo[2] === 1, b3: vo[2] === 2, ai: vo[2] === 3, b3all: vo[2] >= 2, fold: vo[2] === 0 };
+            for (const p of keys) for (const [m, v] of Object.entries(M)) H('vso|' + p, vo[1], m, v);
+            if (vo[4]) for (const [m, v] of Object.entries(M)) H('v3m|' + vo[0] + '|' + vo[4], vo[1], m, v); }
+          if (oc) for (const p of oc[0] === 'BB' ? ['BB'] : [oc[0], 'TOT']) H('oc|' + p + '|' + oc[1], oc[2], 'call', oc[3] === 1);
+          if (iz) for (const p of [iz[0], 'TOT']) { const P = 'iso|' + p + '|' + iz[1]; H(P, iz[2], 'iso', iz[3]); H(P, iz[2], 'isoai', iz[4]); H(P, iz[2], 'isonai', iz[3] && !iz[4]); if (iz[5]) H(P, iz[2], 'isofold', iz[6]); if (iz[9]) H(P, iz[2], 'fsz', iz[10]); }
+          if (bi) for (const p of [bi[0], 'TOT']) { H('b3i|' + p, bi[1], 'b3all', bi[2] || bi[3]); H('b3i|' + p, bi[1], 'nai', bi[2]); H('b3i|' + p, bi[1], 'ai', bi[3]); }
+          if (sz) for (const p of [sz[1], 'TOT']) { H('s3|' + p, sz[2], 'any', 1); H('s3|' + p, sz[2], 'sz:' + sz[0], 1); if (sz[4]) H('s3|' + p, sz[2], 'f4:' + sz[0], sz[5]); }
+          if (f3i) for (const p of f3i[0] === 'SB' ? ['SB'] : [f3i[0], 'TOT']) for (const w of [f3i[1] ? 'ip' : 'oop', 'all']) { const P = 'f3|' + p + '|' + w; H(P, f3i[2], 'fold', f3i[4]); H(P, f3i[2], 'call', f3i[5]); if (!f3i[3]) { H(P, f3i[2], 'b4', f3i[6]); H(P, f3i[2], 'b4nai', f3i[6] && !f3i[7]); H(P, f3i[2], 'b4ai', f3i[7]); } }
+          if (c3i) for (const p of [c3i[0], 'TOT']) H('c3|' + p, c3i[1], 'call', c3i[2]);
+          if (f4i) for (const p of [f4i[0], 'TOT']) H('f4|' + p, f4i[1], 'fold', f4i[3]);
+        } }      for (const a of [A('все'), A(room)]) {
         a.n++; if (fi === 0) a.ns++; else a.nf++; a.nicks.add(rp.nm[hero]);
         a.f[half]++; a.f[half + 1] += b; a.f[half + 2] += b * b; a.f[fo + half]++; a.f[fo + half + 1] += b; a.f[fo + half + 2] += b * b;
         a.raw[half]++; a.raw[half + 1] += rb; a.raw[half + 2] += rb * rb; a.raw[fo + half]++; a.raw[fo + half + 1] += rb; a.raw[fo + half + 2] += rb * rb;
@@ -159,7 +177,7 @@ function aliasStats() {
         // s3[размер в бб][поз][стек] = [раз, сумма размера в бб, получили 4-бет, сбросили]
         if (sz) for (const p of [sz[1], 'TOT']) for (const bd of [sz[2], 'all']) { const G = (a.s3[sz[0]] = a.s3[sz[0]] || {}), X = ((G[p] = G[p] || {})[bd] = G[p][bd] || [0, 0, 0, 0]); X[0]++; X[1] += sz[3]; X[2] += sz[4]; X[3] += sz[5]; }
         // f3[поз][ip|oop|all][стек] = [раз, фолд, колл, 4-бет, из них 3-бет олл-ином, фолд на олл-ин]
-        if (f3i) for (const p of f3i[0] === 'SB' ? ['SB'] : [f3i[0], 'TOT']) /* TOT — без SB, как RFI */ for (const w of [f3i[1] ? 'ip' : 'oop', 'all']) for (const bd of [f3i[2], 'all']) { const M = (a.f3[p] = a.f3[p] || {}), X = ((M[w] = M[w] || {})[bd] = M[w][bd] || [0, 0, 0, 0, 0, 0, 0]); X[0]++; X[1] += f3i[4]; X[2] += f3i[5]; X[3] += f3i[6]; X[4] += f3i[3]; if (f3i[3] && f3i[4]) X[5]++; X[6] += f3i[7]; } // [6] — 4-бет олл-ином
+        if (f3i) for (const p of f3i[0] === 'SB' ? ['SB'] : [f3i[0], 'TOT']) /* TOT — без SB, как RFI */ for (const w of [f3i[1] ? 'ip' : 'oop', 'all']) for (const bd of [f3i[2], 'all']) { const M = (a.f3[p] = a.f3[p] || {}), X = ((M[w] = M[w] || {})[bd] = M[w][bd] || [0, 0, 0, 0, 0, 0, 0, 0, 0]); X[0]++; X[1] += f3i[4]; X[2] += f3i[5]; X[3] += f3i[6]; X[4] += f3i[3]; if (f3i[3] && f3i[4]) X[5]++; X[6] += f3i[7]; if (!f3i[3]) { X[7] += f3i[6]; X[8] += f3i[7]; } } // [6] — 4-бет олл-ином; [7], [8] — 4-бет и 4-бет олл-ином только против 3-бета не олл-ином
         // f4[поз][стек] = [раз (мне 4-бет), 4-бет олл-ином, фолд, колл, 5-бет]
         if (f4i) for (const p of [f4i[0], 'TOT']) for (const bd of [f4i[1], 'all']) { const X = (a.f4[p] = a.f4[p] || {})[bd] = a.f4[p][bd] || [0, 0, 0, 0, 0]; X[0]++; X[1] += f4i[2]; X[2] += f4i[3]; X[3] += f4i[4]; X[4] += f4i[5]; }
         // c3[поз][стек] = [раз, колл 3-бета, холодный 4-бет]
@@ -175,6 +193,7 @@ function aliasStats() {
     }
   }
   if (SAMPLE) fs.writeFileSync(path.join(__dirname, 'data', 'samples.json'), JSON.stringify(SMP, null, 1));
+  fs.writeFileSync(path.join(__dirname, 'data', 'alias_hm.json'), JSON.stringify(HM)); // матрицы рук алиаса (только на ПК)
   if (AUDIT) fs.writeFileSync(path.join(__dirname, 'data', 'audit.ndjson'), AUD.join('\n'));
   log('алиас: файлов ' + files.length + ', раздач ' + hands + ', дублей (та же раздача под другим номером) ' + dupN + ', пропущено ' + skipped);
   const r2 = (a) => Array.from(a, v => Math.round(v * 100) / 100);

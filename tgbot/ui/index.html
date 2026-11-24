@@ -138,6 +138,10 @@ footer{padding:10px 14px 14px;background:linear-gradient(180deg,transparent,rgba
 .hint2 kbd{font:11px var(--mono);background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--soft)}
 @media (max-width:640px){.ctx{max-width:40vw}.wr .big{font-size:23px}td,th{padding:6px 5px}}
 .bub.bot > div + div:not(.sugg){margin-top:16px;padding-top:14px;border-top:1px solid var(--line2)}
+.hmx{cursor:help;text-decoration:underline dotted rgba(255,255,255,.35);text-underline-offset:3px}
+.hmbox{position:fixed;z-index:50;background:#0b1117;border:1px solid var(--line2);border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.6);width:min(500px,calc(100vw - 16px))}
+.hmt{font:600 13px 'Segoe UI',sans-serif;color:var(--text);margin-bottom:8px}.hml{font:11px 'Segoe UI',sans-serif;color:var(--faint);margin-top:6px}
+.hmg{display:grid;grid-template-columns:repeat(13,1fr);gap:3px}.hmc{font:700 12px var(--mono);color:#f2f6f9;text-align:center;padding:7px 0;border-radius:4px;background:#1e2730}.hmc.e{background:#11171d;color:#8d98a3}.hmc.on{font-weight:800}.hmc.z{background:#222c36;color:#7d8a96}
 </style>
 </head>
 <body>
@@ -200,7 +204,7 @@ function tableEl(T, group) {
       const td = el('td');
       if (k === 0) td.textContent = c;
       else if (c && typeof c === 'object') {
-        td.className = 'gc' + (T.head[k] === 'TOT' ? ' tot' : ''); const sp = el('span', 'gv', c.v); td.append(sp); if (c.n) td.append(el('small', null, c.n.toLocaleString('ru')));
+        td.className = 'gc' + (T.head[k] === 'TOT' ? ' tot' : ''); const sp = el('span', 'gv', c.v); td.append(sp); if (c.hm && c.n) { sp.dataset.hm = JSON.stringify([c.hm]); sp.classList.add('hmx'); sp.dataset.hmt = (r[0] || '') + ' · ' + T.head[k]; } if (c.n) td.append(el('small', null, c.n.toLocaleString('ru')));
         const v = pv(c);
         if (v != null && vals.length >= 1) { const [l1, h1] = T.heatCol ? colLH(k) : T.heatRow ? rowLH(r) : [lo, hi]; const H = heat(v, l1, h1); sp.style.color = H.fg; sp.style.background = H.bg; heated = true; }
         if (c.n && c.n < HEAT_N) td.classList.add(c.n < 30 ? 'few2' : 'few');
@@ -277,7 +281,7 @@ function botMsg(a, holder) {
       if (B.wrFmt && B.wrFmt.length) { const f = el('div', 'fmt'); B.wrFmt.forEach(x => { const d = el('div', null, (x.bb100 > 0 ? '+' : '') + String(x.bb100).replace('.', ',')); d.style.color = x.bb100 > 0 ? 'var(--good)' : x.bb100 < 0 ? 'var(--bad)' : ''; d.append(el('small', null, x.k + ' · ' + x.n.toLocaleString('ru'))); f.append(d); }); w.append(f); }
       box.append(w);
     }
-    if (B.big) { const g = el('div', 'bigv'); g.append(el('b', null, B.big)); if (B.n) g.append(el('small', null, B.n.toLocaleString('ru') + ' раз')); box.append(g); }
+    if (B.big) { const g = el('div', 'bigv'); const bb = el('b', null, B.big); if (B.hm && B.n) { bb.dataset.hm = JSON.stringify([].concat(B.hm)); bb.classList.add('hmx'); bb.dataset.hmt = B.title || ''; } g.append(bb); if (B.n) g.append(el('small', null, B.n.toLocaleString('ru') + ' раз')); box.append(g); }
     if (B.graph) box.append(graphEl(B.graph));
     if (B.note) box.append(el('div', 'note', B.note));
     if (B.square) box.append(squareEl(B.square));
@@ -434,6 +438,34 @@ document.addEventListener('keydown', (e) => { if (e.ctrlKey && e.code === 'Space
   b.append(s); w.append(b); feed.append(w);
   inp.focus();
 })();
+// ---------- матрица рук по клетке (25.11.2026): наведение (мышь) или нажатие (телефон) ----------
+const RK = 'AKQJT98765432', HMC = {}; let hmBox = null, hmFor = null, hmHide = null;
+function hmCls(i, j) { return i === j ? RK[i] + RK[j] : i < j ? RK[i] + RK[j] + 's' : RK[j] + RK[i] + 'o'; }
+async function hmShow(target) {
+  clearTimeout(hmHide); if (hmFor === target && hmBox) return; hmFor = target; const key = target.dataset.hm;
+  if (!hmBox) { hmBox = el('div', 'hmbox'); document.body.append(hmBox); hmBox.onmouseenter = () => clearTimeout(hmHide); hmBox.onmouseleave = () => hmClose(); }
+  hmBox.innerHTML = '<div class="hmt">Загружаю матрицу…</div>'; hmPlace(target); hmBox.hidden = false;
+  try { if (!HMC[key]) HMC[key] = await (await fetch('/api/hm?r=' + encodeURIComponent(key))).json(); } catch (e) { HMC[key] = { none: true }; }
+  if (hmFor !== target) return; const D = HMC[key];
+  if (D.none) { hmBox.innerHTML = '<div class="hmt">Матрица для этой цифры пока не посчитана.</div>'; return; }
+  let tn = 0, td = 0; for (const v of Object.values(D.cells)) { td += v[0]; tn += v[1]; }
+  const t = el('div', 'hmt'); t.textContent = (target.dataset.hmt || '') + ' — сделали ' + tn.toLocaleString('ru') + ' из ' + td.toLocaleString('ru'); hmBox.innerHTML = ''; hmBox.append(t);
+  const g = el('div', 'hmg');
+  for (let i = 0; i < 13; i++) for (let j = 0; j < 13; j++) {
+    const c = hmCls(i, j), v = D.cells[c] || [0, 0], f = v[0] ? v[1] / v[0] : 0, d = el('div', 'hmc' + (v[0] ? '' : ' e'));
+    // делали этой рукой — зелёно-салатовая (ярче — чаще), тёмные буквы; остальные — белые буквы на тёмном фоне
+    d.textContent = c.replace(/[so]$/, ''); if (v[1]) { const t = Math.min(1, 0.35 + f * 0.9); d.style.background = `hsl(${120 - t * 35}, ${55 + t * 30}%, ${30 + t * 22}%)`; d.style.color = '#071204'; d.classList.add('on'); }
+    d.title = c + ': ' + (v[0] ? v[1] + ' из ' + v[0] + ' (' + Math.round(f * 100) + '%)' : 'не было');
+    g.append(d);
+  }
+  hmBox.append(g); hmBox.append(el('div', 'hml', 'салатовые — руки, которыми делали (ярче — чаще); остальные — не делали; наведите на руку — «сколько раз из скольких»')); hmPlace(target);
+}
+function hmPlace(t) { const r = t.getBoundingClientRect(), W = hmBox.offsetWidth || 340, Hh = hmBox.offsetHeight || 360; let x = Math.min(window.innerWidth - W - 8, Math.max(8, r.left)), y = r.bottom + 6; if (y + Hh > window.innerHeight - 8) y = Math.max(8, r.top - Hh - 6); hmBox.style.left = x + 'px'; hmBox.style.top = y + 'px'; }
+function hmClose() { hmHide = setTimeout(() => { if (hmBox) hmBox.hidden = true; hmFor = null; }, 180); }
+document.addEventListener('mouseover', (e) => { const t = e.target.closest && e.target.closest('.hmx'); if (t) hmShow(t); });
+document.addEventListener('scroll', () => { if (hmBox && !hmBox.hidden) { hmBox.hidden = true; hmFor = null; } }, true);
+document.addEventListener('mouseout', (e) => { const t = e.target.closest && e.target.closest('.hmx'); if (t && !(e.relatedTarget && hmBox && hmBox.contains(e.relatedTarget))) hmClose(); });
+document.addEventListener('click', (e) => { const t = e.target.closest && e.target.closest('.hmx'); if (t) { hmShow(t); e.stopPropagation(); } else if (hmBox && !hmBox.contains(e.target)) { hmBox.hidden = true; hmFor = null; } });
 </script>
 </body>
 </html>

@@ -110,7 +110,7 @@ function rfiSrc(P) {
 }
 function rfiGrid(P, bands, byBand) {
   const S = rfiSrc(P), head = ['', 'TOT', ...S.cols], rows = [];
-  const row = (lab, bs, k) => [lab, ...['TOT', ...S.cols].map(p => { const x = S.get(p, bs); return { v: pctS(x[k], x.n), n: x.n }; })];
+  const row = (lab, bs, k) => [lab, ...['TOT', ...S.cols].map(p => { const x = S.get(p, bs); return { v: pctS(x[k], x.n), n: x.n, hm: HMref(P, 'rfi|' + p, k, bs) }; })];
   if (!byBand) { rows.push(row('RFI', bands, 'tot')); rows.push(row('NAI', bands, 'nai')); }
   else for (const b of bands) { const r = row(b + ' bb', [b], 'nai'); if (r[1].n) { rows.push(r); } } // по стекам — без олл-инов, как таблица Hand2Note (сверено 23.11)
   return { head, rows, grid: true };
@@ -245,8 +245,9 @@ const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
 // правило — как 3-бет NAI: против ровно одного опена без коллеров, опен не олл-ин, BB против SB не берём; стек — свой, без анте
 const VPOS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
 const VACT = { call: ['колл', [1]], b3: ['3bet NAI', [2]], shove: ['олл-ин', [3]], fold: ['фолд', [0]], b3all: ['3bet', [2, 3]], b3ai: ['3bet AI', [3]] };
-function vsoGet(P, pos, bs, totKey) { if (pos === 'TOT' && totKey) pos = totKey; let n = 0; const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.vso[pos] && P.ext.vso[pos][b]; if (r) { n += r[0]; x[1] += r[1]; x[2] += r[2]; x[3] += r[3]; } } x[0] = n - x[1] - x[2] - x[3]; return { n, x }; }
-const vCell = (r, k) => ({ v: pctS(VACT[k][1].reduce((a, i) => a + r.x[i], 0), r.n), n: r.n });
+function vsoGet(P, pos, bs, totKey) { if (pos === 'TOT' && totKey) pos = totKey; const _ref = { P, p: 'vso|' + pos, bs }; let n = 0; const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.vso[pos] && P.ext.vso[pos][b]; if (r) { n += r[0]; x[1] += r[1]; x[2] += r[2]; x[3] += r[3]; } } x[0] = n - x[1] - x[2] - x[3]; return { n, x, _ref }; }
+const VHM = { call: 'call', b3: 'b3', shove: 'ai', fold: 'fold', b3all: 'b3all', b3ai: 'ai' };
+const vCell = (r, k) => ({ v: pctS(VACT[k][1].reduce((a, i) => a + r.x[i], 0), r.n), n: r.n, hm: r._ref ? HMref(r._ref.P, r._ref.p, VHM[k], r._ref.bs) : undefined });
 const focusAct = (ql, dflt) => (/3\s*-?\s*бет|трибет|3bet/.test(ql) ? 'b3' : /колл|кол(?![а-яё])|уравн/.test(ql) ? 'call' : /олл|пуш|all/.test(ql) ? 'shove' : /фолд|сброс/.test(ql) ? 'fold' : dflt);
 const vPosList = (PL) => (PL ? [...new Set(PL.map(p => (p === 'EP' ? 'MP' : p)))].filter(p => VPOS.includes(p)) : null);
 VPOS.TOT = true;
@@ -261,12 +262,12 @@ function vsoBlocks(P, ql, o) {
   if (o.three) {
     focus = { nai: 'b3', ai: 'b3ai', all: 'b3all' }[aiMode(ql)];
     const C1 = cols || ['TOT', ...VPOS];
-    if (C1.length === 1 && !RS) { const r = vsoGet(P, C1[0], bands); return [{ type: 'big', title: title(P) + ' — ' + VACT[focus][0] + (C1[0] === 'TOT' ? '' : ' с ' + C1[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note: (r.n && focus === 'b3all' ? 'NAI ' + vCell(r, 'b3').v + ' · AI ' + vCell(r, 'b3ai').v + ' · ' : '') + note }]; }
+    if (C1.length === 1 && !RS) { const r = vsoGet(P, C1[0], bands); return [{ type: 'big', hm: vCell(r, focus).hm, title: title(P) + ' — ' + VACT[focus][0] + (C1[0] === 'TOT' ? '' : ' с ' + C1[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note: (r.n && focus === 'b3all' ? 'NAI ' + vCell(r, 'b3').v + ' · AI ' + vCell(r, 'b3ai').v + ' · ' : '') + note }]; }
     if (!RS) { const LBL = { b3all: '3bet', b3: '3bet NAI', b3ai: '3bet AI' }; const rows = (focus === 'b3all' ? ['b3all', 'b3', 'b3ai'] : [focus]).map(k => [LBL[k], ...C1.map(p => vCell(vsoGet(P, p, bands), k))]); return [{ type: 'table', title: title(P) + ' — ' + (focus === 'b3all' ? '3bet' : VACT[focus][0]) + ' по позициям', note: 'NAI — без олл-ина, AI — олл-ином; ' + note + '; TOT — с BB против SB', table: { head: ['', ...C1], rows, grid: true, heatRow: true } }]; }
   }
   if (focus) { // одно действие: колонки — позиции, строки — стеки
     const C = cols || ['TOT', ...VPOS], name = VACT[focus][0];
-    if (C.length === 1 && !RS) { const r = vsoGet(P, C[0], bands, o.totKey); return [{ type: 'big', title: title(P) + ' — ' + name + ' против опена' + (C[0] === 'TOT' ? '' : ' с ' + C[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note }]; }
+    if (C.length === 1 && !RS) { const r = vsoGet(P, C[0], bands, o.totKey); return [{ type: 'big', hm: vCell(r, focus).hm, title: title(P) + ' — ' + name + ' против опена' + (C[0] === 'TOT' ? '' : ' с ' + C[0]), big: r.n ? vCell(r, focus).v : 'нет данных', n: r.n, note }]; }
     const rows = (RS || [[name, bands]]).map(([l, bs]) => [l, ...C.map(p => vCell(vsoGet(P, p, bs, o.totKey), focus))]).filter(r => r.slice(1).some(c => c.n));
     return [{ type: 'table', title: title(P) + ' — ' + name + (o.three ? '' : ' против опена') + (RS ? ' по стекам' : ' по позициям'), note, table: { head: ['', ...C], rows, grid: true } }];
   }
@@ -289,12 +290,12 @@ function vsInfo(ql) {
 }
 function v3mBlocks(P, ql, vs, bands, metric) {
   const M = P.ext.v3m, k = metric === 'call' ? 'call' : aiMode(ql), name = { all: '3bet', nai: '3bet NAI', ai: '3bet AI', call: 'Cold call' }[k];
-  const get = (h, o) => { let n = 0, a = 0, b = 0, c = 0; for (const bd of bands) { const x = M[h] && M[h][o] && M[h][o][bd]; if (x) { n += x[0]; c += x[1]; a += x[2]; b += x[3]; } } return { n, v: k === 'call' ? c : k === 'all' ? a + b : k === 'nai' ? a : b, a, b }; };
+  const get = (h, o) => { let n = 0, a = 0, b = 0, c = 0; for (const bd of bands) { const x = M[h] && M[h][o] && M[h][o][bd]; if (x) { n += x[0]; c += x[1]; a += x[2]; b += x[3]; } } return { n, v: k === 'call' ? c : k === 'all' ? a + b : k === 'nai' ? a : b, a, b, hm: HMref(P, 'v3m|' + h + '|' + o, { call: 'call', all: 'b3all', nai: 'b3', ai: 'ai' }[k], bands) }; };
   const H = vs.hero.length ? vs.hero : V3H, O = vs.opp.length ? vs.opp : V3O, note = 'строки — моя позиция, колонки — кто открыл; против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
-  if (H.length === 1 && O.length === 1) { const r = get(H[0], O[0]); return [{ type: 'big', title: title(P) + ' — ' + name + ' с ' + H[0] + ' против ' + O[0], big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, ai: k === 'call' ? 'колл — опен не олл-ин' : undefined, note: (r.n && k === 'all' ? 'NAI ' + pctS(r.a, r.n) + ' · AI ' + pctS(r.b, r.n) + ' · ' : '') + 'против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '') }]; }
+  if (H.length === 1 && O.length === 1) { const r = get(H[0], O[0]); return [{ type: 'big', hm: r.hm, title: title(P) + ' — ' + name + ' с ' + H[0] + ' против ' + O[0], big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, ai: k === 'call' ? 'колл — опен не олл-ин' : undefined, note: (r.n && k === 'all' ? 'NAI ' + pctS(r.a, r.n) + ' · AI ' + pctS(r.b, r.n) + ' · ' : '') + 'против одного опена без коллеров' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '') }]; }
   // осталась одна клетка (одна моя позиция с данными против одного опенера) — одна цифра
   if (O.length === 1) { const Hd = H.filter(h => ORD.indexOf(O[0]) < ORD.indexOf(h) && get(h, O[0]).n); if (Hd.length === 1) return v3mBlocks(P, ql, { hero: Hd, opp: O }, bands, metric); }
-  const rows = H.map(h => [h, ...O.map(o => { if (ORD.indexOf(o) >= ORD.indexOf(h)) return ''; const r = get(h, o); return r.n ? { v: pctS(r.v, r.n), n: r.n } : { v: '—', n: 0 }; })]).filter(r => r.slice(1).some(c => c && c.n));
+  const rows = H.map(h => [h, ...O.map(o => { if (ORD.indexOf(o) >= ORD.indexOf(h)) return ''; const r = get(h, o); return r.n ? { v: pctS(r.v, r.n), n: r.n, hm: r.hm } : { v: '—', n: 0 }; })]).filter(r => r.slice(1).some(c => c && c.n));
   return [{ type: 'table', title: title(P) + ' — ' + name + ': позиция против позиции', note, ai: k === 'call' ? 'колл — опен не олл-ин' : undefined, table: { head: ['', ...O], rows, grid: true } }];
 }// ---------- изолейт по позициям (алиас — ext.iso; сверено с таблицей владельца 24.11.2026) ----------
 // строки: против 1 лимпера / ISO Fold / против 2+ лимперов / ISO Fold; ISO Fold — изолировали, лимпер ответил рейзом (3-бет / пуш), мы сбросили
@@ -308,14 +309,15 @@ function isoBlocks(P, ql, o) {
   const note = 'первое решение против лимперов без рейза; BB — без лимпа одного SB (TOT — с ним); ISO Fold — изолировали, лимпер ответил 3-бетом или пушем, мы сбросили; Fold сзади — изолировали, рейз от игрока позади нас, мы сбросили' + st;
   // одна цифра: без «по позициям / таблица» и без позиции — общий изолейт (1 и 2+ лимпера вместе)
   if (!o.table && !PL && Ls.length === 2) { const PP = pos ? (pos === 'EP' ? 'MP' : pos) : 'TOT', a = isoGet(P, PP, 1, bands), b = isoGet(P, PP, 2, bands), x = a.map((v, j) => v + b[j]); return [{ type: 'big', title: title(P) + ' — ' + name + (PP === 'TOT' ? '' : ' с ' + PP) + ' против лимперов', big: x[0] ? pctS(isoV(x), x[0]) : 'нет данных', n: x[0], ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', note: 'vs 1 лимпер ' + pctS(isoV(a), a[0]) + ' · vs 2+ ' + pctS(isoV(b), b[0]) + (x[3] ? ' · ISO Fold ' + pctS(x[4], x[3]) + ' (' + x[3] + ' раз)' : '') + st }]; }
-  if (cols.length === 1 && Ls.length === 1) { const x = isoGet(P, cols[0], Ls[0], bands); return [{ type: 'big', title: title(P) + ' — ' + name + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + ' против ' + (Ls[0] === 1 ? '1 лимпера' : '2+ лимперов'), big: x[0] ? pctS(isoV(x), x[0]) : 'нет данных', n: x[0], ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', note: (x[3] ? 'ISO Fold ' + pctS(x[4], x[3]) + ' (' + x[3] + ' раз) · ' : '') + note }]; }
+  const isoM = mode === 'nai' ? 'isonai' : mode === 'ai' ? 'isoai' : 'iso';
+  if (cols.length === 1 && Ls.length === 1) { const x = isoGet(P, cols[0], Ls[0], bands); return [{ type: 'big', hm: HMref(P, 'iso|' + cols[0] + '|' + Ls[0], isoM, bands), title: title(P) + ' — ' + name + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + ' против ' + (Ls[0] === 1 ? '1 лимпера' : '2+ лимперов'), big: x[0] ? pctS(isoV(x), x[0]) : 'нет данных', n: x[0], ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', note: (x[3] ? 'ISO Fold ' + pctS(x[4], x[3]) + ' (' + x[3] + ' раз) · ' : '') + note }]; }
   const rows = [];
   for (const L of Ls) {
-    rows.push([(L === 1 ? 'vs 1 лимпер' : 'vs 2+') + (mode === 'all' ? '' : ' · ' + (mode === 'nai' ? 'NAI' : 'AI')), ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(isoV(x), x[0]), n: x[0] }; })]);
-    rows.push(['ISO Fold', ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(x[4], x[3]), n: x[3] }; })]);
+    rows.push([(L === 1 ? 'vs 1 лимпер' : 'vs 2+') + (mode === 'all' ? '' : ' · ' + (mode === 'nai' ? 'NAI' : 'AI')), ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(isoV(x), x[0]), n: x[0], hm: HMref(P, 'iso|' + p + '|' + L, isoM, bands) }; })]);
+    rows.push(['ISO Fold', ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(x[4], x[3]), n: x[3], hm: HMref(P, 'iso|' + p + '|' + L, 'isofold', bands) }; })]);
   }
   // внизу: изолировали, рейз от игрока позади (не лимпера) — как часто сбрасываем (владелец, 24.11.2026)
-  for (const L of Ls) rows.push(['Fold сзади (' + (L === 1 ? 'vs 1' : 'vs 2+') + ')', ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(x[8], x[7]), n: x[7] }; })]);
+  for (const L of Ls) rows.push(['Fold сзади (' + (L === 1 ? 'vs 1' : 'vs 2+') + ')', ...cols.map(p => { const x = isoGet(P, p, L, bands); return { v: pctS(x[8], x[7]), n: x[7], hm: HMref(P, 'iso|' + p + '|' + L, 'fsz', bands) }; })]);
   return [{ type: 'table', title: title(P) + ' — ' + name + ' по позициям', note, ai: mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами', table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
 }// ---------- оверколл: колл опена третьим в банк (1 коллер) и четвёртым+ (2+), по позициям (алиас — ext.oc; 24.11.2026) ----------
 function ocGet(P, pos, C, bs) { const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.oc[pos] && P.ext.oc[pos][C] && P.ext.oc[pos][C][b]; if (r) for (let j = 0; j < 4; j++) x[j] += r[j]; } return x; }
@@ -325,11 +327,11 @@ function ocBlocks(P, ql, o) {
   const cols = vPosList(PL) ? vPosList(PL) : (pos ? [pos === 'EP' ? 'MP' : pos] : o.table ? IPOS : ['TOT']), LBL = { 1: 'Колл 3-м (1 коллер)', 2: 'Колл 4-м+ (2+ коллера)' };
   const st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '', note = 'колл одного опена (не олл-ин), когда до нас уже коллировали; лимпов до опена нет; TOT — без BB' + st, ai = 'колл — опен не олл-ин';
   if (cols.length === 1 && (Cs.length === 1 || !o.table)) {
-    if (Cs.length === 1) { const x = ocGet(P, cols[0], Cs[0], bands); return [{ type: 'big', title: title(P) + ' — ' + LBL[Cs[0]] + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[1], x[0]) : 'нет данных', n: x[0], ai, note }]; }
+    if (Cs.length === 1) { const x = ocGet(P, cols[0], Cs[0], bands); return [{ type: 'big', hm: HMref(P, 'oc|' + cols[0] + '|' + Cs[0], 'call', bands), title: title(P) + ' — ' + LBL[Cs[0]] + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[1], x[0]) : 'нет данных', n: x[0], ai, note }]; }
     const a = ocGet(P, cols[0], 1, bands), b = ocGet(P, cols[0], 2, bands), n = a[0] + b[0];
     return [{ type: 'big', title: title(P) + ' — колл третьим и дальше' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: n ? pctS(a[1] + b[1], n) : 'нет данных', n, ai, note: '3-м ' + pctS(a[1], a[0]) + ' · 4-м+ ' + pctS(b[1], b[0]) + ' · ' + note }];
   }
-  const rows = Cs.map(C => [LBL[C], ...cols.map(p => { const x = ocGet(P, p, C, bands); return { v: pctS(x[1], x[0]), n: x[0] }; })]);
+  const rows = Cs.map(C => [LBL[C], ...cols.map(p => { const x = ocGet(P, p, C, bands); return { v: pctS(x[1], x[0]), n: x[0], hm: HMref(P, 'oc|' + p + '|' + C, 'call', bands) }; })]);
   return [{ type: 'table', title: title(P) + ' — колл ' + (Cs.length === 2 ? 'третьим и четвёртым' : Cs[0] === 1 ? 'третьим' : 'четвёртым и дальше') + ' в банк' + (cols.length > 1 ? ' по позициям' : ''), note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
 }// ---------- 3-бет против изолейта (алиас — ext.b3i): до меня лимп, его изолировали (не олл-ин), коллеров нет, я 3-бечу ----------
 const B3I_RE = /(3\s*-?\s*бет[а-яё]*|трибет[а-яё]*|3b(et)?)\s*(против|vs\.?|на)\s*(изо|изол|iso)|против\s*изол[а-яё]*/;
@@ -339,8 +341,9 @@ function b3iBlocks(P, ql, o) {
   const cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : o.table ? IPOS : ['TOT']);
   const note = 'один лимпер, его изолировали (рейз не олл-ин), после изолейта никто не вошёл; мы 3-бетим' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : 'с олл-инами';
-  if (cols.length === 1) { const r = get(cols[0]); return [{ type: 'big', title: title(P) + ' — ' + name + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, ai, note }]; }
-  return [{ type: 'table', title: title(P) + ' — ' + name + ' по позициям', note, ai, table: { head: ['', ...cols], rows: [[name, ...cols.map(p => { const r = get(p); return { v: pctS(r.v, r.n), n: r.n }; })]], grid: true } }];
+  const bm = mode === 'nai' ? 'nai' : mode === 'ai' ? 'ai' : 'b3all';
+  if (cols.length === 1) { const r = get(cols[0]); return [{ type: 'big', hm: HMref(P, 'b3i|' + cols[0], bm, bands), title: title(P) + ' — ' + name + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: r.n ? pctS(r.v, r.n) : 'нет данных', n: r.n, ai, note }]; }
+  return [{ type: 'table', title: title(P) + ' — ' + name + ' по позициям', note, ai, table: { head: ['', ...cols], rows: [[name, ...cols.map(p => { const r = get(p); return { v: pctS(r.v, r.n), n: r.n, hm: HMref(P, 'b3i|' + p, bm, bands) }; })]], grid: true } }];
 }// ---------- размеры 3-бета (алиас — ext.s3; 24.11.2026): как часто какой размер и фолд на 4-бет, по стекам ----------
 const S3_RE = /(3\s*-?\s*бет[а-яё]*|трибет[а-яё]*|3bet).{0,25}(сайз|размер)|(сайз|размер)[а-яё]*.{0,20}(3\s*-?\s*бет|трибет|3bet)/;
 const S3LBL = (g) => (g === '05.0' ? 'до 5 bb' : g === '11.0' ? '11 bb и больше' : g === '09.5' ? '9,5–10,5 bb' : String(+g).replace('.', ',') + ' bb');
@@ -349,7 +352,7 @@ function s3Blocks(P, ql, o) {
   const pos = o.pos ? (o.pos === 'EP' ? 'MP' : o.pos) : 'TOT', S = P.ext.s3, bs = o.bands;
   const get = (g) => { const x = [0, 0, 0, 0]; for (const b of bs) { const r = S[g] && S[g][pos] && S[g][pos][b]; if (r) for (let j = 0; j < 4; j++) x[j] += r[j]; } return x; };
   const G = Object.keys(S).sort(), tot = G.reduce((a, g) => a + get(g)[0], 0);
-  const rows = G.map(g => { const x = get(g); return x[0] ? [S3LBL(g), { v: pctS(x[0], tot), n: x[0] }, { v: pctS(x[3], x[2]), n: x[2] }] : null; }).filter(Boolean);
+  const rows = G.map(g => { const x = get(g); return x[0] ? [S3LBL(g), { v: pctS(x[0], tot), n: x[0], hm: HMref(P, 's3|' + pos, 'sz:' + g, bs, 'any') }, { v: pctS(x[3], x[2]), n: x[2], hm: HMref(P, 's3|' + pos, 'f4:' + g, bs) }] : null; }).filter(Boolean);
   const st = bs.length < BANDS.length ? 'стек ' + grpLabel('', bs) : 'все стеки';
   return [{ type: 'table', title: title(P) + ' — 3-беты по сайзам' + (pos === 'TOT' ? '' : ' с ' + pos), ai: 'без олл-инов',
     note: st + ' · всего 3-бетов ' + tot.toLocaleString('ru') + ' · размер — сколько всего ставим, в bb (округлено до 0,5); частота — доля этого размера среди 3-бетов; Fold vs 4bet — сбросили на 4-бет',
@@ -372,7 +375,7 @@ function f3Blocks(P, ql, o) {
   if (cols.length === 1 && wSel.length === 2 && !o.table) return wSel.map(w => { const v = val(get(cols[0], w)); return { type: 'big', title: title(P) + ' — фолд на 3-бет ' + LBL[w].replace(/ \(.*\)/, '') + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: v[1] ? pctS(v[0], v[1]) : 'нет данных', n: v[1], ai, note: w === 'ip' ? 'в позиции — 3-бет с блайндов' : 'без позиции — 3-бет сзади не с блайндов или мы на SB' }; });
   if (cols.length === 1 && wSel.length === 1) { const v = val(get(cols[0], wSel[0])); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет' + (wSel[0] === 'all' ? '' : ' ' + LBL[wSel[0]].replace(/ \(.*\)/, '')) + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: v[1] ? pctS(v[0], v[1]) : 'нет данных', n: v[1], ai, note }]; }
   if (cols.length === 1 && !o.table) { const a = val(get(cols[0], 'all')), i = val(get(cols[0], 'ip')), oo = val(get(cols[0], 'oop')); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]) + kind, big: a[1] ? pctS(a[0], a[1]) : 'нет данных', n: a[1], ai, note: 'в позиции ' + pctS(i[0], i[1]) + ' · без позиции ' + pctS(oo[0], oo[1]) + ' · ' + note }]; }
-  const rows = wSel.map(w => [LBL[w], ...cols.map(p => { const v = val(get(p, w)); return { v: pctS(v[0], v[1]), n: v[1] }; })]);
+  const rows = wSel.map(w => [LBL[w], ...cols.map(p => { const v = val(get(p, w)); return { v: pctS(v[0], v[1]), n: v[1], hm: mode === 'all' && !vsAi ? HMref(P, 'f3|' + p + '|' + w, 'fold', bands) : undefined }; })]);
   return [{ type: 'table', title: title(P) + ' — фолд на 3-бет по позициям' + kind, note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
 }// ---------- колл 3-бета в холодную (ext.c3) и наши 4-беты после своего опена (ext.f3[..][6] — 4-бет олл-ином); 24.11.2026 ----------
 const CC3_RE = /(колл?|кол|колд[\s-]*колл?)[а-яё]*\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет[а-яё]*|(3|три)\s*-?\s*бет[а-яё]*\s*в\s*холодн|в\s*холодн[а-яё]*\s*(на\s*)?(3|три)\s*-?\s*бет/;
@@ -382,21 +385,22 @@ function cc3Blocks(P, ql, o) {
   const get = (p) => { const x = [0, 0, 0]; for (const b of bands) { const r = P.ext.c3[p] && P.ext.c3[p][b]; if (r) for (let j = 0; j < 3; j++) x[j] += r[j]; } return x; };
   const note = 'кто-то открылся, другой 3-бетнул (не олл-ин), мы ещё не вкладывались и коллируем; до нас никто не коллировал' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : ''), ai = 'колл — 3-бет не олл-ин';
   if (cols.length === 1) { const x = get(cols[0]); return [{ type: 'big', title: title(P) + ' — колл 3-бета в холодную' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[1], x[0]) : 'нет данных', n: x[0], ai, note }]; }
-  return [{ type: 'table', title: title(P) + ' — колл 3-бета в холодную по позициям', note, ai, table: { head: ['', ...cols], rows: [['Cold call 3bet', ...cols.map(p => { const x = get(p); return { v: pctS(x[1], x[0]), n: x[0] }; })]], grid: true } }];
+  return [{ type: 'table', title: title(P) + ' — колл 3-бета в холодную по позициям', note, ai, table: { head: ['', ...cols], rows: [['Cold call 3bet', ...cols.map(p => { const x = get(p); return { v: pctS(x[1], x[0]), n: x[0], hm: HMref(P, 'c3|' + p, 'call', bands) }; })]], grid: true } }];
 }
 function b4Blocks(P, ql, o) {
   if (o.pos === 'BB') return [{ type: 'text', title: title(P) + ' — 4-бет с BB', text: 'С BB 4-бета после своего опена не бывает: открыться первым с BB нельзя. Можно спросить «3-бет с BB» или «колд-колл с BB».' }];
   const { bands, PL, pos } = o, mode = aiMode(ql);
   const hasOop = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)/.test(ql), hasIp = /(^|[^а-яёa-z])(в\s*позиц|ip)([^a-z]|$)/.test(ql.replace(/не\s*в\s*позиц/g, ' ')), w = hasIp && !hasOop ? 'ip' : hasOop && !hasIp ? 'oop' : 'all';
-  const get = (p) => { const x = [0, 0, 0, 0, 0, 0, 0]; for (const b of bands) { const r = P.ext.f3[p] && P.ext.f3[p][w] && P.ext.f3[p][w][b]; if (r) for (let j = 0; j < 7; j++) x[j] += r[j] || 0; } return x; };
-  const K = { all: ['4bet', x => x[3]], nai: ['4bet NAI', x => x[3] - x[6]], ai: ['4bet AI', x => x[6]] }, rowsK = mode === 'all' ? ['all', 'nai', 'ai'] : [mode];
+  const get = (p) => { const x = [0, 0, 0, 0, 0, 0, 0, 0, 0]; for (const b of bands) { const r = P.ext.f3[p] && P.ext.f3[p][w] && P.ext.f3[p][w][b]; if (r) for (let j = 0; j < 9; j++) x[j] += r[j] || 0; } return x; };
+  // 4-беты — только из раздач, где 3-бет был не олл-ином (те же раздачи, что в знаменателе): [7] и [8]
+  const K = { all: ['4bet', x => x[7]], nai: ['4bet NAI', x => x[7] - x[8]], ai: ['4bet AI', x => x[8]] }, rowsK = mode === 'all' ? ['all', 'nai', 'ai'] : [mode];
   const cols = vPosList(PL) ? PL.filter(p => F3POS.includes(p)) : (pos ? [pos] : o.table ? F3POS : ['TOT']);
   const wTxt = w === 'ip' ? ' в позиции' : w === 'oop' ? ' без позиции' : '';
   const note = 'мы открылись, никто не вошёл, нас 3-бетнули (не олл-ином — на олл-ин 4-бет невозможен) — мы 4-бетим; NAI — не олл-ином, AI — олл-ином; TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
   const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : '4bet — с олл-инами · NAI — без · AI — только олл-ины';
   if (hasIp && hasOop && cols.length === 1 && !o.table) return ['ip', 'oop'].map(ww => b4Blocks(P, ql.replace(/без\s*позиц[а-яё]*|(^|[^а-яё])в\s*позиц[а-яё]*/g, ' ') + (ww === 'ip' ? ' в позиции' : ' без позиции'), o)[0]);
-  if (cols.length === 1 && !o.table) { const x = get(cols[0]), k = rowsK[0]; return [{ type: 'big', title: title(P) + ' — ' + K[k][0] + wTxt + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] - x[4] ? pctS(K[k][1](x), x[0] - x[4]) : 'нет данных', n: x[0] - x[4], ai: mode === 'all' ? 'с олл-инами' : ai, note: (mode === 'all' && x[0] - x[4] ? 'NAI ' + pctS(K.nai[1](x), x[0] - x[4]) + ' · AI ' + pctS(K.ai[1](x), x[0] - x[4]) + ' · ' : '') + note }]; }
-  return [{ type: 'table', title: title(P) + ' — 4-беты по позициям' + wTxt, note, ai, table: { head: ['', ...cols], rows: rowsK.map(k => [K[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(K[k][1](x), x[0] - x[4]), n: x[0] - x[4] }; })]), grid: true, heatRow: true } }];
+  if (cols.length === 1 && !o.table) { const x = get(cols[0]), k = rowsK[0]; return [{ type: 'big', hm: HMref(P, 'f3|' + cols[0] + '|' + w, { all: 'b4', nai: 'b4nai', ai: 'b4ai' }[k], bands), title: title(P) + ' — ' + K[k][0] + wTxt + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] - x[4] ? pctS(K[k][1](x), x[0] - x[4]) : 'нет данных', n: x[0] - x[4], ai: mode === 'all' ? 'с олл-инами' : ai, note: (mode === 'all' && x[0] - x[4] ? 'NAI ' + pctS(K.nai[1](x), x[0] - x[4]) + ' · AI ' + pctS(K.ai[1](x), x[0] - x[4]) + ' · ' : '') + note }]; }
+  return [{ type: 'table', title: title(P) + ' — 4-беты по позициям' + wTxt, note, ai, table: { head: ['', ...cols], rows: rowsK.map(k => [K[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(K[k][1](x), x[0] - x[4]), n: x[0] - x[4], hm: HMref(P, 'f3|' + p + '|' + w, { all: 'b4', nai: 'b4nai', ai: 'b4ai' }[k], bands) }; })]), grid: true, heatRow: true } }];
 }// ---------- фолд на 4-бет и 5-бет после своего 3-бета (алиас — ext.f4; 24.11.2026) ----------
 // мой 3-бет не олл-ином (один опен, без коллеров и лимпов) → мне 4-бет (в т.ч. олл-ин) → фолд / колл / 5-бет; проценты — от всех таких 4-бетов
 const F4_RE = /фолд[а-яё]*\s*(на|против)\s*(4|четыр[её]х)\s*-?\s*бет|fold\s*to\s*4/;
@@ -405,8 +409,19 @@ function f4Blocks(P, ql, o, kind) {
   const get = (p) => { const x = [0, 0, 0, 0, 0]; for (const b of bands) { const r = P.ext.f4[p] && P.ext.f4[p][b]; if (r) for (let j = 0; j < 5; j++) x[j] += r[j]; } return x; };
   const K = kind === 'fold' ? ['Fold to 4bet', 2, 'фолд на 4-бет'] : ['5bet', 4, '5-бет'];
   const note = 'мы 3-бетнули (не олл-ином, против одного опена без коллеров), нам поставили 4-бет (в т.ч. олл-ин); процент — от всех таких 4-бетов' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : ''), ai = '4-бет — любой, в т.ч. олл-ин';
-  if (cols.length === 1) { const x = get(cols[0]); return [{ type: 'big', title: title(P) + ' — ' + K[2] + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[K[1]], x[0]) : 'нет данных', n: x[0], ai, note }]; }
-  return [{ type: 'table', title: title(P) + ' — ' + K[2] + ' по позициям', note, ai, table: { head: ['', ...cols], rows: [[K[0], ...cols.map(p => { const x = get(p); return { v: pctS(x[K[1]], x[0]), n: x[0] }; })]], grid: true } }];
+  if (cols.length === 1) { const x = get(cols[0]); return [{ type: 'big', hm: HMref(P, 'f4|' + cols[0], 'fold', bands), title: title(P) + ' — ' + K[2] + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[K[1]], x[0]) : 'нет данных', n: x[0], ai, note }]; }
+  return [{ type: 'table', title: title(P) + ' — ' + K[2] + ' по позициям', note, ai, table: { head: ['', ...cols], rows: [[K[0], ...cols.map(p => { const x = get(p); return { v: pctS(x[K[1]], x[0]), n: x[0], hm: HMref(P, 'f4|' + p, 'fold', bands) }; })]], grid: true } }];
+}// ---------- матрицы рук (25.11.2026): по клетке стата — какими руками была ситуация и действие ----------
+// алиас — tgbot/data/alias_hm.json (свои карты известны всегда); игроки базы — после перегона (только вскрытые руки, от HM_MIN рук)
+const HMF = path.join(__dirname, 'data', 'alias_hm.json'); let HMD = null, HMT = 0;
+function hmData() { try { const t = fs.statSync(HMF).mtimeMs; if (t !== HMT) { HMD = JSON.parse(fs.readFileSync(HMF, 'utf8')); HMT = t; } } catch (e) { HMD = null; } return HMD; }
+// ссылка на матрицу для клетки: путь стата, метрика (действие), стеки; dm — метрика знаменателя (размеры 3-бета: доля среди всех 3-бетов)
+const HMref = (P, p, m, bands, dm) => (P && P.key && /^alias:/.test(P.key) ? { p, m, b: bands.length === BANDS.length ? 'all' : bands.join(','), dm } : undefined);
+function hmGet(p, m, b, dm) {
+  const D = hmData(); if (!D || !D[p]) return null; const bands = b === 'all' ? ['all'] : b.split(','), out = {};
+  const add = (metric, slot) => { const M = D[p][metric]; if (!M) return; for (const bd of bands) { const o = M[bd]; if (!o) continue; for (const [c, v] of Object.entries(o)) { const x = out[c] = out[c] || [0, 0]; if (slot === 'd') x[0] += v[0]; else if (slot === 'n') x[1] += v[1]; else { x[0] += v[0]; x[1] += v[1]; } } } };
+  if (dm) { add(dm, 'd'); add(m, 'n'); } else add(m, 'both');
+  return out;
 }function statBlocks(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
@@ -566,10 +581,10 @@ function aiTag(B) {
     // у игроков базы MP и HJ пока одной группой — одна колонка «MP/HJ» (до пересчёта)
     let cols = PL || ['TOT', ...S.cols]; const lab = (p) => (!S.h2n && p === 'MP' && PL && (PL.includes('MP') || PL.includes('HJ')) ? 'MP/HJ' : p);
     if (!S.h2n && PL) cols = [...new Set(cols.map(p => (p === 'HJ' ? 'MP' : p)))];
-    const cell = (x, k) => ({ v: pctS(x[k], x.n), n: x.n });
+    const cell = (x, k, p, bs) => ({ v: pctS(x[k], x.n), n: x.n, hm: HMref(P, 'rfi|' + p, k, bs) });
     const RS = G || (byBand ? bands.map(b => [b + ' bb', [b]]) : null);
-    const rows = RS ? RS.map(([l, bs]) => [l, ...cols.map(p => cell(S.get(p, bs), 'nai'))]).filter(r => r.slice(1).some(c => c.n))
-      : [['RFI', ...cols.map(p => cell(S.get(p, bands), 'tot'))], ['NAI', ...cols.map(p => cell(S.get(p, bands), 'nai'))]];
+    const rows = RS ? RS.map(([l, bs]) => [l, ...cols.map(p => cell(S.get(p, bs), 'nai', p, bs))]).filter(r => r.slice(1).some(c => c.n))
+      : [['RFI', ...cols.map(p => cell(S.get(p, bands), 'tot', p, bands))], ['NAI', ...cols.map(p => cell(S.get(p, bands), 'nai', p, bands))]];
     const posNote = S.h2n ? '' : ' · EP — все ранние места, MP — HJ и место перед ним';
     blocks.push({ type: 'table', title: title(P) + ' — RFI' + (PL ? ' · ' + cols.map(lab).join(', ') : ' по позициям') + (RS ? ' по стекам' : ''), note: (RS ? 'без олл-инов; стек — свой, без анте' : 'RFI — с олл-инами, NAI — без') + posNote, table: { head: ['', ...cols.map(lab)], rows, grid: true } });
     if (!rows.length) blocks.push({ type: 'text', text: 'В этой ситуации у игрока нет раздач.' });
@@ -583,10 +598,10 @@ function aiTag(B) {
     if (p1 === 'BB') blocks.push({ type: 'text', title: title(P) + ' — RFI с BB', text: 'С BB RFI не бывает: когда очередь доходит до BB, открыть первым уже нельзя. Можно спросить, например, «колд-колл с BB» или «3-бет с BB».' });
     else if (p1 && !byBand) {
       const x = S.get(p1, bands);
-      blocks.push({ type: 'big', title: title(P) + ' — RFI ' + (p1 === 'TOT' ? 'общий' : 'с ' + p1), big: x.n ? pctS(x.tot, x.n) : 'нет данных', n: x.n, note: stackTxt + (x.n ? ' · без олл-инов ' + pctS(x.nai, x.n) : '') + posNote });
+      blocks.push({ type: 'big', hm: HMref(P, 'rfi|' + p1, 'tot', bands), title: title(P) + ' — RFI ' + (p1 === 'TOT' ? 'общий' : 'с ' + p1), big: x.n ? pctS(x.tot, x.n) : 'нет данных', n: x.n, note: stackTxt + (x.n ? ' · без олл-инов ' + pctS(x.nai, x.n) : '') + posNote });
     } else if (p1) {
       const T = { head: ['стек', 'RFI', 'NAI'], rows: [], grid: true };
-      for (const b of bands) { const x = S.get(p1, [b]); if (x.n) T.rows.push([b + ' bb', { v: pctS(x.tot, x.n), n: x.n }, { v: pctS(x.nai, x.n), n: x.n }]); }
+      for (const b of bands) { const x = S.get(p1, [b]); if (x.n) T.rows.push([b + ' bb', { v: pctS(x.tot, x.n), n: x.n, hm: HMref(P, 'rfi|' + p1, 'tot', [b]) }, { v: pctS(x.nai, x.n), n: x.n, hm: HMref(P, 'rfi|' + p1, 'nai', [b]) }]); }
       blocks.push({ type: 'table', title: title(P) + ' — RFI ' + (p1 === 'TOT' ? 'общий' : 'с ' + p1) + ' по стекам', note: 'NAI — без олл-инов' + posNote, table: T });
     } else blocks.push({ type: 'table', title: title(P) + ' — RFI по позициям', note: stackTxt + (byBand ? ' · по стекам, без олл-инов; стек — свой, без анте' : ' · NAI — без олл-инов') + posNote, table: rfiGrid(P, bands, byBand && !(bands0 && bands0.length === 1)) });
   }  else {
@@ -706,6 +721,7 @@ const srv = http.createServer(async (req, res) => {
     if (!WH.ready) return J({ error: 'Whisper ещё загружается — подождите несколько секунд' });
     try { const text = await transcribe(await readBody(req, 8 << 20)); return J({ text, ms: Date.now() - t0 }); } catch (e) { return J({ error: 'Не получилось распознать: ' + e.message }); }
   }
+  if (u.pathname === '/api/hm') { let refs = []; try { refs = JSON.parse(u.searchParams.get('r') || '[]'); } catch (e) {} const out = {}; for (const R of [].concat(refs)) { const r = R && hmGet(String(R.p), String(R.m), String(R.b || 'all'), R.dm || ''); if (r) for (const [c, v] of Object.entries(r)) { const x = out[c] = out[c] || [0, 0]; x[0] += v[0]; x[1] += v[1]; } } return J(Object.keys(out).length ? { cells: out } : { none: true }); }
   if (u.pathname === '/api/status') return J({ whisper: WH.ready, brain: BRAIN.status() });
   if (u.pathname === '/api/ask') {
     const t0 = Date.now(); let out;
