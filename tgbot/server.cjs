@@ -237,7 +237,7 @@ const STATS = [
   ['SQ', /квадрат|фиат/],
 ];
 const NO_STAT = /rfi|опен|открыт|первым|стил|сквиз|изо|изол|iso|против\s*(опен|лимп|олл)|колл\s*опен|на\s*опен|винрейт|winrate|выигрыш|профит|bb\/100|бб\/100/;
-function statOf(ql) { if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
+function statOf(ql) { if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
 const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -380,13 +380,17 @@ function f3Blocks(P, ql, o) {
   return [{ type: 'table', title: title(P) + ' — фолд на 3-бет по позициям' + kind, note, ai, table: { head: ['', ...cols], rows, grid: true, heatRow: true } }];
 }// ---------- колл 3-бета в холодную (ext.c3) и наши 4-беты после своего опена (ext.f3[..][6] — 4-бет олл-ином); 24.11.2026 ----------
 const CC3_RE = /(колл?|кол|колд[\s-]*колл?)[а-яё]*\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет[а-яё]*|(3|три)\s*-?\s*бет[а-яё]*\s*в\s*холодн|в\s*холодн[а-яё]*\s*(на\s*)?(3|три)\s*-?\s*бет/;
+const COLD4_RE = /(4|четыр[её]х)\s*-?\s*бет[а-яё]*\s*в\s*холодн|холодн[а-яё]*\s*(4|четыр[её]х)\s*-?\s*бет|open\s*4\s*-?\s*bet|опен\s*(4|фор)\s*-?\s*бет|cold\s*4\s*-?\s*bet/;
 const B4_RE = /(?<!(на|против)\s*)(^|[^а-яё0-9])(4|четыр[её]х)\s*-?\s*бет|4\s*bet|фор\s*бет/;
 function cc3Blocks(P, ql, o) {
   const { bands, PL, pos } = o, cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : o.table ? IPOS : ['TOT']);
   const get = (p) => { const x = [0, 0, 0]; for (const b of bands) { const r = P.ext.c3[p] && P.ext.c3[p][b]; if (r) for (let j = 0; j < 3; j++) x[j] += r[j]; } return x; };
   const note = 'кто-то открылся, другой 3-бетнул (не олл-ин), мы ещё не вкладывались и коллируем; до нас никто не коллировал' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : ''), ai = 'колл — 3-бет не олл-ин';
-  if (cols.length === 1) { const x = get(cols[0]); return [{ type: 'big', hm: HMref(P, 'c3|' + cols[0], 'call', bands), title: title(P) + ' — колл 3-бета в холодную' + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[1], x[0]) : 'нет данных', n: x[0], ai, note }]; }
-  return [{ type: 'table', title: title(P) + ' — колл 3-бета в холодную по позициям', note, ai, table: { head: ['', ...cols], rows: [['Cold call 3bet', ...cols.map(p => { const x = get(p); return { v: pctS(x[1], x[0]), n: x[0], hm: HMref(P, 'c3|' + p, 'call', bands) }; })]], grid: true } }];
+  /* Open 4bet — 4-бет в холодную (24–25.11.2026): те же раздачи, наш ход — рейз (любой, в т.ч. олл-ин) */
+  const c4 = COLD4_RE.test(ql), both = c4 && /(колл?|кол)[а-яё]*\s*(на\s*)?(3|три|тр[её]х)/.test(ql.replace(COLD4_RE, ' ')), R = { call: ['Cold call 3bet', 1, 'колл 3-бета в холодную'], b4: ['Open 4bet', 2, '4-бет в холодную (open 4bet)'] };
+  const ks1 = c4 && !both ? ['b4'] : both ? ['call', 'b4'] : ['call'], ksT = c4 && !both ? ['b4'] : ['call', 'b4'];
+  if (cols.length === 1 && !o.table) return ks1.map(k => { const x = get(cols[0]); return { type: 'big', hm: HMref(P, 'c3|' + cols[0], k, bands), title: title(P) + ' — ' + R[k][2] + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] ? pctS(x[R[k][1]], x[0]) : 'нет данных', n: x[0], ai: k === 'b4' ? '4-бет — любой, в т.ч. олл-ин' : ai, note: (k === 'call' && ks1.length === 1 && x[0] ? '4-бет в холодную ' + pctS(x[2], x[0]) + ' · ' : '') + note }; });
+  return [{ type: 'table', title: title(P) + ' — ' + (ksT.length > 1 ? 'колл 3-бета в холодную и open 4bet' : '4-бет в холодную') + ' по позициям', note: note + '; Open 4bet — 4-бет в холодную (любой, в т.ч. олл-ин)', ai, table: { head: ['', ...cols], rows: ksT.map(k => [R[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(x[R[k][1]], x[0]), n: x[0], hm: HMref(P, 'c3|' + p, k, bands) }; })]), grid: true, heatRow: true } }];
 }
 function b4Blocks(P, ql, o) {
   if (o.pos === 'BB') return [{ type: 'text', title: title(P) + ' — 4-бет с BB', text: 'С BB 4-бета после своего опена не бывает: открыться первым с BB нельзя. Можно спросить «3-бет с BB» или «колд-колл с BB».' }];
@@ -394,14 +398,18 @@ function b4Blocks(P, ql, o) {
   const hasOop = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)/.test(ql), hasIp = /(^|[^а-яёa-z])(в\s*позиц|ip)([^a-z]|$)/.test(ql.replace(/не\s*в\s*позиц/g, ' ')), w = hasIp && !hasOop ? 'ip' : hasOop && !hasIp ? 'oop' : 'all';
   const get = (p) => { const x = [0, 0, 0, 0, 0, 0, 0, 0, 0]; for (const b of bands) { const r = P.ext.f3[p] && P.ext.f3[p][w] && P.ext.f3[p][w][b]; if (r) for (let j = 0; j < 9; j++) x[j] += r[j] || 0; } return x; };
   // 4-беты — только из раздач, где 3-бет был не олл-ином (те же раздачи, что в знаменателе): [7] и [8]
-  const K = { all: ['4bet', x => x[7]], nai: ['4bet NAI', x => x[7] - x[8]], ai: ['4bet AI', x => x[8]] }, rowsK = mode === 'all' ? ['all', 'nai', 'ai'] : [mode];
+  const K = { all: ['4bet', x => x[7]], nai: ['4bet NAI', x => x[7] - x[8]], ai: ['4bet AI', x => x[8]] }, rowsK = mode === 'all' ? ['all', 'rng', 'nai'] : [mode, 'rng'];
+  /* 4bet Range — доля всех раздач с этой позиции (возможностей открыться, как RFI), которые дошли до нашего 4-бета; TOT — без SB */
+  const rfiR = (p) => { let n = 0, o = 0; for (const q of p === 'TOT' ? ['EP', 'MP', 'HJ', 'CO', 'BTN'] : [p]) for (const b of bands) { const r = P.ext.rfi && P.ext.rfi[q] && P.ext.rfi[q][b]; if (r) { n += r[0]; o += r[2]; } } return n ? o / n : 0; }, rk = mode === 'all' ? 'all' : mode, MK = { all: 'b4', nai: 'b4nai', ai: 'b4ai' };
+  /* Range = частота 4-бета × частота опена не олл-ином (4-бет считаем только после опена не олл-ином): какая доля всех рук с позиции открывается и 4-бетит */
+  const rngCell = (p) => { const x = get(p), d = x[0] - x[4], v = d ? K[rk][1](x) / d * rfiR(p) * 100 : 0; return { v: d ? String(Math.round(v * 10) / 10).replace('.', ',') + '%' : '—', n: d, rng: 1, hm: HMref(P, 'f3|' + p + '|' + w, MK[rk], bands) }; };
   const cols = vPosList(PL) ? PL.filter(p => F3POS.includes(p)) : (pos ? [pos] : o.table ? F3POS : ['TOT']);
   const wTxt = w === 'ip' ? ' в позиции' : w === 'oop' ? ' без позиции' : '';
-  const note = 'мы открылись, никто не вошёл, нас 3-бетнули (не олл-ином — на олл-ин 4-бет невозможен) — мы 4-бетим; NAI — не олл-ином, AI — олл-ином; TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
-  const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : '4bet — с олл-инами · NAI — без · AI — только олл-ины';
+  const note = 'мы открылись, никто не вошёл, нас 3-бетнули (не олл-ином — на олл-ин 4-бет невозможен) — мы 4-бетим; NAI — не олл-ином, AI — олл-ином; Range — частота 4-бета × частота опена не олл-ином: какая доля всех рук с позиции открывается и 4-бетит (матрица — руки 4-бета); TOT — без SB' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
+  const ai = mode === 'nai' ? 'без олл-инов' : mode === 'ai' ? 'только олл-ины' : '4bet — с олл-инами · NAI — без';
   if (hasIp && hasOop && cols.length === 1 && !o.table) return ['ip', 'oop'].map(ww => b4Blocks(P, ql.replace(/без\s*позиц[а-яё]*|(^|[^а-яё])в\s*позиц[а-яё]*/g, ' ') + (ww === 'ip' ? ' в позиции' : ' без позиции'), o)[0]);
   if (cols.length === 1 && !o.table) { const x = get(cols[0]), k = rowsK[0]; return [{ type: 'big', hm: HMref(P, 'f3|' + cols[0] + '|' + w, { all: 'b4', nai: 'b4nai', ai: 'b4ai' }[k], bands), title: title(P) + ' — ' + K[k][0] + wTxt + (cols[0] === 'TOT' ? '' : ' с ' + cols[0]), big: x[0] - x[4] ? pctS(K[k][1](x), x[0] - x[4]) : 'нет данных', n: x[0] - x[4], ai: mode === 'all' ? 'с олл-инами' : ai, note: (mode === 'all' && x[0] - x[4] ? 'NAI ' + pctS(K.nai[1](x), x[0] - x[4]) + ' · AI ' + pctS(K.ai[1](x), x[0] - x[4]) + ' · ' : '') + note }]; }
-  return [{ type: 'table', title: title(P) + ' — 4-беты по позициям' + wTxt, note, ai, table: { head: ['', ...cols], rows: rowsK.map(k => [K[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(K[k][1](x), x[0] - x[4]), n: x[0] - x[4], hm: HMref(P, 'f3|' + p + '|' + w, { all: 'b4', nai: 'b4nai', ai: 'b4ai' }[k], bands) }; })]), grid: true, heatRow: true } }];
+  return [{ type: 'table', title: title(P) + ' — 4-беты по позициям' + wTxt, note, ai, table: { head: ['', ...cols], rows: rowsK.map(k => k === 'rng' ? [K[rk][0] + ' Range', ...cols.map(rngCell)] : [K[k][0], ...cols.map(p => { const x = get(p); return { v: pctS(K[k][1](x), x[0] - x[4]), n: x[0] - x[4], hm: HMref(P, 'f3|' + p + '|' + w, { all: 'b4', nai: 'b4nai', ai: 'b4ai' }[k], bands) }; })]), grid: true, heatRow: true } }];
 }// ---------- фолд на 4-бет и 5-бет после своего 3-бета (алиас — ext.f4; 24.11.2026) ----------
 // мой 3-бет не олл-ином (один опен, без коллеров и лимпов) → мне 4-бет (в т.ч. олл-ин) → фолд / колл / 5-бет; проценты — от всех таких 4-бетов
 const F4_RE = /фолд[а-яё]*\s*(на|против)\s*(4|четыр[её]х)\s*-?\s*бет|fold\s*to\s*4/;
@@ -420,7 +428,7 @@ function hmData() { try { const t = fs.statSync(HMF).mtimeMs; if (t !== HMT) { H
 const HMref = (P, p, m, bands, dm) => (P && P.key && /^alias:/.test(P.key) ? { p, m, b: bands.length === BANDS.length ? 'all' : bands.join(','), dm } : undefined);
 function hmGet(p, m, b, dm) {
   const D = hmData(); if (!D || !D[p]) return null; const bands = b === 'all' ? ['all'] : b.split(','), out = {};
-  const add = (metric, slot) => { const M = D[p][metric]; if (!M) return; for (const bd of bands) { const o = M[bd]; if (!o) continue; for (const [c, v] of Object.entries(o)) { const x = out[c] = out[c] || [0, 0]; if (slot === 'd') x[0] += v[0]; else if (slot === 'n') x[1] += v[1]; else { x[0] += v[0]; x[1] += v[1]; } } } };
+  const add = (metric, slot) => { let pp = p; if (/#/.test(metric)) { [pp, metric] = metric.split('#'); } const M = D[pp] && D[pp][metric]; if (!M) return; for (const bd of bands) { const o = M[bd]; if (!o) continue; for (const [c, v] of Object.entries(o)) { const x = out[c] = out[c] || [0, 0]; if (slot === 'd') x[0] += v[0]; else if (slot === 'n') x[1] += v[1]; else { x[0] += v[0]; x[1] += v[1]; } } } };
   if (dm) { add(dm, 'd'); add(m, 'n'); } else add(m, 'both');
   return out;
 }// ---------- сквизы (алиас — ext.sq / ext.sqm; 25.11.2026) ----------

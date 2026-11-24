@@ -11,7 +11,7 @@ const Q = ['мой RFI по позициям', 'мой RFI по стекам', '
 const POSW = ['из ранней позиции', 'с мп', 'с хайджека', 'с катоффа', 'с баттона', 'с малого блайнда', 'с бб'];
 const STW = ['', 'на 42 бб', 'от 20 до 35 бб', 'на коротких стеках', 'на больших стеках', 'по стекам'];
 const STATW = [['RFI', 0], ['3-бет', 1], ['колд-колл', 0], ['колл третьим в банк', 0], ['колл четвертым в банк', 0], ['изолейт', 1], ['изолейт против одного лимпера', 1], ['изолейт против двух лимперов', 0],
-  ['3-бет против изолейта', 1], ['фолд на 3-бет', 1], ['фолд на 3-бет против олл-ина', 0], ['4-бет', 1], ['колл 3-бета в холодную', 0], ['фолд на 4-бет', 0], ['сквиз', 1], ['сквиз-фолд', 0], ['3-беты по сайзам', 0], ['фолд на сквиз', 1], ['колл сквиза', 1], ['4-бет против сквиза', 1], ['фолд на сквиз как рейзер', 0], ['фолд на сквиз как коллер', 1], ['ответы на сквиз', 1], ['ответы на сквиз как коллер', 0], ['фолд на сквиз когда открывший сбросил', 0]];
+  ['3-бет против изолейта', 1], ['фолд на 3-бет', 1], ['фолд на 3-бет против олл-ина', 0], ['4-бет', 1], ['колл 3-бета в холодную', 0], ['фолд на 4-бет', 0], ['сквиз', 1], ['сквиз-фолд', 0], ['3-беты по сайзам', 0], ['4-бет в холодную', 0], ['колл 3-бета в холодную и 4-бет в холодную', 0], ['4-бет в холодную', 0], ['колл 3-бета в холодную и 4-бет в холодную', 0], ['фолд на сквиз', 1], ['колл сквиза', 1], ['4-бет против сквиза', 1], ['фолд на сквиз как рейзер', 0], ['фолд на сквиз как коллер', 1], ['ответы на сквиз', 1], ['ответы на сквиз как коллер', 0], ['фолд на сквиз когда открывший сбросил', 0]];
 const GEN = [];
 for (const [w, ai] of STATW) for (const st of STW) {
   GEN.push('мой ' + w + ' ' + st, 'мои ' + w + ' по позициям ' + st);
@@ -27,7 +27,7 @@ const num = (v) => parseFloat(String(v).replace(',', '.').replace('%', ''));
   for (const q of Q) { if (seen.has(q)) continue; seen.add(q);
     const a = await (await fetch(B + '/api/ask?nobrain=1&ctx=' + encodeURIComponent('alias:все') + '&q=' + encodeURIComponent(q))).json();
     const items = [];
-    for (const b of a.blocks || []) { if (b.big && b.hm) items.push([b.title, { v: b.big, n: b.n, hm: [].concat(b.hm) }]); else if (b.big && b.n) noHm.push(q + ' · ' + b.title); if (b.table) for (const r of b.table.rows) r.slice(1).forEach((c, k) => { if (c && c.hm) items.push([r[0] + ' · ' + b.table.head[k + 1], { v: c.v, n: c.n, hm: [c.hm] }]); else if (c && c.n) noHm.push(q + ' · ' + r[0] + ' · ' + b.table.head[k + 1]); }); }
+    for (const b of a.blocks || []) { if (b.big && b.hm) items.push([b.title, { v: b.big, n: b.n, hm: [].concat(b.hm) }]); else if (b.big && b.n) noHm.push(q + ' · ' + b.title); if (b.table) for (const r of b.table.rows) r.slice(1).forEach((c, k) => { if (c && c.rng) return; /* Range — произведение двух частот, матрица — руки 4-бета */ if (c && c.hm) items.push([r[0] + ' · ' + b.table.head[k + 1], { v: c.v, n: c.n, hm: [c.hm] }]); else if (c && c.n) noHm.push(q + ' · ' + r[0] + ' · ' + b.table.head[k + 1]); }); }
     for (const [lab, c] of items) {
       if (!c.n) continue; cells++;
       const m = await (await fetch(B + '/api/hm?r=' + encodeURIComponent(JSON.stringify(c.hm)))).json();

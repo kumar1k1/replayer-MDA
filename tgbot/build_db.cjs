@@ -174,7 +174,7 @@ function aliasStats() {
           if (bi) for (const p of [bi[0], 'TOT']) { H('b3i|' + p, bi[1], 'b3all', bi[2] || bi[3]); H('b3i|' + p, bi[1], 'nai', bi[2]); H('b3i|' + p, bi[1], 'ai', bi[3]); }
           if (sz) for (const p of [sz[1], 'TOT']) { H('s3|' + p, sz[2], 'any', 1); H('s3|' + p, sz[2], 'sz:' + sz[0], 1); if (sz[4]) H('s3|' + p, sz[2], 'f4:' + sz[0], sz[5]); }
           if (f3i) for (const p of f3i[0] === 'SB' ? ['SB'] : [f3i[0], 'TOT']) for (const w of [f3i[1] ? 'ip' : 'oop', 'all']) { const P = 'f3|' + p + '|' + w; H(P, f3i[2], 'fold', f3i[4]); H(P, f3i[2], 'call', f3i[5]); H(P, f3i[2], f3i[3] ? 'foldai' : 'foldnai', f3i[4]); if (!f3i[3]) { H(P, f3i[2], 'b4', f3i[6]); H(P, f3i[2], 'b4nai', f3i[6] && !f3i[7]); H(P, f3i[2], 'b4ai', f3i[7]); } }
-          if (c3i) for (const p of [c3i[0], 'TOT']) H('c3|' + p, c3i[1], 'call', c3i[2]);
+          if (c3i) for (const p of [c3i[0], 'TOT']) { H('c3|' + p, c3i[1], 'call', c3i[2]); H('c3|' + p, c3i[1], 'b4', c3i[3]); }
           if (f4i) for (const p of [f4i[0], 'TOT']) H('f4|' + p, f4i[1], 'fold', f4i[3]);
           if (fq) for (const rl of fq[0] === 'pfr' ? ['pfr'] : fq[5] ? ['cc', 'cc' + fq[5]] : ['cc']) for (const p of [fq[1], 'TOT']) { const P = 'fsq|' + rl + '|' + p, mk = fq[3] ? 'ai' : 'nai'; for (const [m, v] of [['fold', fq[4] === 0], ['call', fq[4] === 1], ['b4', fq[4] === 2]]) { H(P, fq[2], m, v); H(P, fq[2], m + mk, v); } }
         } }      for (const a of [A('все'), A(room)]) {
