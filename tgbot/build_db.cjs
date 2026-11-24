@@ -135,8 +135,14 @@ function aliasStats() {
             if (d0.tbl === 'RFI' && /^open/.test(d0.act) && evB(d0.k, sqK, 'c').length) fq = ['pfr', TP.p5(hero), rfiBand(d0.stackTot), sqAI, ans, null, evB(d0.k, sqK, 'c').length, evB(sqK, nx.k, 'c').length, 0];
             else if (d0.act === 'call' && d0.nR === 1 && d0.tbl !== 'AI' && evB(-1, d0.k, 'r').length === 1) { const opI = raiseBefore(rp, d0.k), oa = opI != null ? evB(sqK, nx.k, 'f').concat(evB(sqK, nx.k, 'c')).find(([e]) => e.i === opI) : null;
               fq = ['cc', TP.p5(hero), rfiBand(d0.stackTot), sqAI, ans, oa ? (oa[0].t === 'f' ? 'F' : 'C') : null, evB(-1, sqK, 'c').length, evB(sqK, nx.k, 'c').filter(([e]) => e.i !== opI).length, evB(-1, d0.k, 'c').length]; } } } }
+      /* сверка ответа на сквиз (только TGBOT_AUDIT): широкий отбор без «ровно один рейз» и без исключения лимпов */
+      let fqx = null; if (AUDIT) { const dd = C.preflopDecisions(rp, () => ''), d0 = dd.find(x => x.i === hero), nx = d0 && dd.find(x => x.i === hero && x.k > d0.k);
+        if (d0 && nx) { const evB = (a, b, t) => rp.ev.map((e, k) => [e, k]).filter(([e, k]) => k > a && k < b && e.st === 0 && e.t === t && e.i >= 0), rr = evB(d0.k, nx.k, 'r');
+          if (rr.length) { const sqK = rr[0][1], role = /^open|^iso/.test(d0.act) || (d0.tbl === 'RFI' && d0.act === 'raise') ? 'pfr' : d0.act === 'call' && d0.nR === 1 ? 'cc' : null;
+            if (role) { const opI = role === 'cc' ? raiseBefore(rp, d0.k) : hero, opA = role === 'cc' ? (evB(sqK, nx.k, 'f').concat(evB(sqK, nx.k, 'c'), evB(sqK, nx.k, 'r')).find(([e]) => e.i === opI) || [null])[0] : null;
+              fqx = { role, p5: TP.p5(hero), tbl: d0.tbl, act0: d0.act, lim: dd.some(x => x.k < d0.k && x.act === 'limp') ? 1 : 0, cBefore: evB(role === 'pfr' ? d0.k : -1, sqK, 'c').length, nR: rr.length, sqAI: rr[0][0].a && rp.stacks ? null : null, faceAI: nx.tbl === 'AI' ? 1 : 0, ans: nx.act, cAfter: evB(sqK, nx.k, 'c').filter(([e]) => e.i !== opI).length, opA: opA ? opA.t : null, meFirstC: role === 'cc' ? evB(-1, d0.k, 'c').length : 0, sqPos: TP.p5(rr[0][0].i), stk: Math.round(d0.stackTot) }; } } } }
       // полная сверка (TGBOT_AUDIT=1): как подсчёт понял каждую раздачу → tgbot/data/audit.ndjson
-      if (AUDIT) AUD.push(JSON.stringify({ id: room + '#' + rp.handId, rf, vo, oc, iz, bi, sz: sz && [sz[0], sz[1], Math.round(sz[3] * 10) / 10, sz[4], sz[5]], f3i, c3i, fq }));
+      if (AUDIT) AUD.push(JSON.stringify({ id: room + '#' + rp.handId, rf, vo, oc, iz, bi, sz: sz && [sz[0], sz[1], Math.round(sz[3] * 10) / 10, sz[4], sz[5]], f3i, c3i, fq, fqx }));
       // образцы раздач для ручной проверки (TGBOT_SAMPLE=1 → tgbot/data/samples.json, только на ПК)
       if (SAMPLE) {
         const id = room + ' #' + rp.handId + (/Tournament #(\d+)/.exec(h) ? ' · турнир ' + /Tournament #(\d+)/.exec(h)[1] : '') + ' · ' + (rp.date || '') + ' · карты ' + ((rp.hc && rp.hc[hero]) || '?');
