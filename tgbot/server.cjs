@@ -742,11 +742,13 @@ function multiAnswer(parts, ctx, lock, own) {
   const outs = parts.map(p => { const pl = String(p).toLowerCase(), lk = lock ? { own: lock.own || isOwn(pl), src: lock.src } : null; return answer((own && !isOwn(pl) ? 'мой ' : '') + p, ctx, null, lk); });
   const base = outs.find(o => !notFound(o)) || outs[0];
   return Object.assign({}, base, { intent: 'multi', blocks: outs.flatMap(o => o.blocks || []), heard: outs.map(o => o.heard).filter(Boolean).join(' · ') });
-}async function ask0(q0, ctx, key, alts, voice, prevQ) {
+}/* страховка: в самом вопросе «4-бет в холодную / open 4bet», а Claude потерял «в холодную» — вернуть (25.11.2026) */
+function fixPhrase(q0, B) { if (!B || !B.phrase) return B; const src = String(q0).toLowerCase(); if (COLD4_RE.test(src) && !COLD4_RE.test(B.phrase.toLowerCase())) B.phrase = /4\s*-?\s*бет[а-яё]*/i.test(B.phrase) ? B.phrase.replace(/4\s*-?\s*бет[а-яё]*/i, '4-бет в холодную') : B.phrase + ' 4-бет в холодную'; if (FSQ_RE.test(src) && !FSQ_RE.test(B.phrase.toLowerCase()) && /сквиз/i.test(B.phrase)) B.phrase = B.phrase.replace(/сквиз[а-яё]*/i, 'фолд на сквиз'); return B; }
+async function ask0(q0, ctx, key, alts, voice, prevQ) {
   if (key || !q0) return answer(q0, ctx, key);
   if (voice && ctx) {
     const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
-    const B = await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick, prevQ);
+    const B = fixPhrase(q0, await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick, prevQ));
     // явная смена игрока голосом: «… игрока X», «ник X» (или открыта своя база и назван чужой ник) — ищем X, нет — похожие ники
     const bNick = B && B.parsed && !B.parsed.me ? String(B.parsed.nick || '').trim() : '';
     const marker = /(^|[^a-zа-яё])(игрок[а-яё]*|ник[а-яё]*)([^a-zа-яё]|$)/i.test(src);
@@ -767,7 +769,7 @@ function multiAnswer(parts, ctx, lock, own) {
   }
   // мозг (Claude): понимает вопрос любыми словами → точная фраза; цифры — из базы. Нет ключа — свой разбор слов.
   const prev = ctx ? (qKey.get(ctx) || {}).nick : null;
-  const B = await BRAIN.understand(q0, prev, prevQ);
+  const B = fixPhrase(q0, await BRAIN.understand(q0, prev, prevQ));
   const cands = [];
   if (B && B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1) { const o = multiAnswer(B.parsed.parts, ctx, null, isOwn(String(q0).toLowerCase())); o.brain = { model: BRAIN.status().model, phrase: o.heard }; return o; }
   if (B && B.phrase) {
