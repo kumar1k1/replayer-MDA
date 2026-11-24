@@ -416,9 +416,9 @@ function b4Blocks(P, ql, o) {
   // игрок базы: колд-колл — из счётчиков базы (группы BB / SB / остальные); колла третьим и таблицы «позиция против позиции» у них пока нет
   if (id === 'OC' && !(P.ext && P.ext.oc)) return [{ type: 'text', title: title(P) + ' — колл третьим в банк', text: 'Колл третьим и четвёртым в банк пока посчитан только по вашей базе; у игроков базы появится после пересчёта.' }];
   if (id === 'CC' && !(P.ext && P.ext.vso)) {
-    const pos = posOf(ql), grp = pos === 'BB' ? ['BB'] : pos === 'SB' ? ['SB'] : pos ? ['CO'] : ['BB', 'SB', 'CO'];
+    const pos = posOf(ql), grp = pos === 'BB' ? ['BB'] : pos === 'SB' ? ['SB'] : pos ? ['CO'] : ['SB', 'CO']; // TOT — без BB, как у алиаса
     let n = 0, cl = 0; for (const b of (TT && TT.bands) || BANDS) for (const g of grp) { const o = LU.slotOf('vso', b, g); n += P.pf[o]; cl += P.pf[o + 1]; }
-    return [{ type: 'big', title: title(P) + ' — Cold call' + (pos ? ' с ' + (grp[0] === 'CO' ? 'BTN/CO/HJ/EP' : pos) : ''), big: n ? pctS(cl, n) : 'нет данных', n, ai: 'колл — опен не олл-ин', note: 'колл одного опена' + (pos && grp[0] === 'CO' ? '; у игроков базы BTN, CO, HJ, EP пока одной группой' : '') + (TT && TT.bands.length < BANDS.length ? '; стек ' + grpLabel('', TT.bands) : '') }];
+    return [{ type: 'big', title: title(P) + ' — Cold call' + (pos ? ' с ' + (grp[0] === 'CO' ? 'BTN/CO/HJ/EP' : pos) : ''), big: n ? pctS(cl, n) : 'нет данных', n, ai: 'колл — опен не олл-ин', note: 'колл одного опена' + (!pos ? '; TOT — без BB' : '') + (pos && grp[0] === 'CO' ? '; у игроков базы BTN, CO, HJ, EP пока одной группой' : '') + (TT && TT.bands.length < BANDS.length ? '; стек ' + grpLabel('', TT.bands) : '') }];
   }
   if (id === '3B' && !(P.ext && P.ext.v3m) && vsInfo(ql)) return [{ type: 'text', title: title(P) + ' — 3-бет позиция против позиции', text: 'Таблица «позиция против позиции» пока посчитана только по вашей базе; у игроков базы появится после пересчёта.' }];  if (id === 'OC' && P.ext && P.ext.oc && TT) return ocBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand || TT.G) });
   if (id === 'CC' && P.ext && P.ext.vso && TT) {
