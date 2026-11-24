@@ -49,5 +49,12 @@ const POS6 = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'], OPEN = ['EP', 'MP', 'HJ', 'C
 { for (const C of [1, 2]) { const s = sumV(['MP', 'HJ', 'CO', 'BTN', 'SB'].map(p => A(E.oc[p] && E.oc[p][C]))), t = A(E.oc.TOT && E.oc.TOT[C]); chk('колл ' + (C + 2) + '-м: TOT = позиции без BB', s[0] === t[0] && s[1] === t[1], t[0] + ' / ' + s[0]); }
   { const s = sumV(POS6.map(p => A(E.b3i[p]))), t = A(E.b3i.TOT); chk('3-бет против изо: TOT = позиции', s[0] === t[0] && s[1] === t[1] && s[2] === t[2], t + ' / ' + s); }
   { const s = sumV(POS6.map(p => A(E.c3[p]))), t = A(E.c3.TOT); chk('колл 3-бета: TOT = позиции', s[0] === t[0] && s[1] === t[1], t + ' / ' + s); for (const p of POS6) { const x = A(E.c3[p]); chk('колл 3-бета ' + p + ': колл+4бет ≤ раз', x[1] + x[2] <= x[0]); } } }
+// 9) ответ на сквиз: фолд + колл + 4-бет = раз (и для сквизов олл-ином); TOT = позиции; ccF + ccC ≤ cc; части по стекам = all
+{ const POS7 = ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'];
+  for (const rl of ['pfr', 'cc', 'ccF', 'ccC']) { const R = E.fsq && E.fsq[rl]; if (!R) { chk('ответ на сквиз ' + rl + ': есть данные', false); continue; }
+    for (const p of [...POS7, 'TOT']) { if (!R[p]) continue; const x = A(R[p]); chk('ответ на сквиз ' + rl + ' ' + p + ': фолд+колл+4бет = раз', x[1] + x[2] + x[3] === x[0] && x[5] + x[6] + x[7] === x[4] && x[4] <= x[0], x);
+      const bs = sumV(Object.keys(R[p]).filter(b => b !== 'all').map(b => R[p][b])); chk('ответ на сквиз ' + rl + ' ' + p + ': стеки = все', x.every((v, j) => v === bs[j]), bs + ' / ' + x); }
+    const s = sumV(POS7.map(p => A(R[p]))), t = A(R.TOT); chk('ответ на сквиз ' + rl + ': TOT = позиции', t.every((v, j) => v === s[j]), t + ' / ' + s); }
+  const c = A(E.fsq.cc.TOT), f = A(E.fsq.ccF && E.fsq.ccF.TOT), k = A(E.fsq.ccC && E.fsq.ccC.TOT); chk('ответ на сквиз: открывший сбросил + заколлировал ≤ коллер', f[0] + k[0] <= c[0], f[0] + ' + ' + k[0] + ' / ' + c[0]); }
 console.log('проверок: ' + (ok + bad.length) + ', прошли: ' + ok + ', не прошли: ' + bad.length);
 for (const b of bad) console.log('✗ ' + b);
