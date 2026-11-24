@@ -7,13 +7,27 @@ const Q = ['мой RFI по позициям', 'мой RFI по стекам', '
   'мой изолейт с баттона против одного лимпера', 'мои коллы третьим и четвертым в банк по позициям', 'мой 3-бет против изолейта по позициям', 'мои 3-беты по сайзам',
   'мои фолды на 3-бет по позициям', 'мой фолд на 3-бет в позиции', 'мои 4-беты по позициям', 'мой 4-бет', 'мои коллы 3-бета в холодную по позициям', 'мои фолды на 4-бет по позициям',
   'мои 3-беты без олл-инов по позициям', 'мои сквизы по позициям', 'мой сквиз с бб', 'мои сквизы позиция против комбинации', 'мои сквизы по стекам', 'мои изолейты по позициям на 20-35 бб', 'мой RFI по позициям на 42 бб'];
+// глобальный перебор (25.11.2026): статы × позиции × стеки × олл-ины × IP/OOP × таблица / цифра
+const POSW = ['из ранней позиции', 'с мп', 'с хайджека', 'с катоффа', 'с баттона', 'с малого блайнда', 'с бб'];
+const STW = ['', 'на 42 бб', 'от 20 до 35 бб', 'на коротких стеках', 'на больших стеках', 'по стекам'];
+const STATW = [['RFI', 0], ['3-бет', 1], ['колд-колл', 0], ['колл третьим в банк', 0], ['колл четвертым в банк', 0], ['изолейт', 1], ['изолейт против одного лимпера', 1], ['изолейт против двух лимперов', 0],
+  ['3-бет против изолейта', 1], ['фолд на 3-бет', 1], ['фолд на 3-бет против олл-ина', 0], ['4-бет', 1], ['колл 3-бета в холодную', 0], ['фолд на 4-бет', 0], ['сквиз', 1], ['сквиз-фолд', 0], ['3-беты по сайзам', 0]];
+const GEN = [];
+for (const [w, ai] of STATW) for (const st of STW) {
+  GEN.push('мой ' + w + ' ' + st, 'мои ' + w + ' по позициям ' + st);
+  for (const p of POSW) GEN.push('мой ' + w + ' ' + p + ' ' + st);
+  if (ai) for (const a of ['без олл-инов', 'только олл-ины']) GEN.push('мой ' + w + ' ' + a + ' ' + st, 'мои ' + w + ' по позициям ' + a + ' ' + st);
+}
+for (const w of ['фолд на 3-бет', '4-бет']) for (const ip of ['в позиции', 'без позиции']) { GEN.push('мой ' + w + ' ' + ip, 'мои ' + w + ' по позициям ' + ip); for (const p of POSW) GEN.push('мой ' + w + ' ' + ip + ' ' + p); }
+for (const st of STW) GEN.push('3-бет позиция против позиции ' + st, 'колд-колл позиция против позиции ' + st, 'мои сквизы позиция против комбинации ' + st, 'мои сквизы против рейза и колла без олл-инов ' + st, '3-бет позиция против позиции без олл-инов ' + st, '3-бет баттона против катоффа ' + st, 'колд-колл с бб против малого блайнда ' + st);
+Q.push(...GEN.map(q => q.replace(/\s+/g, ' ').trim()));
 const num = (v) => parseFloat(String(v).replace(',', '.').replace('%', ''));
 (async () => {
-  let cells = 0, ok = 0; const bad = [];
-  for (const q of Q) {
+  let cells = 0, ok = 0; const bad = [], noHm = [], seen = new Set();
+  for (const q of Q) { if (seen.has(q)) continue; seen.add(q);
     const a = await (await fetch(B + '/api/ask?nobrain=1&ctx=' + encodeURIComponent('alias:все') + '&q=' + encodeURIComponent(q))).json();
     const items = [];
-    for (const b of a.blocks || []) { if (b.big && b.hm) items.push([b.title, { v: b.big, n: b.n, hm: [].concat(b.hm) }]); if (b.table) for (const r of b.table.rows) r.slice(1).forEach((c, k) => { if (c && c.hm) items.push([r[0] + ' · ' + b.table.head[k + 1], { v: c.v, n: c.n, hm: [c.hm] }]); }); }
+    for (const b of a.blocks || []) { if (b.big && b.hm) items.push([b.title, { v: b.big, n: b.n, hm: [].concat(b.hm) }]); else if (b.big && b.n) noHm.push(q + ' · ' + b.title); if (b.table) for (const r of b.table.rows) r.slice(1).forEach((c, k) => { if (c && c.hm) items.push([r[0] + ' · ' + b.table.head[k + 1], { v: c.v, n: c.n, hm: [c.hm] }]); else if (c && c.n) noHm.push(q + ' · ' + r[0] + ' · ' + b.table.head[k + 1]); }); }
     for (const [lab, c] of items) {
       if (!c.n) continue; cells++;
       const m = await (await fetch(B + '/api/hm?r=' + encodeURIComponent(JSON.stringify(c.hm)))).json();
@@ -24,6 +38,7 @@ const num = (v) => parseFloat(String(v).replace(',', '.').replace('%', ''));
       if (okN && okV) ok++; else bad.push(q + ' · ' + lab + ': клетка ' + c.v + ' / ' + c.n + ', матрица ' + (d ? (n / d * 100).toFixed(1) : '-') + '% / ' + (share ? n : d));
     }
   }
-  console.log('клеток с матрицей: ' + cells + ', совпало: ' + ok + ', не совпало: ' + bad.length);
+  console.log('вопросов: ' + seen.size + ', клеток с матрицей: ' + cells + ', совпало: ' + ok + ', не совпало: ' + bad.length + ', цифр без матрицы: ' + noHm.length);
+  const nh = {}; for (const z of noHm) { const k = z.replace(/^мо[йи] /, '').split(' · ')[0].replace(/ (из|с) .*| на .*| от .*| по .*| без .*| только .*/, ''); nh[k] = (nh[k] || 0) + 1; } console.log('без матрицы по статам: ' + JSON.stringify(nh)); noHm.slice(0, 15).forEach(z => console.log('  ∅ ' + z));
   bad.slice(0, 40).forEach(x => console.log('✗ ' + x));
 })();

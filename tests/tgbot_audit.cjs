@@ -21,6 +21,7 @@ function indep(h) {
     if ((m = /^(.+?): posts small blind ([\d,.]+)/.exec(l))) posts[m[1]] = 'SB';
     if ((m = /^(.+?): posts big blind ([\d,.]+)/.exec(l))) { posts[m[1]] = 'BB'; bb = num(m[2]); }
     if ((m = /^(.+?): posts the ante ([\d,.]+)/.exec(l))) ante[m[1]] = num(m[2]); }
+  if (!bb) { const lv = /\(([\d,.]+)\/([\d,.]+)/.exec(L[0]); if (lv) bb = num(lv[2]); } /* BB олл-ином на анте: «posts big blind 0» — размер блайнда из шапки */
   const hero = (/^Dealt to (.+?) \[/m.exec(h) || [])[1]; if (!hero || !bb) return null;
   const acts = []; for (const l of pre) { const m = /^(.+?): (folds|checks|calls|raises|bets)(?: ([\d,.]+))?(?: to ([\d,.]+))?(.*)$/.exec(l); if (m && seats[m[1]]) acts.push({ who: m[1], t: m[2], to: m[4] ? num(m[4]) : m[3] ? num(m[3]) : 0, ai: /all-in/.test(m[5] || '') }); }
   // кто в раздаче: блайнды + все, кто действовал; порядок мест от SB (или BB) по кругу, BTN — последний
@@ -60,7 +61,7 @@ function indep(h) {
 }
 
 const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(f => f.isDirectory() ? walk(path.join(d, f.name)) : [path.join(d, f.name)]);
-const stat = {}, ex = {}; let seen = 0;
+const stat = {}, ex = {}, IND = {}, SKIP = [], SKC = new Set(); let seen = 0;
 const bump = (k, ok, id, info) => { const s = stat[k] = stat[k] || { ok: 0, bad: 0 }; if (ok) s.ok++; else { s.bad++; (ex[k] = ex[k] || []).length < 8 && ex[k].push(id + '  ' + info); } };
 for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
   const t = fs.readFileSync(f, 'utf8').replace(/^﻿/, ''); if (/^\s*Winamax Poker - Tournament summary/.test(t)) continue;
@@ -70,7 +71,19 @@ for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
   else parts = t.split(/\r?\n(?=(?:PokerStars Hand #|CoinPoker Hand #|Poker Hand #))/).map(s => s.trim()).filter(s => /Hand #/.test(s.slice(0, 40))).map(s => (V.isGGasPS(s) ? V.ggToPS(s) : s));
   for (const h of parts) {
     if (!h) continue; const m = /Hand #(\S+?):/.exec(h); if (!m) continue; const id = C.roomOf(h) + '#' + m[1], A = AUD.get(id); if (!A) continue;
-    seen++; const I = indep(h); if (!I || I.none) continue;
+    seen++; const I = indep(h); if (!I || I.none) { { const cm2 = /^Dealt to .+? \[(\S\S) (\S\S)\]/m.exec(h); if (cm2) { const R2 = 'AKQJT98765432', a1 = R2.indexOf(cm2[1][0].toUpperCase()), a2 = R2.indexOf(cm2[2][0].toUpperCase()), x = Math.min(a1, a2), y = Math.max(a1, a2); SKC.add(x === y ? R2[x] + R2[y] : R2[x] + R2[y] + (cm2[1][1] === cm2[2][1] ? 's' : 'o')); } const sit = ['rf', 'vo', 'oc', 'iz', 'bi', 'f3i', 'c3i'].filter(k => A[k]); SKIP.push(id + (I && I.none ? ' (герой не действовал префлоп)' : ' (второй разбор не прочитал: нет блайнда / героя)') + (sit.length ? ' — а подсчёт взял: ' + sit.join(',') + ' ' + JSON.stringify(sit.map(k => A[k])) : '')); } continue; }
+    // независимые матрицы рук: класс руки из «Dealt to» и ситуация из независимого разбора — те же пути, что в alias_hm.json
+    { const cm = /^Dealt to .+? \[(\S\S) (\S\S)\]/m.exec(h); if (cm) { const R = 'AKQJT98765432', r1 = R.indexOf(cm[1][0].toUpperCase()), r2 = R.indexOf(cm[2][0].toUpperCase()), hi = Math.min(r1, r2), lo = Math.max(r1, r2), CLS = hi === lo ? R[hi] + R[lo] : R[hi] + R[lo] + (cm[1][1] === cm[2][1] ? 's' : 'o');
+      const H = (p, m, num) => { const o = ((IND[p] = IND[p] || {})[m] = IND[p][m] || {}); const c = o[CLS] = o[CLS] || [0, 0]; c[0]++; if (num) c[1]++; };
+      if (I.rf) for (const p of I.rf[0] === 'SB' ? ['SB'] : [I.rf[0], 'TOT']) { H('rfi|' + p, 'tot', I.rf[1]); H('rfi|' + p, 'nai', I.rf[2]); }
+      if (I.vo) { const [p3, act, op, bbSb] = I.vo, keys = bbSb ? ['TOT'] : p3 === 'BB' ? ['BB', 'TOT'] : [p3, 'TOT', 'TOTnb'], M = { call: act === 1, b3: act === 2, ai: act === 3, b3all: act >= 2, fold: act === 0 };
+        for (const p of keys) for (const [m, v] of Object.entries(M)) H('vso|' + p, m, v); for (const [m, v] of Object.entries(M)) H('v3m|' + p3 + '|' + op, m, v); }
+      if (I.oc) { for (const p of I.oc[0] === 'BB' ? ['BB'] : [I.oc[0], 'TOT']) H('oc|' + p + '|' + I.oc[1], 'call', I.oc[2] === 1); for (const p of [I.oc[0], 'TOT']) { H('sq|' + p, 'sqz', I.oc[2] >= 2); H('sq|' + p, 'nai', I.oc[2] === 2); } }
+      if (I.bi) for (const p of [I.bi[0], 'TOT']) { H('b3i|' + p, 'b3all', I.bi[1] || I.bi[2]); H('b3i|' + p, 'nai', I.bi[1]); }
+      if (I.iz) for (const p of [I.iz[0], 'TOT']) { H('iso|' + p + '|' + I.iz[1], 'iso', I.iz[2]); H('iso|' + p + '|' + I.iz[1], 'isoai', I.iz[3]); }
+      if (I.c3) for (const p of [I.c3[0], 'TOT']) H('c3|' + p, 'call', I.c3[1]);
+      if (I.f3) for (const p of I.f3[0] === 'SB' ? ['SB'] : [I.f3[0], 'TOT']) for (const w of [I.f3[1] ? 'ip' : 'oop', 'all']) { H('f3|' + p + '|' + w, 'fold', I.f3[3]); H('f3|' + p + '|' + w, 'call', I.f3[4]); }
+    } }
     const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     // RFI
     { const a = A.rf ? [A.rf[0], !!A.rf[2], !!A.rf[3]] : null, b = I.rf || null; bump('RFI', eq(a, b), id, 'наш ' + JSON.stringify(a) + ' | текст ' + JSON.stringify(b)); }
@@ -87,3 +100,9 @@ for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
 console.log('раздач сверено: ' + seen);
 for (const [k, s] of Object.entries(stat)) console.log((k + ':').padEnd(36) + ' совпало ' + s.ok + ', расходится ' + s.bad + (s.bad ? ' (' + (s.bad / (s.ok + s.bad) * 100).toFixed(2) + '%)' : ''));
 for (const [k, list] of Object.entries(ex)) { console.log('\n— ' + k); list.forEach(x => console.log('   ' + x)); }
+// сравнение независимых матриц с alias_hm.json (все стеки): по каждому пути, действию и руке
+{ const HMJ = JSON.parse(fs.readFileSync(path.join(R, 'tgbot', 'data', 'alias_hm.json'), 'utf8')); let cells = 0, same = 0; const diff = [];
+  for (const [p, ms] of Object.entries(IND)) for (const [m, cls] of Object.entries(ms)) { const ours = (HMJ[p] && HMJ[p][m] && HMJ[p][m].all) || {};
+    for (const c of new Set([...Object.keys(cls), ...Object.keys(ours)])) { cells++; const a = cls[c] || [0, 0], b = ours[c] || [0, 0]; if (a[0] === b[0] && a[1] === b[1]) same++; else diff.push(p + ' · ' + m + ' · ' + c + ': текст ' + a.join('/') + ', подсчёт ' + b.join('/')); } }
+  console.log('\nматрицы рук: сравнено клеток (путь × действие × рука): ' + cells + ', совпало: ' + same + ', расходится: ' + diff.length); diff.slice(0, 25).forEach(x => console.log('   ' + x)); }
+console.log('\nраздач, которые второй разбор пропустил: ' + SKIP.length + ', из них подсчёт взял в статы: ' + SKIP.filter(x => /подсчёт взял/.test(x)).length); SKIP.filter(x => /подсчёт взял/.test(x)).slice(0, 30).forEach(x => console.log('   ' + x));
