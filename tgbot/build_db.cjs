@@ -30,7 +30,7 @@ function aliasStats() {
   const mine = new Set(Object.keys(cfg['ники'] || {})); // «рум:ник»
   const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
   const acc = {}; // рум → { pf, cl, f, n, ns, nf }
-  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, v3m: {}, iso: {}, oc: {}, b3i: {}, s3: {}, f3: {}, c3: {}, f4: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
+  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, v3m: {}, iso: {}, oc: {}, b3i: {}, s3: {}, f3: {}, c3: {}, f4: {}, sq: {}, sqm: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
   // 3-бет как в Hand2Note (сверено 23.11.2026 с его поп-апом владельца, все позиции): против ровно одного рейза,
   // без коллеров (сквиз — отдельно), опен не олл-ином, на BB — не против опена с SB (блайнд против блайнда — отдельно)
   const HF = require(path.join(ROOT, 'lib', 'handfix.js'));
@@ -90,7 +90,10 @@ function aliasStats() {
       // vo — ответ на опен тем же правилом, что 3-бет: [позиция, стек, действие call|3b|shove|fold]
       let h3 = null, vo = null, oc = null; { let limped = false; const DD = C.preflopDecisions(rp, () => ''); for (const d of DD) { if (d.i !== hero) continue; if (DD.some(x => x.k < d.k && x.act === 'limp')) limped = true; /* лимп до опена у любого — не считаем (сверено: колд-колл BB) */
           // оверколл (24.11.2026): один опен (не олл-ин), до меня 1 или 2+ коллера, лимпов нет — [поз, коллеров 1|2, стек, действие колл 1 / рейз 2 / олл-ин 3 / фолд 0]
-          if (!oc && d.nR === 1 && !limped && d.tbl !== 'AI' && (d.C === 'C1' || d.C === 'C2')) oc = [TP.p3(hero), d.C === 'C1' ? 1 : 2, rfiBand(d.stackTot), d.act === 'call' ? 1 : /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 2 : d.act === 'shove' || d.act === 'raise' ? 3 : 0]; if (d.nR === 1 && !limped && d.tbl !== 'AI' && (!d.C || d.C === 'C0')) { const p3 = TP.p3(hero); const opI = raiseBefore(rp, d.k), bbSb = p3 === 'BB' && opI != null && TP.isSB(opI); if (!bbSb) h3 = [p3, /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct), /^3bet/.test(d.act) || d.act === 'shove' || d.act === 'raise']; vo = [p3, rfiBand(d.stackTot), d.act === 'call' ? 1 : /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 2 : d.act === 'shove' || d.act === 'raise' ? 3 : 0, bbSb, TP.p5(opI)]; } if (d.act === 'limp') limped = true; } }
+          if (!oc && d.nR === 1 && !limped && d.tbl !== 'AI' && (d.C === 'C1' || d.C === 'C2')) { const act = d.act === 'call' ? 1 : /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 2 : d.act === 'shove' || d.act === 'raise' ? 3 : 0;
+            // сквиз (25.11.2026): кто открыл, первый коллер, ответ на рейз после моего сквиза не олл-ином
+            const opI = raiseBefore(rp, d.k), clE = rp.ev.find((e, j) => j < d.k && e.st === 0 && e.t === 'c' && e.i >= 0 && opI != null && j > rp.ev.findIndex(x => x.st === 0 && x.t === 'r')), nx2 = act === 2 ? DD.find(x => x.i === hero && x.k > d.k) : null;
+            oc = [TP.p3(hero), d.C === 'C1' ? 1 : 2, rfiBand(d.stackTot), act, TP.p5(opI), clE ? TP.p5(clE.i) : null, nx2 ? 1 : 0, nx2 && nx2.act === 'fold' ? 1 : 0]; } if (d.nR === 1 && !limped && d.tbl !== 'AI' && (!d.C || d.C === 'C0')) { const p3 = TP.p3(hero); const opI = raiseBefore(rp, d.k), bbSb = p3 === 'BB' && opI != null && TP.isSB(opI); if (!bbSb) h3 = [p3, /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct), /^3bet/.test(d.act) || d.act === 'shove' || d.act === 'raise']; vo = [p3, rfiBand(d.stackTot), d.act === 'call' ? 1 : /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 2 : d.act === 'shove' || d.act === 'raise' ? 3 : 0, bbSb, TP.p5(opI)]; } if (d.act === 'limp') limped = true; } }
       // RFI как Hand2Note: позиции EP (5+ мест до баттона) / MP (3–4) / HJ (2) / CO / BTN / SB; TOT — любой рейз первым, NAI — без олл-ина; стек — свой, в bb
       let rf = null; { const d0 = C.preflopDecisions(rp, () => '').find(d => d.i === hero); if (d0 && d0.tbl === 'RFI') { if (!TP.isBB(hero)) { const p5 = TP.p5(hero); rf = [p5, rfiBand(d0.stackTot), /^open/.test(d0.act) || d0.act === 'shove', /^open/.test(d0.act)]; } } }
       // изолейт (24.11.2026): первое решение против лимперов без рейза; BB против лимпа одного SB — отдельно («BBsb»: только в TOT).
@@ -150,6 +153,8 @@ function aliasStats() {
             for (const p of keys) for (const [m, v] of Object.entries(M)) H('vso|' + p, vo[1], m, v);
             if (vo[4]) for (const [m, v] of Object.entries(M)) H('v3m|' + vo[0] + '|' + vo[4], vo[1], m, v); }
           if (oc) for (const p of oc[0] === 'BB' ? ['BB'] : [oc[0], 'TOT']) H('oc|' + p + '|' + oc[1], oc[2], 'call', oc[3] === 1);
+          if (oc) { for (const p of [oc[0], 'TOT']) { H('sq|' + p, oc[2], 'sqz', oc[3] >= 2); H('sq|' + p, oc[2], 'nai', oc[3] === 2); H('sq|' + p, oc[2], 'ai', oc[3] === 3); if (oc[6]) H('sq|' + p, oc[2], 'sqfold', oc[7]); }
+            if (oc[4] && oc[5]) { const G = ['EP', 'MP', 'HJ'].includes(oc[4]) ? 'MP+CC' : oc[4] + '+' + oc[5]; H('sqm|' + oc[0] + '|' + G, oc[2], 'sqz', oc[3] >= 2); H('sqm|' + oc[0] + '|' + G, oc[2], 'nai', oc[3] === 2); } }
           if (iz) for (const p of [iz[0], 'TOT']) { const P = 'iso|' + p + '|' + iz[1]; H(P, iz[2], 'iso', iz[3]); H(P, iz[2], 'isoai', iz[4]); H(P, iz[2], 'isonai', iz[3] && !iz[4]); if (iz[5]) H(P, iz[2], 'isofold', iz[6]); if (iz[9]) H(P, iz[2], 'fsz', iz[10]); }
           if (bi) for (const p of [bi[0], 'TOT']) { H('b3i|' + p, bi[1], 'b3all', bi[2] || bi[3]); H('b3i|' + p, bi[1], 'nai', bi[2]); H('b3i|' + p, bi[1], 'ai', bi[3]); }
           if (sz) for (const p of [sz[1], 'TOT']) { H('s3|' + p, sz[2], 'any', 1); H('s3|' + p, sz[2], 'sz:' + sz[0], 1); if (sz[4]) H('s3|' + p, sz[2], 'f4:' + sz[0], sz[5]); }
@@ -178,6 +183,9 @@ function aliasStats() {
         if (sz) for (const p of [sz[1], 'TOT']) for (const bd of [sz[2], 'all']) { const G = (a.s3[sz[0]] = a.s3[sz[0]] || {}), X = ((G[p] = G[p] || {})[bd] = G[p][bd] || [0, 0, 0, 0]); X[0]++; X[1] += sz[3]; X[2] += sz[4]; X[3] += sz[5]; }
         // f3[поз][ip|oop|all][стек] = [раз, фолд, колл, 4-бет, из них 3-бет олл-ином, фолд на олл-ин]
         if (f3i) for (const p of f3i[0] === 'SB' ? ['SB'] : [f3i[0], 'TOT']) /* TOT — без SB, как RFI */ for (const w of [f3i[1] ? 'ip' : 'oop', 'all']) for (const bd of [f3i[2], 'all']) { const M = (a.f3[p] = a.f3[p] || {}), X = ((M[w] = M[w] || {})[bd] = M[w][bd] || [0, 0, 0, 0, 0, 0, 0, 0, 0]); X[0]++; X[1] += f3i[4]; X[2] += f3i[5]; X[3] += f3i[6]; X[4] += f3i[3]; if (f3i[3] && f3i[4]) X[5]++; X[6] += f3i[7]; if (!f3i[3]) { X[7] += f3i[6]; X[8] += f3i[7]; } } // [6] — 4-бет олл-ином; [7], [8] — 4-бет и 4-бет олл-ином только против 3-бета не олл-ином
+        // сквиз: sq[поз][стек] = [раз, сквиз NAI, сквиз AI, после сквиза NAI — рейз на меня, фолд]; sqm[поз][опен+коллер][стек] = [раз, NAI, AI]
+        if (oc) { for (const p of [oc[0], 'TOT']) for (const bd of [oc[2], 'all']) { const X = (a.sq[p] = a.sq[p] || {})[bd] = a.sq[p][bd] || [0, 0, 0, 0, 0]; X[0]++; if (oc[3] === 2) X[1]++; if (oc[3] === 3) X[2]++; X[3] += oc[6]; X[4] += oc[7]; }
+          if (oc[4] && oc[5]) for (const bd of [oc[2], 'all']) { const M = (a.sqm[oc[0]] = a.sqm[oc[0]] || {}), X = ((M[oc[4] + '+' + oc[5]] = M[oc[4] + '+' + oc[5]] || {})[bd] = M[oc[4] + '+' + oc[5]][bd] || [0, 0, 0]); X[0]++; if (oc[3] === 2) X[1]++; if (oc[3] === 3) X[2]++; } }
         // f4[поз][стек] = [раз (мне 4-бет), 4-бет олл-ином, фолд, колл, 5-бет]
         if (f4i) for (const p of [f4i[0], 'TOT']) for (const bd of [f4i[1], 'all']) { const X = (a.f4[p] = a.f4[p] || {})[bd] = a.f4[p][bd] || [0, 0, 0, 0, 0]; X[0]++; X[1] += f4i[2]; X[2] += f4i[3]; X[3] += f4i[4]; X[4] += f4i[5]; }
         // c3[поз][стек] = [раз, колл 3-бета, холодный 4-бет]
@@ -204,7 +212,7 @@ function aliasStats() {
     ser.forEach((p, k) => { w += p[1]; e += p[2]; if (p[3]) s += p[1]; else ns += p[1]; if ((k + 1) % step === 0 || k === N - 1) out.push([k + 1, Math.round(w), Math.round(e), Math.round(s), Math.round(ns)]); });
     return out;
   };
-  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, v3m: a.v3m, iso: a.iso, oc: a.oc, b3i: a.b3i, s3: a.s3, f3: a.f3, c3: a.c3, f4: a.f4, tot: a.tot, graph: graph(a.ser) }) }));
+  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, v3m: a.v3m, iso: a.iso, oc: a.oc, b3i: a.b3i, s3: a.s3, f3: a.f3, c3: a.c3, f4: a.f4, sq: a.sq, sqm: a.sqm, tot: a.tot, graph: graph(a.ser) }) }));
 }
 
 // ---------- сборка ----------
