@@ -413,7 +413,14 @@ function b4Blocks(P, ql, o) {
   if (id === 'B4') { if (!(P.ext && P.ext.f3)) return [{ type: 'text', text: '4-беты пока посчитаны только по вашей базе.' }]; return b4Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }); }
   if (id === 'S3') { if (!(P.ext && P.ext.s3)) return [{ type: 'text', text: 'Размеры 3-бета пока посчитаны только по вашей базе.' }]; return s3Blocks(P, ql, { bands: TT.bands, pos: posOf(ql) }); }
   if (id === 'B3I') { if (!(P.ext && P.ext.b3i)) return [{ type: 'text', text: '3-бет против изолейта пока посчитан только по вашей базе.' }]; return b3iBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }); }
-  if (id === 'OC' && P.ext && P.ext.oc && TT) return ocBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand || TT.G) });
+  // игрок базы: колд-колл — из счётчиков базы (группы BB / SB / остальные); колла третьим и таблицы «позиция против позиции» у них пока нет
+  if (id === 'OC' && !(P.ext && P.ext.oc)) return [{ type: 'text', title: title(P) + ' — колл третьим в банк', text: 'Колл третьим и четвёртым в банк пока посчитан только по вашей базе; у игроков базы появится после пересчёта.' }];
+  if (id === 'CC' && !(P.ext && P.ext.vso)) {
+    const pos = posOf(ql), grp = pos === 'BB' ? ['BB'] : pos === 'SB' ? ['SB'] : pos ? ['CO'] : ['BB', 'SB', 'CO'];
+    let n = 0, cl = 0; for (const b of (TT && TT.bands) || BANDS) for (const g of grp) { const o = LU.slotOf('vso', b, g); n += P.pf[o]; cl += P.pf[o + 1]; }
+    return [{ type: 'big', title: title(P) + ' — Cold call' + (pos ? ' с ' + (grp[0] === 'CO' ? 'BTN/CO/HJ/EP' : pos) : ''), big: n ? pctS(cl, n) : 'нет данных', n, ai: 'колл — опен не олл-ин', note: 'колл одного опена' + (pos && grp[0] === 'CO' ? '; у игроков базы BTN, CO, HJ, EP пока одной группой' : '') + (TT && TT.bands.length < BANDS.length ? '; стек ' + grpLabel('', TT.bands) : '') }];
+  }
+  if (id === '3B' && !(P.ext && P.ext.v3m) && vsInfo(ql)) return [{ type: 'text', title: title(P) + ' — 3-бет позиция против позиции', text: 'Таблица «позиция против позиции» пока посчитана только по вашей базе; у игроков базы появится после пересчёта.' }];  if (id === 'OC' && P.ext && P.ext.oc && TT) return ocBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand || TT.G) });
   if (id === 'CC' && P.ext && P.ext.vso && TT) {
     // колд-колл (владелец, 24.11.2026): колл ровно одного опена без коллеров, опен не олл-ин — то же правило, что 3-бет
     const vs = P.ext.v3m ? vsInfo(ql) : null; if (vs) return v3mBlocks(P, ql, vs, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands, 'call');

@@ -55,6 +55,7 @@ for (const S of STATS) { const w = S.q[0];
   add('скажи какой у меня ' + w, ALIAS, { t: S.t });
   add('а ' + w + ' ' + POS.BTN, ALIAS, { anyOk: true });
   for (const p of ['CO', 'BTN', 'BB']) add('FFtonny ' + w + ' ' + POS[p], '', { anyOk: true });
+  add('FFtonny ' + w, '', { anyOk: true }); add('FFtonny ' + w + ' по позициям', '', { anyOk: true }); add('FFtonny ' + w + ' на 20-35 бб', '', { anyOk: true });
 }
 for (const [q, e] of [
   ['мой рф из баттана для стека сорок два блайнда', { type: 'big', t: /RFI с BTN/, note: /36/ }], ['мой эр эф ай с катоффа', { type: 'big', t: /RFI с CO/ }],
@@ -62,6 +63,7 @@ for (const [q, e] of [
   ['какой у меня фолд на трибет', { t: /фолд на 3-бет/ }], ['мои трибеты без улынов по позициям', { t: /3bet NAI/ }], ['мои 3-беты только пуши', { t: /3bet AI/ }],
   ['мой колл третьим на ББ в стеках 60+', { type: 'big', t: /с BB/, note: /60/ }], ['как я колю третьим в банк', { type: 'big', t: /Колл 3/ }],
   ['мой ВПИП и ПФР', { n: 2, t: /VPIP|PFR/ }], ['мой винрейт по позициям', { anyOk: true }], ['мой алиас', { anyOk: true }], ['FFtonny', { anyOk: true }],
+  ['FFtonny 3-бет позиция против позиции', { textOk: true }], ['FFtonny 3-беты по сайзам', { textOk: true }], ['FFtonny винрейт по позициям', { textOk: true }],
   ['мои 3-беты по позициям на 40-80 блайндов', { type: 'table', note: /36/ }], ['RFI по позициям на 42 больших блайнда', { type: 'table', note: /36/ }],
 ]) add(q, ALIAS, e);
 (async () => {
@@ -70,6 +72,7 @@ for (const [q, e] of [
     let a; try { a = await (await fetch(BASE + '&q=' + encodeURIComponent(c.q) + (c.ctx ? '&ctx=' + encodeURIComponent(c.ctx) : ''))).json(); } catch (e) { fails.push([c.q, 'нет ответа']); continue; }
     const B = (a.blocks || []).filter(b => b.title || b.big || b.table), b = B[0] || (a.blocks || [])[0] || {}, all = JSON.stringify(a.blocks || []);
     const why = [], E = c.exp;
+    if (/Ошибка:/.test(all)) why.push('ОШИБКА: ' + all.slice(0, 80));
     if (E.anyOk) { if (!a.blocks || !a.blocks.length) why.push('пусто'); }
     else if (E.textOk) { if (!(a.blocks || []).length) why.push('пусто'); }
     else {
