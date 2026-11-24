@@ -443,7 +443,7 @@ function sqBlocks(P, ql, o) {
   if (/комбинац|рейз[а-яё]*\s*(и|\+|плюс)\s*колл|опен[а-яё]*\s*(и|\+|плюс)\s*колл|позици[а-яё]*\s*против/.test(ql) || (o.vs && /против/.test(ql))) {
     const M = P.ext.sqm || {}, getm = (h, g, bs) => { const x = [0, 0, 0]; for (const [key, byB] of Object.entries(M[h] || {})) { const [op, cl] = key.split('+'), G = ['EP', 'MP', 'HJ'].includes(op) ? 'MP+CC' : key; if (G !== g) continue; for (const b of bs) { const r = byB[b]; if (r) for (let j = 0; j < 3; j++) x[j] += r[j]; } } return x; };
     const rowsH = ['HJ', 'CO', 'BTN', 'SB', 'BB'].filter(h => SQG.some(g => getm(h, g, bands)[0]));
-    const mk = (k, name) => ({ type: 'table', title: title(P) + ' — ' + name + ': позиция против «опен + колл»', note: 'строки — наша позиция, колонки — кто открыл + кто коллировал (MP+CC — опен с ранних мест и любой колл)' + st, ai: k === 'nai' ? 'без олл-инов' : 'с олл-инами',
+    const mk = (k, name) => ({ type: 'table', title: title(P) + ' — ' + name + ': позиция против «опен + колл»', note: 'строки — наша позиция, колонки — кто открыл + кто коллировал; ровно один опен и один колл (MP+CC — опен с ранних мест и колл с любого места)' + st, ai: k === 'nai' ? 'без олл-инов' : 'с олл-инами',
       table: { head: ['', ...SQG], rows: rowsH.map(h => [h + ' vs', ...SQG.map(g => { const x = getm(h, g, bands); if (!x[0]) return ''; return { v: pctS(k === 'nai' ? x[1] : x[1] + x[2], x[0]), n: x[0], hm: HMref(P, 'sqm|' + h + '|' + g, k === 'nai' ? 'nai' : 'sqz', bands) }; })]), grid: true } });
     return mode === 'nai' ? [mk('nai', 'SQZ NAI')] : mode === 'ai' ? [mk('sqz', 'SQZ')] : [mk('sqz', 'SQZ'), mk('nai', 'SQZ NAI')];
   }
