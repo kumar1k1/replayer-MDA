@@ -17,6 +17,9 @@ const log = (s) => console.log(new Date().toTimeString().slice(0, 8) + ' ' + s);
 const NCL = ST.CL.length, NPF = ST.PF_SLOTS;
 const sparse = (a) => { const o = []; for (let i = 0; i < a.length; i++) if (a[i]) o.push(i + ':' + a[i]); return o.join(','); };
 // ---------- алиас владельца: статы по его раздачам ----------
+// образцы для ручной проверки: по 6 случайных раздач на стат (резервуар)
+const SAMPLE = !!process.env.TGBOT_SAMPLE, SMP = {}, SMPN = {};
+function smp(k, s) { SMPN[k] = (SMPN[k] || 0) + 1; const A = SMP[k] = SMP[k] || []; if (A.length < 6) A.push(s); else { const j = Math.floor(Math.random() * SMPN[k]); if (j < 6) A[j] = s; } }
 function aliasStats() {
   const cfgF = path.join(ROOT, 'data', 'practice_alias.json');
   if (!fs.existsSync(cfgF)) { log('алиаса нет (data/practice_alias.json) — пропускаю'); return []; }
@@ -28,11 +31,14 @@ function aliasStats() {
   // 3-бет как в Hand2Note (сверено 23.11.2026 с его поп-апом владельца, все позиции): против ровно одного рейза,
   // без коллеров (сквиз — отдельно), опен не олл-ином, на BB — не против опена с SB (блайнд против блайнда — отдельно)
   const HF = require(path.join(ROOT, 'lib', 'handfix.js'));
-  const distPos = (lab, n) => { if (lab === 'SB' || lab === 'BTN/SB') return 'SB'; if (lab === 'BB' || lab === 'BTN') return lab; const L = HF.POS_NAMES[Math.min(Math.max(n, 2), 9)], d = L.length - L.indexOf(lab); return d === 1 ? 'CO' : d === 2 ? 'HJ' : 'MP'; };
+  // мест до баттона по названию позиции; если названия нет в списке для n игроков (кто-то сидит вне раздачи) — ищем в списках для n+1…9 (24.11.2026)
+  const toBtn = (lab, n) => { if (lab === 'BTN') return 0; for (let m = Math.min(Math.max(n, 2), 9); m <= 9; m++) { const L = HF.POS_NAMES[m], i = L.indexOf(lab); if (i >= 0) return L.length - i; } return null; };
+  const p5k = (k) => (k === 0 ? 'BTN' : k === 1 ? 'CO' : k === 2 ? 'HJ' : k <= 4 ? 'MP' : 'EP');
+  const distPos = (lab, n) => { if (lab === 'SB' || lab === 'BTN/SB') return 'SB'; if (lab === 'BB' || lab === 'BTN') return lab; const d = toBtn(lab, n); return d === 1 ? 'CO' : d === 2 ? 'HJ' : 'MP'; };
   const tsOf = (d) => { const m = /(\d{4})[\/-](\d\d)[\/-](\d\d)[ T](\d{1,2}):(\d\d):(\d\d)/.exec(String(d || '')); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : 0; };
   // позиция как в Hand2Note: UTG — только при полном столе (6 из 6, 8 из 8…), иначе первые места — MP; блайнды, BTN, CO — как есть
   // позиция открывшего: EP (5+ мест до баттона) / MP (3–4) / HJ (2) / CO / BTN / SB — как RFI
-  const p5of = (lab, n) => { if (!lab) return null; if (/SB/.test(lab)) return 'SB'; if (lab === 'BB') return 'BB'; if (lab === 'BTN') return 'BTN'; const L = HF.POS_NAMES[Math.min(Math.max(n, 2), 9)], i = L.indexOf(lab); if (i < 0) return null; const k = L.length - i; return k === 1 ? 'CO' : k === 2 ? 'HJ' : k <= 4 ? 'MP' : 'EP'; };
+  const p5of = (lab, n) => { if (!lab) return null; if (/SB/.test(lab)) return 'SB'; if (lab === 'BB') return 'BB'; const k = toBtn(lab, n); return k == null ? null : p5k(k); };
   const rfiBand = (x) => x < 12 ? '<12' : x < 20 ? '12-19' : x < 36 ? '20-35' : x < 60 ? '36-59' : x < 100 ? '60-99' : x < 150 ? '100-149' : '150+';
   const h2nPos = (lab, n, max) => (lab === 'BB' || lab === 'SB' || lab === 'BTN' || lab === 'CO' ? lab : lab === 'BTN/SB' ? 'SB' : lab === 'UTG' && max && n >= max ? 'UTG' : 'MP');
   const sigs = new Set(); let dupN = 0; // одна раздача под разными номерами (выгрузка GG дважды) — считаем один раз
@@ -65,7 +71,7 @@ function aliasStats() {
           // оверколл (24.11.2026): один опен (не олл-ин), до меня 1 или 2+ коллера, лимпов нет — [поз, коллеров 1|2, стек, действие колл 1 / рейз 2 / олл-ин 3 / фолд 0]
           if (!oc && d.nR === 1 && !limped && d.tbl !== 'AI' && (d.C === 'C1' || d.C === 'C2')) oc = [distPos(rp.pl[hero][0], rp.n), d.C === 'C1' ? 1 : 2, rfiBand(d.stackTot), d.act === 'call' ? 1 : /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 2 : d.act === 'shove' || d.act === 'raise' ? 3 : 0]; if (d.nR === 1 && !limped && d.tbl !== 'AI' && (!d.C || d.C === 'C0')) { const p3 = distPos(rp.pl[hero][0], rp.n); const bbSb = p3 === 'BB' && /^(SB|BTN\/SB)$/.test(d.oppPos || ''); if (!bbSb) h3 = [p3, /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct), /^3bet/.test(d.act) || d.act === 'shove' || d.act === 'raise']; vo = [p3, rfiBand(d.stackTot), d.act === 'call' ? 1 : /^3bet/.test(d.act) || (d.act === 'raise' && !d.aiAct) ? 2 : d.act === 'shove' || d.act === 'raise' ? 3 : 0, bbSb, p5of(d.oppPos || '', rp.n)]; } if (d.act === 'limp') limped = true; } }
       // RFI как Hand2Note: позиции EP (5+ мест до баттона) / MP (3–4) / HJ (2) / CO / BTN / SB; TOT — любой рейз первым, NAI — без олл-ина; стек — свой, в bb
-      let rf = null; { const d0 = C.preflopDecisions(rp, () => '').find(d => d.i === hero); if (d0 && d0.tbl === 'RFI') { const lab = rp.pl[hero][0]; if (lab !== 'BB') { const L = HF.POS_NAMES[Math.min(Math.max(rp.n, 2), 9)], k = lab === 'BTN' ? 0 : L.length - L.indexOf(lab); const p5 = /SB/.test(lab) ? 'SB' : k === 0 ? 'BTN' : k === 1 ? 'CO' : k === 2 ? 'HJ' : k <= 4 ? 'MP' : 'EP'; rf = [p5, rfiBand(d0.stackTot), /^open/.test(d0.act) || d0.act === 'shove', /^open/.test(d0.act)]; } } }
+      let rf = null; { const d0 = C.preflopDecisions(rp, () => '').find(d => d.i === hero); if (d0 && d0.tbl === 'RFI') { const lab = rp.pl[hero][0]; if (lab !== 'BB') { const k = toBtn(lab, rp.n); const p5 = /SB/.test(lab) ? 'SB' : p5k(k); rf = [p5, rfiBand(d0.stackTot), /^open/.test(d0.act) || d0.act === 'shove', /^open/.test(d0.act)]; } } }
       // изолейт (24.11.2026): первое решение против лимперов без рейза; BB против лимпа одного SB — отдельно («BBsb»: только в TOT).
       // iz = [поз, L 1|2, стек, изо, изо олл-ином, лимпер ответил рейзом, я сбросил на рейз лимпера, любой рейз после изо, я сбросил]
       let iz = null; { const dd = C.preflopDecisions(rp, () => ''), d0 = dd.find(d => d.i === hero);
@@ -88,13 +94,25 @@ function aliasStats() {
       let f3i = null; { const dd = C.preflopDecisions(rp, () => ''), d0 = dd.find(x => x.i === hero);
         if (d0 && d0.tbl === 'RFI' && /^open/.test(d0.act)) { const nx = dd.find(x => x.i === hero && x.k > d0.k);
           if (nx && (nx.tbl === 'VS3' || nx.tbl === 'AI') && rp.ev.filter((e, k) => k > d0.k && k < nx.k && e.st === 0 && e.t === 'r').length === 1 && !rp.ev.some((e, k) => k > d0.k && k < nx.k && e.st === 0 && e.t === 'c')) { // никто не коллировал ни до, ни после 3-бета (сквиз — не сюда)
-            const lab = rp.pl[hero][0], L = HF.POS_NAMES[Math.min(Math.max(rp.n, 2), 9)], kk = lab === 'BTN' ? 0 : L.length - L.indexOf(lab);
-            const p5 = /SB/.test(lab) ? 'SB' : kk === 0 ? 'BTN' : kk === 1 ? 'CO' : kk === 2 ? 'HJ' : kk <= 4 ? 'MP' : 'EP';
+            const lab = rp.pl[hero][0], p5 = /SB/.test(lab) ? 'SB' : p5k(toBtn(lab, rp.n));
             const tb = nx.oppPos || '', ip = !/SB/.test(lab) && /^(SB|BB|BTN\/SB)$/.test(tb) ? 1 : 0;
             f3i = [p5, ip, rfiBand(d0.stackTot), nx.tbl === 'AI' ? 1 : 0, nx.act === 'fold' ? 1 : 0, nx.act === 'call' ? 1 : 0, nx.act !== 'fold' && nx.act !== 'call' ? 1 : 0, nx.act === 'shove' ? 1 : 0]; } } }
       // колл 3-бета в холодную (24.11.2026): первое решение — опен и 3-бет (не олл-ин), до меня никто не коллировал и не лимпил; [поз, стек, колл, 4-бет]
       let c3i = null; { const dd = C.preflopDecisions(rp, () => ''), d = dd.find(x => x.i === hero);
-        if (d && d.tbl === 'VS3' && !rp.ev.some((e, k) => k < d.k && e.st === 0 && e.t === 'c' && e.i >= 0) && !dd.some(x => x.k < d.k && x.act === 'limp')) c3i = [distPos(rp.pl[hero][0], rp.n), rfiBand(d.stackTot), d.act === 'call' ? 1 : 0, d.act !== 'call' && d.act !== 'fold' ? 1 : 0]; }
+        if (d && d.tbl === 'VS3' && rp.ev.filter((e, k) => k < d.k && e.st === 0 && e.t === 'r').length === 2 /* ровно опен и 3-бет, без 4-бета */ && !rp.ev.some((e, k) => k < d.k && e.st === 0 && e.t === 'c' && e.i >= 0) && !dd.some(x => x.k < d.k && x.act === 'limp')) c3i = [distPos(rp.pl[hero][0], rp.n), rfiBand(d.stackTot), d.act === 'call' ? 1 : 0, d.act !== 'call' && d.act !== 'fold' ? 1 : 0]; }
+      // образцы раздач для ручной проверки (TGBOT_SAMPLE=1 → tgbot/data/samples.json, только на ПК)
+      if (SAMPLE) {
+        const id = room + ' #' + rp.handId + (/Tournament #(\d+)/.exec(h) ? ' · турнир ' + /Tournament #(\d+)/.exec(h)[1] : '') + ' · ' + (rp.date || '') + ' · карты ' + ((rp.hc && rp.hc[hero]) || '?');
+        const actRu = (a) => ({ fold: 'фолд', call: 'колл', limp: 'лимп', check: 'чек', shove: 'олл-ин', raise: 'рейз' })[a] || (/^open/.test(a) ? 'опен' : /^iso/.test(a) ? 'изо' : /^3bet/.test(a) ? '3-бет' : a === '4bet' ? '4-бет' : a);
+        if (rf) smp('RFI ' + rf[0], id + ' · я ' + rf[0] + ', стек ' + rf[1] + ' · ' + (rf[3] ? 'опен' : rf[2] ? 'опен олл-ином' : 'не открылся'));
+        if (vo) smp('ответ на опен ' + vo[0], id + ' · я ' + vo[0] + ', опен с ' + vo[4] + (vo[3] ? ' (BB против SB)' : '') + ' · ' + ['фолд', 'колл', '3-бет', '3-бет олл-ином'][vo[2]]);
+        if (oc) smp('колл ' + (oc[1] === 1 ? 'третьим' : 'четвёртым+') + ' ' + oc[0], id + ' · я ' + oc[0] + ', до меня коллеров ' + (oc[1] === 1 ? '1' : '2+') + ' · ' + ['фолд', 'колл', 'рейз', 'олл-ин'][oc[3]]);
+        if (iz) smp('изо ' + iz[0], id + ' · я ' + iz[0] + ', лимперов ' + (iz[1] === 1 ? '1' : '2+') + ' · ' + (iz[3] ? (iz[4] ? 'изо олл-ином' : 'изо') + (iz[5] ? ' → лимпер рейз → я ' + (iz[6] ? 'фолд' : 'не фолд') : iz[9] ? ' → рейз сзади → я ' + (iz[10] ? 'фолд' : 'не фолд') : '') : 'не изолировал'));
+        if (bi) smp('3-бет против изо ' + bi[0], id + ' · я ' + bi[0] + ' · ' + (bi[2] ? '3-бет' : bi[3] ? '3-бет олл-ином' : 'без 3-бета'));
+        if (sz) smp('размер 3-бета', id + ' · я ' + sz[1] + ' · 3-бет до ' + (Math.round(sz[3] * 10) / 10) + ' бб · ' + (sz[4] ? '4-бет → я ' + (sz[5] ? 'фолд' : 'не фолд') : '4-бета не было'));
+        if (f3i) smp('фолд на 3-бет ' + (f3i[1] ? 'IP' : 'OOP'), id + ' · я открылся с ' + f3i[0] + ', 3-бет ' + (f3i[3] ? 'олл-ином' : 'не олл-ином') + ', я ' + (f3i[1] ? 'в позиции' : 'без позиции') + ' · ' + (f3i[4] ? 'фолд' : f3i[5] ? 'колл' : f3i[7] ? '4-бет олл-ином' : '4-бет'));
+        if (c3i) smp('колл 3-бета в холодную ' + c3i[0], id + ' · я ' + c3i[0] + ' · ' + (c3i[2] ? 'колл' : c3i[3] ? 'холодный 4-бет' : 'фолд'));
+      }
       const flF = fr.find(x => x.street === 1), sawFl = !!(flF && (rp.bd || []).length >= 3 && !flF.folded[hero]);
       const wentSD = !fin.folded[hero] && fin.folded.filter(x => !x).length >= 2, wonH = fin.won[hero] > 0, preAI = rp.ev.some(e => e.st === 0 && e.ai);
       const pt = [tsOf(rp.date), rb, b, wentSD ? 1 : 0];
@@ -132,6 +150,7 @@ function aliasStats() {
       hands++;
     }
   }
+  if (SAMPLE) fs.writeFileSync(path.join(__dirname, 'data', 'samples.json'), JSON.stringify(SMP, null, 1));
   log('алиас: файлов ' + files.length + ', раздач ' + hands + ', дублей (та же раздача под другим номером) ' + dupN + ', пропущено ' + skipped);
   const r2 = (a) => Array.from(a, v => Math.round(v * 100) / 100);
   // график: раздачи по времени, накопительно (bb): выиграл всего, по EV (олл-ины по эквити), на вскрытии, без вскрытия; ≤ 1500 точек
