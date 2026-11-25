@@ -22,7 +22,7 @@ function getClient() {
 try { const fs = require('fs'); if (!fs.existsSync(KEYF)) fs.writeFileSync(KEYF, 'Вставьте сюда ключ Claude (начинается с sk-ant-) и сохраните файл.\r\n'); } catch (e) {}
 
 const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'COLD_CALL', 'OVERCALL', '3BET_VS_ISO', '3BET_SIZES', 'COLD_CALL_3BET', 'COLD_4BET', '4BET', 'FOLD_4BET', 'FOLD_3BET', 'LIMP', 'WTSD', 'WSD', 'WWSF', 'BET_RIVER', 'FOLD_RIVER',
-  'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'VS_3BET', 'SQUEEZE', 'VS_SQUEEZE', 'ISO', 'VS_ALLIN', 'POSTFLOP', 'UNKNOWN'];
+  'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'BLIND_VS_OPEN', 'VS_3BET', 'SQUEEZE', 'VS_SQUEEZE', 'ISO', 'VS_ALLIN', 'POSTFLOP', 'UNKNOWN'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
   required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers', 'parts', 'in_position', 'sqz_role'],
@@ -57,7 +57,7 @@ const SYSTEM = `Ты — разборщик вопросов бота покер
 «ранняя позиция», «андер зе ган», «UTG» = EP; «средняя» = MP. «Блайндов», «бб», «больших» — стек в bb; числа словами переводи в цифры.
 Статы: VPIP, PFR, VPIP_PFR (оба сразу), 3BET (3-бет), COLD_CALL (колд-колл, «колл в холодную», «коллы против одного рейза / опена» без коллеров), COLD_CALL_3BET (колл 3-бета в холодную: кто-то открылся, другой 3-бетнул, я коллирую; таблица по позициям показывает и Open 4bet), COLD_4BET (4-бет в холодную, «open 4bet», «холодный 4-бет»: опен, 3-бет, я 4-бечу, не вкладываясь раньше), 4BET (мой 4-бет после моего опена и 3-бета; таблица — 4bet, 4bet Range, 4bet NAI), FOLD_4BET (мой фолд на 4-бет после моего 3-бета), 3BET_SIZES (3-беты по сайзам / размерам / сайзингам и фолд на 4-бет), 3BET_VS_ISO (3-бет против изолейта: до меня лимп, его изолировали, я 3-бечу), OVERCALL (оверколл: коллирую опен третьим / четвёртым в банк, после коллеров; владелец называет это и «колд-колл третьим / четвёртым», голос пишет «колд колы 3» — это OVERCALL), FOLD_3BET, LIMP (лимп первым), WTSD, WSD (W$SD), WWSF, BET_RIVER, FOLD_RIVER
 (фолд на ставку на ривере), SQUARE (квадрат WS/WN/LS/LN), RFI, WINRATE (винрейт / выигрыш / bb/100), WINRATE_POS (винрейт по позициям),
-VS_OPEN (ответы на опен: колл/3-бет), VS_3BET (после своего опена против 3-бета), SQUEEZE (мои сквизы), VS_SQUEEZE (мой ответ на сквиз против меня: фолд / колл / 4-бет на сквиз, «F vs SQZ», «реакции на сквиз»; одно действие — action, все реакции — action any), ISO (изолейт — рейз против лимперов), VS_ALLIN (колл олл-ина),
+VS_OPEN (ответы на опен: колл/3-бет), BLIND_VS_OPEN (как я на BB или SB реагирую против опенов со всех позиций: таблица Fold / Call / 3B / 3B NAI / 3B AI по позиции открывшего; «BB vs», «защита BB»; position — BB или SB, оба блайнда — none), VS_3BET (после своего опена против 3-бета), SQUEEZE (мои сквизы), VS_SQUEEZE (мой ответ на сквиз против меня: фолд / колл / 4-бет на сквиз, «F vs SQZ», «реакции на сквиз»; одно действие — action, все реакции — action any), ISO (изолейт — рейз против лимперов), VS_ALLIN (колл олл-ина),
 POSTFLOP (c-bet, донк, чек-рейз, флоп, тёрн), card — просто показать игрока / его карточку, UNKNOWN — не про статистику.
 «Мой / мои / у меня / моя» — me=true. «Покажи мне …», «скажи мне …» — НЕ про себя (me=false): это про открытого игрока. Ник: латиница, цифры; голос может разбить ник на слова или написать по-русски — восстанови,
 как он, скорее всего, пишется латиницей (например «эф эф тони» → FFtonny); не уверен — оставь как услышал.
@@ -77,12 +77,13 @@ function toPhrase(o) {
   // перевод в фразу, которую понимает разбор server.cjs
   const ST = { card: '', VPIP: 'VPIP', PFR: 'PFR', VPIP_PFR: 'VPIP PFR', '3BET': '3-бет', COLD_CALL: 'колд-колл', '3BET_VS_ISO': '3-бет против изолейта', '3BET_SIZES': '3-беты по сайзам', COLD_CALL_3BET: 'колл 3-бета в холодную', COLD_4BET: '4-бет в холодную', '4BET': '4-бет', FOLD_4BET: 'фолд на 4-бет', OVERCALL: 'колл третьим в банк четвёртым в банк', FOLD_3BET: 'фолд на 3-бет', LIMP: 'лимп', WTSD: 'WTSD', WSD: 'W$SD',
     WWSF: 'WWSF', BET_RIVER: 'бет ривер', FOLD_RIVER: 'фолд на бет на ривере', SQUARE: 'квадрат', RFI: 'RFI', WINRATE: 'винрейт', WINRATE_POS: 'винрейт по позициям',
-    VS_OPEN: 'против опена', VS_3BET: 'фолд на 3-бет по стекам', SQUEEZE: 'сквиз', VS_SQUEEZE: 'реакции на сквиз', ISO: 'изо', VS_ALLIN: 'олл-ин', POSTFLOP: 'c-bet', UNKNOWN: '' };
+    VS_OPEN: 'против опена', BLIND_VS_OPEN: 'против опенов', VS_3BET: 'фолд на 3-бет по стекам', SQUEEZE: 'сквиз', VS_SQUEEZE: 'реакции на сквиз', ISO: 'изо', VS_ALLIN: 'олл-ин', POSTFLOP: 'c-bet', UNKNOWN: '' };
   const w = [];
   if (o.me) w.push('мой'); else if (o.nick) w.push(o.nick);
   if (o.room && o.room !== 'all' && o.me) w.push({ winamax: 'winamax', gg: 'gg', wpn: 'wpn', stars: 'stars' }[o.room]);
   w.push(ST[o.stat] || '');
-  if (o.position && o.position !== 'none') w.push('с ' + o.position);
+  if (o.stat === 'BLIND_VS_OPEN') w[w.indexOf('против опенов')] = (o.position === 'BB' || o.position === 'SB' ? o.position : 'блайнды') + ' против опенов';
+  else if (o.position && o.position !== 'none') w.push('с ' + o.position);
   if (o.stack_bb != null) w.push('стек ' + Math.round(o.stack_bb * 10) / 10 + ' бб');
   else if (o.stack_from != null || o.stack_to != null) w.push((o.stack_from != null ? o.stack_from : 0) + ' до ' + (o.stack_to != null ? o.stack_to : 1000) + ' бб');
   if (o.by_stack) w.push('по стекам');

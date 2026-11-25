@@ -237,7 +237,7 @@ const STATS = [
   ['SQ', /квадрат|фиат/],
 ];
 const NO_STAT = /rfi|опен|открыт|первым|стил|сквиз|изо|изол|iso|против\s*(опен|лимп|олл)|колл\s*опен|на\s*опен|винрейт|winrate|выигрыш|профит|bb\/100|бб\/100/;
-function statOf(ql) { if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
+function statOf(ql) { if (isBVS(ql)) return 'BVS'; if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
 const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -297,6 +297,17 @@ function v3mBlocks(P, ql, vs, bands, metric) {
   if (O.length === 1) { const Hd = H.filter(h => ORD.indexOf(O[0]) < ORD.indexOf(h) && get(h, O[0]).n); if (Hd.length === 1) return v3mBlocks(P, ql, { hero: Hd, opp: O }, bands, metric); }
   const rows = H.map(h => [h, ...O.map(o => { if (ORD.indexOf(o) >= ORD.indexOf(h)) return ''; const r = get(h, o); return r.n ? { v: pctS(r.v, r.n), n: r.n, hm: r.hm } : { v: '—', n: 0 }; })]).filter(r => r.slice(1).some(c => c && c.n));
   return [{ type: 'table', title: title(P) + ' — ' + name + ': позиция против позиции', note, ai: k === 'call' ? 'колл — опен не олл-ин' : undefined, table: { head: ['', ...O], rows, grid: true } }];
+}// ---------- блайнды против опенов (25.11.2026): BB vs / SB vs — колонки кто открыл, строки Fold / Call / 3B / 3B NAI / 3B AI (ext.v3m) ----------
+const BVS_RE = /(реакц|реагир|ответ|защит|действ)[а-яё]*|(^|[^a-z])(bb|sb)\s*vs/;
+/* «BB против опенов», «как я на BB реагирую против открытий», «BB vs» — без названного стата (или со словами реакция / ответы / защита) */
+function isBVS(ql) { const bl = posIn(ql).some(p => p === 'BB' || p === 'SB') || /блайнд/.test(ql); if (!bl) return false; const vs = /(против|vs\.?|на)\s*(опен|открыт|рейз|все[хм]?\s*позиц|позици)/.test(ql) || /(^|[^a-z])(bb|sb)\s*vs/.test(ql); if (!vs) return false; return BVS_RE.test(ql) || !/3\s*-?\s*бет|тр[её]х\s*-?\s*бет|колл|кол[лд]?(\s|$)|фолд|изо|сквиз|лимп|rfi|vpip|pfr/.test(ql); }
+function bvsBlocks(P, ql, bands) {
+  const own = posIn(ql.replace(/(против|vs\.?|на)\s*(опен|открыт|рейз)[а-яё]*.*/, ' ')), hs = own.filter(p => p === 'BB' || p === 'SB'), H = hs.length ? hs : /блайнд/.test(ql) ? ['BB', 'SB'] : ['BB'], mode = aiMode(ql);
+  const O = ['BTN', 'CO', 'HJ', 'MP', 'EP'], LAB = { BTN: 'BU' }, st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
+  const R = [['Fold', 'fold', x => x[0] - x[1] - x[2] - x[3]], ['Call', 'call', x => x[1]], ['3B', 'b3all', x => x[2] + x[3]], ['3B NAI', 'b3', x => x[2]], ['3B AI', 'ai', x => x[3]]].filter(r => mode === 'all' || r[0] === 'Fold' || r[0] === 'Call' || (mode === 'nai' ? r[0] === '3B NAI' : r[0] === '3B AI'));
+  return H.map(h => { const get = (o) => { const x = [0, 0, 0, 0]; for (const b of bands) { const r = P.ext.v3m[h] && P.ext.v3m[h][o] && P.ext.v3m[h][o][b]; if (r) for (let j = 0; j < 4; j++) x[j] += r[j]; } return x; };
+    return { type: 'table', title: title(P) + ' — ' + h + ' против опенов', note: 'колонки — кто открыл; один опен (не олл-ин) без коллеров и лимпов, мы на ' + h + ' отвечаем' + st, ai: mode === 'nai' ? '3-бет без олл-инов' : mode === 'ai' ? '3-бет олл-ином' : '3B — общий · NAI — без олл-ина · AI — олл-ином',
+      table: { head: [h + ' vs', ...O.map(o => LAB[o] || o)], rows: R.map(([lab, m, f]) => [lab, ...O.map(o => { const x = get(o); return x[0] ? { v: pctS(f(x), x[0]), n: x[0], hm: HMref(P, 'v3m|' + h + '|' + o, m, bands) } : ''; })]), grid: true, heatRow: true } }; });
 }// ---------- изолейт по позициям (алиас — ext.iso; сверено с таблицей владельца 24.11.2026) ----------
 // строки: против 1 лимпера / ISO Fold / против 2+ лимперов / ISO Fold; ISO Fold — изолировали, лимпер ответил рейзом (3-бет / пуш), мы сбросили
 const IPOS = ['TOT', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -502,6 +513,7 @@ function fsqBlocks(P, ql, o) {
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
   if (id === 'SQZ') { if (!(P.ext && P.ext.sq)) { const t = famTable(P, 'sqz', TT.bands, TT.byBand, TT.G); return [{ type: 'table', title: title(P) + ' — ' + FAM_T.sqz, note: 'у игроков базы — по стекам, без позиций', table: t }]; } return sqBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql)), byBand: TT.byBand, vs: true }); }
+  if (id === 'BVS') { if (!(P.ext && P.ext.v3m)) return [{ type: 'text', text: 'Таблица «блайнд против опенов» пока посчитана только по вашей базе.' }]; return bvsBlocks(P, ql, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands); }
   if (id === 'FSQ') { if (!(P.ext && P.ext.fsq)) return [{ type: 'text', text: 'Ответ на сквиз пока посчитан только по вашей базе.' }]; return fsqBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql)) && !TT.byBand, byBand: TT.byBand }); }
   if (id === 'F4') { if (!(P.ext && P.ext.f4)) return [{ type: 'text', text: 'Фолд на 4-бет пока посчитан только по вашей базе.' }]; return f4Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }, 'fold'); }
   if (id === 'CC3') { if (!(P.ext && P.ext.c3)) return [{ type: 'text', text: 'Колл 3-бета в холодную пока посчитан только по вашей базе.' }]; return cc3Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }); }
