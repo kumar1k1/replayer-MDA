@@ -183,7 +183,7 @@ function specFromBrain(o) {
   if (Array.isArray(o.positions) && o.positions.length > 1) sp.pos = ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'].filter(p => o.positions.includes(p));
   return sp.groups || sp.pos ? sp : null;
 }function intentOf(q) {
-  if (CB_RE.test(q)) return 'stat'; if (/донк|c-?bet|кбет|конт|си-?бет|чек-?рейз|чекрейз|флоп|т[её]рн|проб|флоат|барр?ел/.test(q)) return 'postflop';
+  if (CB_RE.test(q) || BSK_RE.test(q)) return 'stat'; if (/донк|c-?bet|кбет|конт|си-?бет|чек-?рейз|чекрейз|флоп|т[её]рн|проб|флоат|барр?ел/.test(q)) return 'postflop';
   if (/сквиз|squeeze/.test(q)) return 'sqz';
   if (/(?<![а-яё])(фолд|ответ|против|на)\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет|4\s*-?\s*бет|четыр[её]х?бет|vs\s*3/.test(q)) return 'vs3';
   if (/3\s*-?\s*бет|трибет|тр[её]хбет|3bet|защит|против опен|колл опен|на опен/.test(q)) return 'vso';
@@ -237,7 +237,7 @@ const STATS = [
   ['SQ', /квадрат|фиат/],
 ];
 const NO_STAT = /rfi|опен|открыт|первым|стил|сквиз|изо|изол|iso|против\s*(опен|лимп|олл)|колл\s*опен|на\s*опен|винрейт|winrate|выигрыш|профит|bb\/100|бб\/100/;
-function statOf(ql) { if (CB_RE.test(ql)) return 'CB'; if (isBVS(ql)) return 'BVS'; if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
+function statOf(ql) { if (BSK_RE.test(ql)) return 'BSK'; if (CB_RE.test(ql)) return 'CB'; if (isBVS(ql)) return 'BVS'; if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
 const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -362,6 +362,19 @@ function cbBlocks(P, ql, o) {
   const want = /(c-?bet|бет|ставк)[а-яё]*[\s-]*(фолд|fold)|фолд[а-яё]*\s*(на\s*)?рейз/.test(ql) ? 'ff' : /(c-?bet|бет|ставк)[а-яё]*[\s-]*(колл?|кол|call)|колл?[а-яё]*\s*(на\s*)?рейз/.test(ql) ? 'fc' : /(c-?bet|бет|ставк)[а-яё]*[\s-]*(рейз|raise|ререйз)|ререйз/.test(ql) ? 'fr' : /отложен|delay|дил[еэ]й|д[еэ]л[еэ]й/.test(ql) ? (/ривер/.test(ql) ? 'dr' : 'dt') : /\+\s*бет|плюс\s*бет/.test(ql) ? 'pb' : /ривер/.test(ql) ? 'r' : /т[её]рн/.test(ql) ? 't' : 'f';
   if (!WANT_TABLE.test(ql) && !/таблиц|все|по\s*улиц|б[еэ]т(ы|ов)|ставки|bets/.test(ql)) { const k = C[want]; return [{ type: 'big', hm: k[1].hm, title: title(P) + ' — ' + k[0] + KD[kd], big: k[1].n ? k[1].v : 'нет данных', n: k[1].n, ai: ['ff', 'fc', 'fr'].includes(want) ? ai : undefined, note: (want === 'f' && x[0] ? 'тёрн ' + C.t[1].v + ' · ривер ' + C.r[1].v + ' · ' : '') + note }]; }
   return [{ type: 'table', title: title(P) + ' — мои конбеты' + KD[kd], note, ai, table: { head: [kd === 'mwo' ? 'OOP' : 'IP', 'Flop', 'Turn', 'River'], rows: [['CB', C.f[1], C.t[1], C.r[1]], ['CB-Fold', C.ff[1], '', ''], ['CB-Call', C.fc[1], '', ''], ['CB-Raise', C.fr[1], '', ''], ['Delay CB', '', C.dt[1], C.dr[1]], ['+Bet', '', '', C.pb[1]]], grid: true } }];
+}// ---------- ставка на пропуск (алиас — ext.bsk; 26.11.2026): мультивей, я коллер до флопа, все до меня чекнули — ставлю ----------
+const BSK_RE = /б[еэ]т[а-яё]*\s*-?\s*(фолд[а-яё]*\s*)?(в\s*|на\s*)?(скип|пропуск)|ставк[а-яё]*\s*(в|на)\s*пропуск|(bet|b)\s*vs\s*skip|bet\s*-?\s*skip|пропущенн[а-яё]*\s*(бет|ставк)/;
+function bskBlocks(P, ql, o) {
+  const OOP = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)|out\s*of\s*position|аут\s*оф\s*поз/, qi = ql.replace(new RegExp(OOP.source, 'g'), ' '), isMW = /мульти|мульт[иы]\s*-?\s*пот|мультик|multi/.test(ql), isOOP = OOP.test(ql), isIP = /(^|[^а-яё])в\s*позици|(^|[^a-z])ip([^a-z]|$)|in\s*position/.test(qi);
+  if (!isMW || (!isIP && !isOOP)) return [{ type: 'text', text: 'Ставка на пропуск посчитана в мультивее, когда я коллер до флопа — в позиции и без позиции. Спросите со словами «в мультивее» и «в позиции» / «без позиции», например: «мой бет в пропуск в мультивее в позиции».' }];
+  if (isIP && isOOP) return [...bskBlocks(P, qi + ' в позиции', o), ...bskBlocks(P, qi.replace(/(^|[^а-яё])в\s*позици[а-яё]*/g, ' ') + ' без позиции', o)];
+  const kd = isOOP ? 'oop' : 'ip', { bands } = o, x = new Array(10).fill(0); for (const b of bands) { const r = P.ext.bsk[kd] && P.ext.bsk[kd][b]; if (r) for (let j = 0; j < 10; j++) x[j] += r[j]; }
+  const c = (num, den, m) => (den ? { v: pctS(num, den), n: den, hm: HMref(P, 'bsk|' + kd, m, bands) } : { v: '—', n: 0 });
+  const C = { f: ['B vs Skip флоп', c(x[1], x[0], 'f')], t: ['B vs Skip тёрн', c(x[3], x[2], 't')], r: ['B vs Skip ривер', c(x[5], x[4], 'r')], ff: ['B-Fold', c(x[7], x[6], 'ff')] }, KD = { ip: ' в мультивее, в позиции', oop: ' в мультивее, без позиции' };
+  const note = 'мультивей: до флопа был один рейз (не мой), я его заколлировал, на флопе трое и больше; ' + (kd === 'ip' ? 'на флопе хожу последним' : 'после меня на флопе ходит кто-то ещё') + '; B vs Skip — все до меня чекнули, я ставлю (тёрн — до меня прочекали, любой флоп; ривер — на ривере ещё трое и больше); B-Fold — сбросил на рейз после своей ставки на флопе' + (bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
+  const want = /фолд|fold/.test(ql) ? 'ff' : /ривер/.test(ql) ? 'r' : /т[её]рн/.test(ql) ? 't' : 'f';
+  if (!WANT_TABLE.test(ql) && !/таблиц|все|по\s*улиц|ставки|бет(ы|ов)/.test(ql)) { const k = C[want]; return [{ type: 'big', hm: k[1].hm, title: title(P) + ' — ' + k[0] + KD[kd], big: k[1].n ? k[1].v : 'нет данных', n: k[1].n, note }]; }
+  return [{ type: 'table', title: title(P) + ' — ставка на пропуск' + KD[kd], note, table: { head: [kd === 'ip' ? 'IP' : 'OOP', 'Flop', 'Turn', 'River'], rows: [['B vs Skip', C.f[1], C.t[1], C.r[1]], ['B-Fold', C.ff[1], '', '']], grid: true } }];
 }// ---------- изолейт по позициям (алиас — ext.iso; сверено с таблицей владельца 24.11.2026) ----------
 // строки: против 1 лимпера / ISO Fold / против 2+ лимперов / ISO Fold; ISO Fold — изолировали, лимпер ответил рейзом (3-бет / пуш), мы сбросили
 const IPOS = ['TOT', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -569,6 +582,7 @@ function fsqBlocks(P, ql, o) {
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
   if (id === 'SQZ') { if (!(P.ext && P.ext.sq)) { const t = famTable(P, 'sqz', TT.bands, TT.byBand, TT.G); return [{ type: 'table', title: title(P) + ' — ' + FAM_T.sqz, note: 'у игроков базы — по стекам, без позиций', table: t }]; } return sqBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql)), byBand: TT.byBand, vs: true }); }
+  if (id === 'BSK') { if (!(P.ext && P.ext.bsk)) return [{ type: 'text', text: 'Ставка на пропуск пока посчитана только по вашей базе.' }]; return bskBlocks(P, ql, { bands: TT.bands }); }
   if (id === 'CB') { if (!(P.ext && P.ext.cb)) return [{ type: 'text', text: 'Конбеты в мультивее пока посчитаны только по вашей базе; у игроков базы появятся после прохода по базе.' }]; return cbBlocks(P, ql, { bands: TT.bands }); }
   if (id === 'BVS') { if (!(P.ext && P.ext.v3m)) return [{ type: 'text', text: 'Таблица «блайнд против опенов» пока посчитана только по вашей базе.' }]; return bvsBlocks(P, ql, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands); }
   if (id === 'FSQ') { if (!(P.ext && P.ext.fsq)) return [{ type: 'text', text: 'Ответ на сквиз пока посчитан только по вашей базе.' }]; return fsqBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql)) && !TT.byBand, byBand: TT.byBand }); }

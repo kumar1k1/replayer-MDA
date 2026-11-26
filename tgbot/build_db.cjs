@@ -33,7 +33,7 @@ function aliasStats() {
   const mine = new Set(Object.keys(cfg['ники'] || {})); // «рум:ник»
   const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
   const acc = {}; // рум → { pf, cl, f, n, ns, nf }
-  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, v3m: {}, iso: {}, oc: {}, b3i: {}, s3: {}, f3: {}, c3: {}, f4: {}, sq: {}, sqm: {}, fsq: {}, lmp: {}, cb: {}, cbs: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
+  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, v3m: {}, iso: {}, oc: {}, b3i: {}, s3: {}, f3: {}, c3: {}, f4: {}, sq: {}, sqm: {}, fsq: {}, lmp: {}, cb: {}, cbs: {}, bsk: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
   // 3-бет как в Hand2Note (сверено 23.11.2026 с его поп-апом владельца, все позиции): против ровно одного рейза,
   // без коллеров (сквиз — отдельно), опен не олл-ином, на BB — не против опена с SB (блайнд против блайнда — отдельно)
   const HF = require(path.join(ROOT, 'lib', 'handfix.js'));
@@ -174,8 +174,21 @@ function aliasStats() {
           /* линии (только сверка, TGBOT_AUDIT): мои ходы по улицам, карты, борд, итог */
           const ln = AUDIT ? { l: [1, 2, 3].map(st => S(st).filter(e => e.i === hero).map(e => ({ x: 'X', b: 'B', r: 'R', c: 'C', f: 'F' })[e.t]).join('')), hc: (rp.hc && rp.hc[hero]) || null, bd: rp.bd || [], rb: Math.round(rb * 100) / 100, sd: wentSD0 ? 1 : 0 } : null;
           pc = { ln, ip, csz, nT, nRv, onlyOpen, n: o1.length - 1, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, t, r, fr, dt, drA, drB, pb, pre3: pre.length >= 2 ? 1 : 0 }; } }
+      /* ставка на пропуск (26.11.2026): мультивей, до флопа был один рейз (не мой), я его заколлировал; на флопе хожу последним; все до меня чекнули → ставлю?
+         bk = { n, ip, f: [возм, ставка], fr: [рейз на мою ставку, ответ, олл-ин], t: [возм, ставка] — после заколлированной ставки на флопе тёрн прочекан до меня, ta: [возм, ставка] — тёрн прочекан до меня (любой флоп), r: [возм, ставка] } */
+      let bk = null; { const pre = rp.ev.filter(e => e.st === 0 && e.i >= 0 && e.t === 'r'), heroC = rp.ev.some(e => e.st === 0 && e.i === hero && e.t === 'c');
+        const S = (s) => rp.ev.filter(e => e.st === s && e.i >= 0 && 'xbrcf'.includes(e.t)), ord = (E) => [...new Set(E.map(e => e.i))], E1 = S(1), o1 = ord(E1);
+        if (pre.length === 1 && pre[0].i !== hero && heroC && o1.length >= 3 && o1.includes(hero)) {
+          const st = (E) => { const k = E.findIndex(e => e.i === hero); if (k < 0) return null; const me = E[k], before = E.slice(0, k), after = E.slice(k + 1), rz = after.findIndex(e => e.i !== hero && e.t === 'r'), nx = after.findIndex(e => e.i === hero);
+            return { ck: before.every(e => e.t === 'x'), act: me.t, raised: rz >= 0, raiseAI: rz >= 0 ? !!after[rz].ai : false, resp: rz >= 0 && nx > rz ? after[nx].t : null }; };
+          const F = st(E1), T = st(S(2)), R = st(S(3)), ip = o1[o1.length - 1] === hero ? 1 : 0;
+          const f = [F.ck ? 1 : 0, F.ck && F.act === 'b' ? 1 : 0], fc = f[1] && !F.raised, t = [fc && T && T.ck ? 1 : 0, 0]; t[1] = t[0] && T.act === 'b' ? 1 : 0;
+          const ta = [T && T.ck ? 1 : 0, 0]; ta[1] = ta[0] && T.act === 'b' ? 1 : 0; const tc = t[1] && !T.raised, r = [tc && R && R.ck ? 1 : 0, 0]; r[1] = r[0] && R.act === 'b' ? 1 : 0;
+          const d0 = C.preflopDecisions(rp, () => '').find(x => x.i === hero);
+          const nT = ord(S(2)).length - 1, nRv = ord(S(3)).length - 1, ta3 = nT >= 2 ? ta : [0, 0], ra = [nRv >= 2 && R && R.ck ? 1 : 0, 0]; ra[1] = ra[0] && R.act === 'b' ? 1 : 0;
+          bk = { ta3, ra, nRv, n: o1.length - 1, ip, nT, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, fr: f[1] && F.raised ? [1, F.resp, F.raiseAI ? 1 : 0] : null, t, ta, r }; } }
       // полная сверка (TGBOT_AUDIT=1): как подсчёт понял каждую раздачу → tgbot/data/audit.ndjson
-      if (AUDIT) AUD.push(JSON.stringify({ id: room + '#' + rp.handId, rf, vo, oc, iz, bi, sz: sz && [sz[0], sz[1], Math.round(sz[3] * 10) / 10, sz[4], sz[5]], f3i, c3i, fq, fqx, lp, pc }));
+      if (AUDIT) AUD.push(JSON.stringify({ id: room + '#' + rp.handId, rf, vo, oc, iz, bi, sz: sz && [sz[0], sz[1], Math.round(sz[3] * 10) / 10, sz[4], sz[5]], f3i, c3i, fq, fqx, lp, pc, bk }));
       // образцы раздач для ручной проверки (TGBOT_SAMPLE=1 → tgbot/data/samples.json, только на ПК)
       if (SAMPLE) {
         const id = room + ' #' + rp.handId + (/Tournament #(\d+)/.exec(h) ? ' · турнир ' + /Tournament #(\d+)/.exec(h)[1] : '') + ' · ' + (rp.date || '') + ' · карты ' + ((rp.hc && rp.hc[hero]) || '?');
@@ -196,6 +209,7 @@ function aliasStats() {
       { const cm = /^Dealt to .+? \[(\S\S) (\S\S)\]/m.exec(h), CLS = cm ? handClass(cm[1], cm[2]) : null;
         if (CLS) {
           const H = (path, band, metric, num) => { for (const bd of [band, 'all']) { const o = ((HM[path] = HM[path] || {})[metric] = HM[path][metric] || {})[bd] = HM[path][metric][bd] || {}; const c = o[CLS] = o[CLS] || [0, 0]; c[0]++; if (num) c[1]++; } };
+          if (bk) { const P = 'bsk|' + (bk.ip ? 'ip' : 'oop'); if (bk.f[0]) H(P, bk.band, 'f', bk.f[1]); if (bk.ta[0]) H(P, bk.band, 't', bk.ta[1]); if (bk.ra[0]) H(P, bk.band, 'r', bk.ra[1]); if (bk.fr) H(P, bk.band, 'ff', bk.fr[1] === 'f'); }
           if (pc && pc.csz) for (const kd of cbKinds(pc)) { const P = 'cbs|' + kd; H(P, pc.band, 'any', 1); H(P, pc.band, 'sz:' + pc.csz[0], 1); if (pc.fr) H(P, pc.band, 'f:' + pc.csz[0], pc.fr[1] === 'f'); }
           if (pc) for (const kd of cbKinds(pc)) { const q = cbView(pc, kd), P = 'cb|' + kd; if (q.f[0]) H(P, pc.band, 'f', q.f[1]); if (q.t[0]) H(P, pc.band, 't', q.t[1]); if (q.r[0]) H(P, pc.band, 'r', q.r[1]); if (q.fr) { H(P, pc.band, 'ff', q.fr[1] === 'f'); H(P, pc.band, 'fc', q.fr[1] === 'c'); const mk = q.fr[2] ? 'ai' : 'nai'; H(P, pc.band, 'ff' + mk, q.fr[1] === 'f'); H(P, pc.band, 'fc' + mk, q.fr[1] === 'c'); if (!q.fr[2]) H(P, pc.band, 'frnai', q.fr[1] === 'r'); } if (q.dt[0]) H(P, pc.band, 'dt', q.dt[1]); if (q.drA[0]) H(P, pc.band, 'dr', q.drA[1]); if (q.pb[0]) H(P, pc.band, 'pb', q.pb[1]); }
           if (lp) for (const p of lp[0] === 'SB' ? ['SB'] : [lp[0], 'TOT']) { const P = 'lmp|' + p; H(P, lp[1], 'limp', lp[2]); if (lp[3]) { const mk = lp[5] ? 'ai' : 'nai'; for (const [m, v] of [['lf', lp[4] === 0], ['lc', lp[4] === 1], ['lr', lp[4] === 2]]) { H(P, lp[1], m, v); H(P, lp[1], m + mk, v); } } }
@@ -219,6 +233,8 @@ function aliasStats() {
         a.raw[half]++; a.raw[half + 1] += rb; a.raw[half + 2] += rb * rb; a.raw[fo + half]++; a.raw[fo + half + 1] += rb; a.raw[fo + half + 2] += rb * rb;
         const P = a.pos[ps] = a.pos[ps] || [0, 0, 0, 0]; P[0]++; P[1] += rb; P[2] += b; P[3] += rb * rb;
         // cb[ip][стек] = [флоп: возм, ставка, тёрн: возм, ставка, ривер: возм, ставка, рейз на флопе: раз, фолд, колл, против рейза не олл-ином: раз, рейз, против олл-ина: раз, фолд, колл, отложенная тёрн: возм, ставка, отложенная ривер: возм, ставка, +Bet ривер: возм, ставка]
+        // bsk[ip|oop][стек] = [флоп: возм, ставка, тёрн (до меня чек): возм, ставка, ривер (3+): возм, ставка, рейз на ставку флопа: раз, фолд, колл, рейз]
+        if (bk) for (const bd of [bk.band, 'all']) { const kd = bk.ip ? 'ip' : 'oop', X = (a.bsk[kd] = a.bsk[kd] || {})[bd] = a.bsk[kd][bd] || new Array(10).fill(0); X[0] += bk.f[0]; X[1] += bk.f[1]; X[2] += bk.ta[0]; X[3] += bk.ta[1]; /* тёрн — до меня прочекали, любое число игроков: 56,9 против 55 у владельца (с условием «трое на тёрне» — 48,7) */ X[4] += bk.ra[0]; X[5] += bk.ra[1]; if (bk.fr) { X[6]++; if (bk.fr[1] === 'f') X[7]++; else if (bk.fr[1] === 'c') X[8]++; else if (bk.fr[1] === 'r') X[9]++; } }
         // cbs[вид банка][корзина размера][стек] = [ставок, рейз на неё, фолд, колл, рейз, сумма % банка]
         if (pc && pc.csz) for (const kd of cbKinds(pc)) for (const bd of [pc.band, 'all']) { const G = (a.cbs[kd] = a.cbs[kd] || {}), X = ((G[pc.csz[0]] = G[pc.csz[0]] || {})[bd] = G[pc.csz[0]][bd] || [0, 0, 0, 0, 0, 0]); X[0]++; X[5] += pc.csz[1]; if (pc.fr) { X[1]++; if (pc.fr[1] === 'f') X[2]++; else if (pc.fr[1] === 'c') X[3]++; else if (pc.fr[1] === 'r') X[4]++; } }
         if (pc) for (const kd of cbKinds(pc)) { const q = cbView(pc, kd); for (const bd of [pc.band, 'all']) { const X = (a.cb[kd] = a.cb[kd] || {})[bd] = a.cb[kd][bd] || new Array(22).fill(0); X[0] += q.f[0]; X[1] += q.f[1]; X[2] += q.t[0]; X[3] += q.t[1]; X[4] += q.r[0]; X[5] += q.r[1]; if (q.fr) { X[6]++; if (q.fr[1] === 'f') X[7]++; if (q.fr[1] === 'c') X[8]++; if (!q.fr[2]) { X[9]++; if (q.fr[1] === 'r') X[10]++; } else { X[11]++; if (q.fr[1] === 'f') X[12]++; if (q.fr[1] === 'c') X[13]++; } } X[14] += q.dt[0]; X[15] += q.dt[1]; X[16] += q.drA[0]; X[17] += q.drA[1]; X[18] += q.pb[0]; X[19] += q.pb[1]; } }
@@ -272,7 +288,7 @@ function aliasStats() {
     ser.forEach((p, k) => { w += p[1]; e += p[2]; if (p[3]) s += p[1]; else ns += p[1]; if ((k + 1) % step === 0 || k === N - 1) out.push([k + 1, Math.round(w), Math.round(e), Math.round(s), Math.round(ns)]); });
     return out;
   };
-  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, v3m: a.v3m, iso: a.iso, oc: a.oc, b3i: a.b3i, s3: a.s3, f3: a.f3, c3: a.c3, f4: a.f4, sq: a.sq, sqm: a.sqm, fsq: a.fsq, lmp: a.lmp, cb: a.cb, cbs: a.cbs, tot: a.tot, graph: graph(a.ser) }) }));
+  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, v3m: a.v3m, iso: a.iso, oc: a.oc, b3i: a.b3i, s3: a.s3, f3: a.f3, c3: a.c3, f4: a.f4, sq: a.sq, sqm: a.sqm, fsq: a.fsq, lmp: a.lmp, cb: a.cb, cbs: a.cbs, bsk: a.bsk, tot: a.tot, graph: graph(a.ser) }) }));
 }
 
 // ---------- сборка ----------
