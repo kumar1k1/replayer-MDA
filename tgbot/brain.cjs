@@ -25,7 +25,7 @@ const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'COLD_CALL', 'OVERCALL
   'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'BLIND_VS_OPEN', 'VS_3BET', 'SQUEEZE', 'VS_SQUEEZE', 'ISO', 'VS_ALLIN', 'CBET', 'POSTFLOP', 'UNKNOWN'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers', 'parts', 'in_position', 'sqz_role', 'cbet_kind'],
+  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers', 'parts', 'in_position', 'sqz_role', 'cbet_kind', 'cbet_pot'],
   properties: {
     me: { type: 'boolean', description: 'спрашивают про себя (мой, мои, у меня, моя статистика)' },
     nick: { type: 'string', description: 'ник игрока, как услышан/написан; пусто — игрок не назван (тогда «его/он» = прошлый игрок)' },
@@ -47,6 +47,7 @@ const SCHEMA = {
     allin: { type: 'string', enum: ['any', 'without', 'only'], description: '«без олл-инов / без улынов / без пушей / NAI» — without; «только олл-ины / улыны / пуши / олл-ином / AI» — only; иначе any (голос пишет олл-ины как «улыны», «пуши»)' },
     action: { type: 'string', enum: ['any', 'call', '3bet', '4bet', 'raise', 'allin', 'fold'], description: 'для ответов на опен и на сквиз (VS_SQUEEZE: фолд / колл / 4-бет): какое одно действие спросили (колл, 3-бет, олл-ин, фолд); иначе any' },
     cbet_kind: { type: 'string', enum: ['none', 'table', 'flop', 'turn', 'river', 'fold', 'call', 'raise', 'delay_turn', 'delay_river', 'plus_bet'], description: 'для CBET: таблица («мои цбеты», «по улицам», «таблицей») — table; одна цифра: флоп / тёрн / ривер, цбет-фолд / колл / ререйз на рейз, отложенный цбет на тёрне / ривере, +бет; иначе none' },
+    cbet_pot: { type: 'string', enum: ['any', 'hu', 'mw'], description: 'для CBET: один на один (хедз-ап) — hu; мультивей / мультипот / трое и больше / на коллеров — mw; иначе any' },
     sqz_role: { type: 'string', enum: ['any', 'pfr', 'cc', 'cc_opener_fold', 'cc_opener_call'], description: 'для VS_SQUEEZE: «как рейзер / открывший / после опена» — pfr; «как коллер / после колла» — cc; коллер, когда первый рейзер выкинул (сбросил) — cc_opener_fold, заколлировал — cc_opener_call; иначе any' },
     positions: { type: 'array', description: 'колонки — позиции, если назвали несколько или группу позиций; иначе []', items: { type: 'string', enum: ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'] } },
   },
@@ -97,8 +98,8 @@ function toPhrase(o) {
   if (o.stat === 'VS_OPEN' && o.action && o.action !== 'any') w.push({ call: 'колл', '3bet': '3-бет', allin: 'олл-ин', fold: 'фолд' }[o.action]);
   if (o.stat === 'VS_SQUEEZE') { const ac = { fold: 'фолд на сквиз', call: 'колл на сквиз', '4bet': '4-бет на сквиз' }[o.action]; if (ac) w[w.indexOf('реакции на сквиз')] = ac; const rr = { pfr: 'как рейзер', cc: 'как коллер', cc_opener_fold: 'как коллер открывший сбросил', cc_opener_call: 'как коллер открывший заколлировал' }[o.sqz_role]; if (rr) w.push(rr); }
   if (o.stat === 'LIMP') { const lk = { fold: 'лимп-фолд', call: 'лимп-колл', raise: 'лимп-рейз', '3bet': 'лимп-рейз' }[o.action]; if (lk) w[w.indexOf('лимп')] = lk; }
-  if (o.stat === 'CBET') { const ck = { table: 'цбеты таблицей', flop: 'цбет', turn: 'цбет на тёрне', river: 'цбет на ривере', fold: 'цбет фолд на рейз', call: 'цбет колл на рейз', raise: 'цбет ререйз', delay_turn: 'отложенный цбет', delay_river: 'отложенный цбет на ривере', plus_bet: 'цбет плюс бет' }[o.cbet_kind]; if (ck) w[w.indexOf('цбет')] = ck; }
-  if (o.heads_up) w.push('один на один');
+  if (o.stat === 'CBET') { const ck = { table: 'цбеты таблицей', flop: 'цбет', turn: 'цбет на тёрне', river: 'цбет на ривере', fold: 'цбет фолд на рейз', call: 'цбет колл на рейз', raise: 'цбет ререйз', delay_turn: 'отложенный цбет', delay_river: 'отложенный цбет на ривере', plus_bet: 'цбет плюс бет' }[o.cbet_kind]; if (ck) w[w.indexOf('цбет')] = ck; if (o.cbet_pot === 'mw') w.push('в мультивее'); else if (o.cbet_pot === 'hu') w.push('один на один'); }
+  if (o.heads_up && o.stat !== 'CBET') w.push('один на один');
   return w.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 
