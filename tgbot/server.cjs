@@ -254,7 +254,7 @@ VPOS.TOT = true;
 const RS0 = (G, byBand) => !!(G || byBand);
 // олл-ин в вопросе: «без олл-инов / без улынов / NAI» → nai; «только олл-ины / олл-ином / пуши / AI» → ai; иначе — всё (владелец, 24.11.2026)
 const AIW = '(?:олл-?\s*ин|ол\s*ин|ул[ыи]н|all-?\s*in|пуш)';
-function aiMode(ql) { if (new RegExp('без\\s*' + AIW + '|(^|[^a-zа-яё])(nai|наи|н\\s*а\\s*и)([^a-zа-яё]|$)').test(ql)) return 'nai'; if (new RegExp('только\\s*' + AIW + '|' + AIW + '[а-яё]*ом(?![а-яё])|' + AIW + '[а-яё]*ами|(^|[^a-zа-яё])(ai|аи)([^a-zа-яё]|$)|' + AIW).test(ql)) return 'ai'; return 'all'; }
+function aiMode(ql) { if (new RegExp('(^|[^а-яё])(с|включая|вместе\\s*с|учитывая)\\s*' + AIW).test(ql) && !new RegExp('без\\s*' + AIW + '|только\\s*' + AIW).test(ql)) return 'all'; /* «с олл-инами» — вместе с ними (26.11.2026) */ if (new RegExp('без\\s*' + AIW + '|(^|[^a-zа-яё])(nai|наи|н\\s*а\\s*и)([^a-zа-яё]|$)').test(ql)) return 'nai'; if (new RegExp('только\\s*' + AIW + '|' + AIW + '[а-яё]*ом(?![а-яё])|' + AIW + '[а-яё]*ами|(^|[^a-zа-яё])(ai|аи)([^a-zа-яё]|$)|' + AIW).test(ql)) return 'ai'; return 'all'; }
 function vsoBlocks(P, ql, o) {
   let { G, PL, bands, byBand, pos, focus } = o; const cols = vPosList(PL) || (pos ? [pos === 'EP' ? 'MP' : pos] : null); // pos 'TOT' — одна общая цифра
   const RS = G || (byBand ? bands.map(b => [b + ' bb', [b]]) : null), note = 'против одного опена без коллеров; стек — свой, без анте' + (!RS0(G, byBand) && bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '');
@@ -535,8 +535,9 @@ function fsqBlocks(P, ql, o) {
   if (o.pos === 'BB') return [{ type: 'text', title: title(P) + ' — ответ на сквиз с BB', text: 'С BB сквиза против нас не бывает: за BB никого нет, а открыться первым с BB нельзя.' }];
   const { bands } = o, mode = aiMode(ql), st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
   const qo = ql.replace(/сквиз.*$/, ' ') + ' ' + ql.replace(/^.*?сквиз[а-яё]*/, ' ');
-  const opR = /(открывш|рейзер|опен[а-яё]*|pfr)[а-яё\s]*?(выкинул|сбросил|сфолдил|фолд)/.test(ql) ? 'ccF' : /(открывш|рейзер|опен[а-яё]*|pfr)[а-яё\s]*?(заколл|коллир|колл)/.test(ql) ? 'ccC' : null;
-  const role = opR || (/как\s*(колл?ер|колер|cc)|после\s*(своего\s*|моего\s*|нашего\s*)?колл|колл?ер|колер/.test(ql) ? 'cc' : /как\s*(рейзер|открывш|pfr)|после\s*(своего\s*|моего\s*|нашего\s*)?опен|рейзер|открывш/.test(ql) ? 'pfr' : null);
+  const opR = /(открывш[а-яё]*|рейзер|опен[а-яё]*|pfr)\s+(выкинул|сбросил|сфолдил|фолд)/.test(ql) ? 'ccF' : /(открывш[а-яё]*|рейзер|опен[а-яё]*|pfr)\s+(заколл|коллир|колл)/.test(ql) ? 'ccC' : null;
+  const bothR = /рейзер|открывш|pfr/.test(ql) && /колл?ер|колер|(^|[^a-z])cc([^a-z]|$)/.test(ql) && !opR; /* «как рейзер и как коллер» — обе роли */
+  const role = bothR ? null : opR || (/как\s*(колл?ер|колер|cc)|после\s*(своего\s*|моего\s*|нашего\s*)?колл|колл?ер|колер/.test(ql) ? 'cc' : /как\s*(рейзер|открывш|pfr)|после\s*(своего\s*|моего\s*|нашего\s*)?опен|рейзер|открывш/.test(ql) ? 'pfr' : null);
   const acts = /реакц|ответ|все\s*действ/.test(ql) ? null : /4\s*-?\s*бет|четыр[её]х\s*-?\s*бет/.test(qo) ? ['b4'] : /(^|[^а-яё])(колл?|кол|call)([^а-яё]|$)|коллир|коллы/.test(qo.replace(/колл?ер|колер|заколл[а-яё]*/g, ' ')) && !/фолд|fold/.test(qo) ? ['call'] : /фолд|fold/.test(qo) ? ['fold'] : null;
   const A = { fold: ['Fold', 1, 'фолд на сквиз'], call: ['Call', 2, 'колл сквиза'], b4: ['4bet', 3, '4-бет против сквиза'] }, RL = { pfr: 'as PFR', cc: 'as CC', ccF: 'CC · PFR Fold', ccC: 'CC · PFR Call' }, RLr = { pfr: 'мы открылись', cc: 'мы коллировали опен', ccF: 'мы коллировали, открывший сбросил на сквиз', ccC: 'мы коллировали, открывший заколлировал сквиз' };
   const get = (rl, p, bs) => { const x = [0, 0, 0, 0]; for (const b of bs) { const r = P.ext.fsq[rl] && P.ext.fsq[rl][p] && P.ext.fsq[rl][p][b]; if (!r) continue; for (let j = 0; j < 4; j++) x[j] += mode === 'ai' ? r[j + 4] : mode === 'nai' ? r[j] - r[j + 4] : r[j]; } return x; };
@@ -797,15 +798,33 @@ function clarify(out, q0, key) {
 // прошлый вопрос даём Claude только для уточнений: в новом вопросе назван стат и нет слов «эту / то же самое / а … / теперь» — это новый вопрос
 const REFINE = /(^|[^а-яё])(эт[уоаиы]|то\s*же|тоже|теперь|так\s*же|ещё|еще)([^а-яё]|$)|^\s*(а|и|но|нет)[\s,]/;
 async function ask(q0, ctx, key, alts, voice, prevQ) { const ql0 = String(q0 || '').toLowerCase();
-  if (!key && (NOBRAIN || !BRAIN.status().ready)) { const parts = splitParts(q0); if (parts) { const src = ql0, own = isOwn(src); return multiAnswer(parts, ctx, voice && ctx ? { own, src } : null, own); } } if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ), q0, key); }// ---------- несколько просьб в одном вопросе (владелец, 24.11.2026): все ответы подряд в одном сообщении ----------
+  if (!key && (NOBRAIN || !BRAIN.status().ready)) { const sp = splitParts(q0), parts = sp || expandVariants(q0); if (parts) { const src = ql0, own = isOwn(src); return multiAnswer(parts, ctx, voice && ctx ? { own, src } : null, own, !sp); } } if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ), q0, key); }// ---------- несколько просьб в одном вопросе (владелец, 24.11.2026): все ответы подряд в одном сообщении ----------
+/* часть — самостоятельная просьба: в ней сам назван стат (не только позиция / стек / уточнение) */
+const partOwn = (sg) => { const l = wordsToNum(normRFI(String(sg))).toLowerCase(); return !!statOf(l) && !/^\s*(с|из|на|от|по|без|только|в)\s/.test(l); };
 const partId = (p) => { const l = wordsToNum(normRFI(String(p))).toLowerCase(); return statOf(l) || (intentOf(l) !== 'card' ? intentOf(l) : null); };
 // запасной разбор (без Claude): делим по «и», запятым, «а также», «плюс», если в частях РАЗНЫЕ статы
 function splitParts(q) {
   const segs = String(q || '').split(/\s*(?:,|;|\s+и\s+|\s+а\s+также\s+|\s+плюс\s+|\s+ещё\s+|\s+еще\s+)\s*/i).filter(Boolean), parts = [];
-  for (const sg of segs) { let id = partId(sg); if (id === 'ai' && /без|только|олл|пуш|ул[ыи]н/.test(sg.toLowerCase()) && !/колл?[а-яё]*\s+олл|олл[а-яё-]*\s+колл/.test(sg.toLowerCase())) id = null; /* «…без олл-инов» — уточнение, а не отдельный вопрос */ if (id && parts.length && /^(колл?[а-яё]*|рейз[а-яё]*)$/i.test(sg.split(/\s+/)[0]) && /против\s+(рейз|опен)/i.test(parts[parts.length - 1].t)) id = null; if (id && (!parts.length || parts[parts.length - 1].id !== id)) parts.push({ t: sg, id }); else if (parts.length) parts[parts.length - 1].t += ' ' + sg; else parts.push({ t: sg, id }); }
+  for (const sg of segs) { let id = partId(sg); if (/^\s*(без|только|с|включая)\s*(олл|ал+|ул[ыи]н|пуш|all|nai|ai)/i.test(sg)) id = null; /* «… и без олл-инов» — вариант, не новый стат */ if (id === 'ai' && /без|только|олл|пуш|ул[ыи]н/.test(sg.toLowerCase()) && !/колл?[а-яё]*\s+олл|олл[а-яё-]*\s+колл/.test(sg.toLowerCase())) id = null; /* «…без олл-инов» — уточнение, а не отдельный вопрос */ if (id && parts.length && /^(колл?[а-яё]*|рейз[а-яё]*)$/i.test(sg.split(/\s+/)[0]) && /против\s+(рейз|опен)/i.test(parts[parts.length - 1].t)) id = null; if (id && (!parts.length || parts[parts.length - 1].id !== id || (id !== 'OC' && /[а-яёa-z]{3,}/.test(sg) && partOwn(sg)))) parts.push({ t: sg, id }); /* тот же стат, но своя просьба («цбет-фолд и цбет-колл», «лимп-фолд и лимп-рейз») — отдельная часть (26.11.2026) */ else if (parts.length) parts[parts.length - 1].t += ' ' + sg; else parts.push({ t: sg, id }); }
   const real = parts.filter(p => p.id); return real.length > 1 ? real.map(p => p.t) : null; // вступление без стата («покажи два…») отбрасываем
 }
-function multiAnswer(parts, ctx, lock, own) {
+/* варианты одного стата в одном вопросе (владелец 26.11.2026, весь проект): «в позиции и без позиции», «без олл-инов и олл-ины», «по позициям и по стекам» — ответ на каждый подряд */
+const V_OOP = /без\s*позиц[а-яё]*|вне\s*позиц[а-яё]*|не\s*в\s*позиц[а-яё]*|(^|[^a-z])oop(?![a-z])|out\s*of\s*position|аут\s*оф\s*поз[а-яё]*/g, V_IP = /(^|[^а-яё])в\s*позиц[а-яё]*|(^|[^a-z])ip(?![a-z])|in\s*position/g;
+const V_NAI = /без\s*(олл[\s-]*ин|ал+[\s-]*ин|ул[ыи]н|пуш|all[\s-]*in)[а-яё]*|(^|[^a-z])nai(?![a-z])/g, V_AI = /(только\s*|с\s*)?(олл[\s-]*ин|ал+[\s-]*ин|ул[ыи]н|пуш|all[\s-]*in)[а-яё]*|(^|[^a-z])ai(?![a-z])/g;
+function expandVariants(q) {
+  let out = [String(q)];
+  const each = (fn) => { out = out.flatMap(x => fn(x) || [x]); };
+  each((x) => { const l = x.toLowerCase(); if (!new RegExp(V_OOP.source).test(l)) return null; const rest = l.replace(V_OOP, ' '); if (!new RegExp(V_IP.source).test(rest)) return null; const base = rest.replace(V_IP, ' ').replace(/\s+и\s*(?=\s|$)/g, ' ').replace(/\s+/g, ' ').trim(); return [base + ' в позиции', base + ' без позиции']; });
+  each((x) => { const l = x.toLowerCase(); if (!new RegExp(V_NAI.source).test(l)) return null; const rest = l.replace(V_NAI, ' '); const m = new RegExp(V_AI.source).exec(rest); if (!m) return null; const withAll = /(^|[^а-яё])с\s*(олл|ал+|ул|пуш|all)/.test(rest) && !/только/.test(m[0]); const base = rest.replace(V_AI, ' ').replace(/\s+и\s*(?=\s|$)/g, ' ').replace(/\s+/g, ' ').trim(); return withAll ? [base, base + ' без олл-инов'] : [base + ' без олл-инов', base + ' только олл-ины']; });
+  each((x) => { const l = x.toLowerCase(); if (!(/по\s*позици/.test(l) && /по\s*ст[еэ]к|ст[еэ]кам/.test(l))) return null; const base = l.replace(/по\s*позици[а-яё]*/g, ' ').replace(/по\s*ст[еэ]к[а-яё]*|ст[еэ]кам/g, ' ').replace(/\s+и\s*(?=\s|$)/g, ' ').replace(/\s+/g, ' ').trim(); return [base + ' по позициям', base + ' по стекам']; });
+  return out.length > 1 ? out : null;
+}
+/* части вопроса делят общие уточнения: «мой цбет-фолд и цбет-колл в мультивее в позиции» — «в мультивее в позиции» нужны обеим */
+const SHARE = [/в\s*мульти[а-яё]*|мультипот[а-яё]*/, /без\s*позиц[а-яё]*|вне\s*позиц[а-яё]*|out\s*of\s*position|(^|\s)в\s*позиц[а-яё]*/, /без\s*(олл|ул|пуш)[а-яё-]*|только\s*(олл|ул|пуш)[а-яё-]*|олл-?ином/, /(на|от)\s*\d+[^а-яё]*(до\s*\d+\s*)?(бб|bb|блайнд[а-яё]*)|на\s*(коротк|средн|больш|глубок)[а-яё]*\s*стек[а-яё]*/];
+function shareMods(parts) { const ps = parts.map(String); for (const re of SHARE) { const src = ps.find(p => re.test(p.toLowerCase())); if (!src) continue; const m = re.exec(src.toLowerCase())[0].trim(); for (let i = 0; i < ps.length; i++) if (!re.test(ps[i].toLowerCase())) ps[i] += ' ' + m; } return ps; }
+function multiAnswer(parts, ctx, lock, own, variants) {
+  /* variants — части уже варианты одного вопроса: уточнения между ними не переносим */
+  parts = variants ? parts : shareMods(parts).flatMap(p => expandVariants(p) || [p]);
   // игрок из первой части переносится на остальные: «мои 3-беты … и колд-коллы …» — оба про меня
   const outs = parts.map(p => { const pl = String(p).toLowerCase(), lk = lock ? { own: lock.own || isOwn(pl), src: lock.src } : null; return answer((own && !isOwn(pl) ? 'мой ' : '') + p, ctx, null, lk); });
   const base = outs.find(o => !notFound(o)) || outs[0];
@@ -831,6 +850,7 @@ async function ask0(q0, ctx, key, alts, voice, prevQ) {
     if (B && B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1) { const o = multiAnswer(B.parsed.parts, ctx, lock, lock.own); o.brain = { model: BRAIN.status().model, phrase: o.heard }; return o; }
     let out = null, best = -1;
     // Claude понял вопрос — его ответ главный (свой разбор слов — только если Claude нет); таблицу строим по его описанию
+    if (B && B.phrase && expandVariants(B.phrase)) { const o = multiAnswer(expandVariants(B.phrase), ctx, lock, lock.own, true); o.brain = { model: BRAIN.status().model, phrase: B.phrase }; return o; }
     if (B && B.phrase) { out = answer(B.phrase, ctx, null, lock, specFromBrain(B.parsed)); out.brain = { model: BRAIN.status().model, phrase: B.phrase }; return out; }
     for (const q of [q0, ...alts]) { const o = answer(q, ctx, null, lock), sc = voiceScore(o); if (sc > best) { best = sc; out = o; } }
     return out;
@@ -840,6 +860,7 @@ async function ask0(q0, ctx, key, alts, voice, prevQ) {
   const B = fixPhrase(q0, await BRAIN.understand(q0, prev, prevQ));
   const cands = [];
   if (B && B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1) { const o = multiAnswer(B.parsed.parts, ctx, null, isOwn(String(q0).toLowerCase())); o.brain = { model: BRAIN.status().model, phrase: o.heard }; return o; }
+  if (B && B.phrase && expandVariants(B.phrase)) { const o = multiAnswer(expandVariants(B.phrase), ctx, null, isOwn(String(q0).toLowerCase()), true); o.brain = { model: BRAIN.status().model, phrase: B.phrase }; return o; }
   if (B && B.phrase) {
     const spec = specFromBrain(B.parsed); let o = answer(B.phrase, ctx, null, null, spec);
     // ник не нашёлся как есть — берём самый «большой» ник, который так начинается
