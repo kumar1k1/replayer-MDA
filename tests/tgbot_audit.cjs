@@ -60,8 +60,25 @@ function indep(h) {
   return out;
 }
 
+// размер моей первой ставки на улице по тексту раздачи (% банка перед ставкой): анте, блайнды, «calls N» добавляет, «raises A to B» / «bets N» — ставка улицы
+function textSizes(h) {
+  const hero = (/^Dealt to (.+?) \[/m.exec(h) || [])[1]; if (!hero) return null;
+  const out = {}; let pot = 0, cur = {}, st = 0;
+  for (const l of h.split(/\r?\n/)) {
+    if (/^\*\*\* (FLOP|TURN|RIVER) \*\*\*/.test(l)) { pot += Object.values(cur).reduce((a, b) => a + b, 0); cur = {}; st++; continue; }
+    if (/^\*\*\* (SHOW ?DOWN|SUMMARY)/.test(l)) break;
+    let m;
+    if ((m = /^(.+?): posts the ante ([\d,.]+)/.exec(l))) { pot += num(m[2]); continue; }
+    if ((m = /^(.+?): posts (?:small|big) blind ([\d,.]+)/.exec(l))) { cur[m[1]] = (cur[m[1]] || 0) + num(m[2]); continue; }
+    if ((m = /^(.+?): calls ([\d,.]+)/.exec(l))) { cur[m[1]] = (cur[m[1]] || 0) + num(m[2]); continue; }
+    if ((m = /^(.+?): raises [\d,.]+ to ([\d,.]+)/.exec(l))) { cur[m[1]] = num(m[2]); continue; }
+    if ((m = /^(.+?): bets ([\d,.]+)/.exec(l))) { const p = pot + Object.values(cur).reduce((a, b) => a + b, 0); if (m[1] === hero && st >= 1 && out[st] == null) out[st] = p ? Math.max(1, Math.round(num(m[2]) / p * 100)) : 0; cur[m[1]] = num(m[2]); continue; }
+    if ((m = /^(.+?): (checks|folds)/.exec(l)) && m[1] === hero && st >= 1 && out[st] == null) out[st] = 0;
+  }
+  return out;
+}
 const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(f => f.isDirectory() ? walk(path.join(d, f.name)) : [path.join(d, f.name)]);
-const stat = {}, ex = {}, IND = {}, SKIP = [], SKC = new Set(); let seen = 0;
+const stat = {}, ex = {}, IND = {}, SKIP = [], SKC = new Set(), SZ = { n: 0, ok: 0, bad: [] }; let seen = 0;
 const bump = (k, ok, id, info) => { const s = stat[k] = stat[k] || { ok: 0, bad: 0 }; if (ok) s.ok++; else { s.bad++; (ex[k] = ex[k] || []).length < 8 && ex[k].push(id + '  ' + info); } };
 for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
   const t = fs.readFileSync(f, 'utf8').replace(/^﻿/, ''); if (/^\s*Winamax Poker - Tournament summary/.test(t)) continue;
@@ -84,6 +101,7 @@ for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
       if (I.c3) for (const p of [I.c3[0], 'TOT']) H('c3|' + p, 'call', I.c3[1]);
       if (I.f3) for (const p of I.f3[0] === 'SB' ? ['SB'] : [I.f3[0], 'TOT']) for (const w of [I.f3[1] ? 'ip' : 'oop', 'all']) { H('f3|' + p + '|' + w, 'fold', I.f3[3]); H('f3|' + p + '|' + w, 'call', I.f3[4]); }
     } }
+    /* размеры ставок: подсчёт (pc / bk) против текста */ { const T = textSizes(h), X = A.pc || A.bk; if (T && X) for (const [st, k] of [[1, 'szF'], [2, 'szT'], [3, 'szR']]) { if (!X[k]) continue; SZ.n++; const tv = T[st]; if (tv != null && Math.abs(tv - X[k]) <= 1) SZ.ok++; else if (SZ.bad.length < 10) SZ.bad.push(id + ' улица ' + st + ': подсчёт ' + X[k] + '%, текст ' + tv + '%'); } }
     const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     // RFI
     { const a = A.rf ? [A.rf[0], !!A.rf[2], !!A.rf[3]] : null, b = I.rf || null; bump('RFI', eq(a, b), id, 'наш ' + JSON.stringify(a) + ' | текст ' + JSON.stringify(b)); }
@@ -106,3 +124,4 @@ for (const [k, list] of Object.entries(ex)) { console.log('\n— ' + k); list.fo
     for (const c of new Set([...Object.keys(cls), ...Object.keys(ours)])) { cells++; const a = cls[c] || [0, 0], b = ours[c] || [0, 0]; if (a[0] === b[0] && a[1] === b[1]) same++; else diff.push(p + ' · ' + m + ' · ' + c + ': текст ' + a.join('/') + ', подсчёт ' + b.join('/')); } }
   console.log('\nматрицы рук: сравнено клеток (путь × действие × рука): ' + cells + ', совпало: ' + same + ', расходится: ' + diff.length); diff.slice(0, 25).forEach(x => console.log('   ' + x)); }
 console.log('\nраздач, которые второй разбор пропустил: ' + SKIP.length + ', из них подсчёт взял в статы: ' + SKIP.filter(x => /подсчёт взял/.test(x)).length); SKIP.filter(x => /подсчёт взял/.test(x)).slice(0, 30).forEach(x => console.log('   ' + x));
+console.log('\nразмеры ставок (флоп / тёрн / ривер) против текста: ' + SZ.n + ', совпало: ' + SZ.ok + ', расходится: ' + (SZ.n - SZ.ok)); SZ.bad.forEach(x => console.log('   ' + x));
