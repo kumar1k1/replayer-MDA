@@ -83,7 +83,23 @@ const hm = async (ref) => (await fetch(B + '/api/hm?r=' + encodeURIComponent(JSO
     if (!x.d) { chk(!b.n, q + ': ждали 0 раздач, пришло ' + b.n); continue; }
     await checkCell(q, 'цифра', { v: b.big, n: b.n, hm: [].concat(b.hm)[0] }, K.id, cell, F, bands, 'all');
   }
-  // без размера — со старым отдельным подсчётом (ext.cb / ext.bsk), все стеки
+  // вопросы про сам размер: как часто ставлю, доля среди ставок, вскрытие, выигрыш на вскрытии — независимый пересчёт
+  const SQ = [
+    ['mw', 'как часто я ставлю овербет ривера в мультивее как рейзер в позиции', 'ar', [115, BIG]], ['mwo', 'как часто я ставлю овербет ривера в мультивее как рейзер без позиции', 'ar', [115, BIG]],
+    ['mw', 'как часто ставлю конбет 33% в мультивее в позиции как рейзер', 'f', [29, 40]], ['mwo', 'как часто ставлю конбет 33% в мультивее без позиции как рейзер и как часто выигрываю на шоудауне', 'f', [29, 40]],
+    ['mwo', 'как часто ставлю конбет до 33% в мультивее без позиции как рейзер', 'f', [0, 33.5]], ['mw', 'как часто ставлю 50% на тёрне в мультивее в позиции как рейзер', 'at', [40, 58]],
+    ['mwo', 'как часто отложка 50% в мультивее без позиции как рейзер', 'dt', [40, 58]], ['mwo', 'как часто ставлю ривер от 50% в мультивее без позиции как рейзер', 'ar', [50, BIG]],
+    ['bsk', 'как часто бет в пропуск 33% в мультивее в позиции как коллер', 'f', [29, 40]], ['bsk', 'как часто ставлю 75% ривер в мультивее в позиции как коллер', 'ar', [70, 88]], ['bsk', 'как часто ставлю тёрн 50% в мультивее в позиции как коллер', 't', [40, 58]],
+  ];
+  const IDX = { mw: { f: [2, 3, 4], at: [22, 23, 24], ar: [25, 26, 27], dt: [13, 14, 15] }, bsk: { f: [2, 3, 4], t: [7, 8, 9], ar: [16, 17, 18] } }; IDX.mwo = IDX.mw;
+  for (const [kd, q0, cell, [lo, hi]] of SQ) for (const [st, bands] of STACKS) {
+    const q = q0 + (st ? ' ' + st : ''); qs++; const a = await ask(q), T = (a.blocks || []).find(b => b.table && /размер/.test(b.title));
+    if (!T) { chk(false, q + ': нет ответа про размер (' + (a.blocks || []).map(b => b.title || b.text).join(' | ') + ')'); continue; }
+    const [o, d, s] = IDX[kd][cell], R = E.rec[kd].filter(r => bands.includes(r[0])), den = R.filter(r => r[o]), all = den.filter(r => r[d]), nm = all.filter(r => r[s] >= lo && r[s] < hi), SDI = kd === 'bsk' ? 19 : 28, sd = nm.filter(r => r[SDI]), won = sd.filter(r => r[SDI + 1]);
+    const want = [[nm.length, den.length], [nm.length, all.length], [sd.length, nm.length], [won.length, sd.length]];
+    T.table.rows.forEach((row, i) => { const [x, y] = want[i], c = row[1]; chk(y ? c.n === y && Math.abs(num(c.v) - pct(x, y)) < 0.06 : !c.n, q + ' · ' + row[0] + ': бот ' + c.v + ' / ' + c.n + ', пересчёт ' + pct(x, y) + '% / ' + y); });
+    chk(!(a.blocks || []).some(b => /W\$SD/.test(b.title || '')), q + ': лишний отдельный W$SD');
+  }  // без размера — со старым отдельным подсчётом (ext.cb / ext.bsk), все стеки
   const sumB = (obj) => { const x = []; for (const b of BANDS) { const r = obj && obj[b]; if (r) r.forEach((v, j) => (x[j] = (x[j] || 0) + v)); } return x; };
   for (const kd of ['mw', 'mwo']) { const x = sumB(E.cb[kd]); const pairs = [['f', 1, 0], ['t', 3, 2], ['r', 5, 4], ['dt', 15, 14], ['dr', 17, 16], ['pb', 19, 18]];
     for (const [cell, ni, di] of pairs) { const e = expect(kd, cell, {}, BANDS, 'all'); chk(e.d === x[di] && e.n === x[ni], 'старый подсчёт ' + kd + ' ' + cell + ': записи ' + e.n + '/' + e.d + ', ext.cb ' + x[ni] + '/' + x[di]); }
