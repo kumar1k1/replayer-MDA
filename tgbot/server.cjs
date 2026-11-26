@@ -878,8 +878,46 @@ function clarify(out, q0, key) {
 }
 // прошлый вопрос даём Claude только для уточнений: в новом вопросе назван стат и нет слов «эту / то же самое / а … / теперь» — это новый вопрос
 const REFINE = /(^|[^а-яё])(эт[уоаиы]|то\s*же|тоже|теперь|так\s*же|ещё|еще)([^а-яё]|$)|^\s*(а|и|но|нет)[\s,]/;
-async function ask(q0, ctx, key, alts, voice, prevQ) { const ql0 = String(q0 || '').toLowerCase();
-  if (!key && (NOBRAIN || !BRAIN.status().ready)) { const sp = splitParts(q0), parts = sp || expandVariants(q0); if (parts) { const src = ql0, own = isOwn(src); return multiAnswer(parts, ctx, voice && ctx ? { own, src } : null, own, !sp); } } if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ), q0, key); }// ---------- несколько просьб в одном вопросе (владелец, 24.11.2026): все ответы подряд в одном сообщении ----------
+/* уточнение без Claude (26.11.2026): «а без позиции?», «а как коллер?», «а на тёрне?», «а на коротких?», «то же без олл-инов», «а 50%», «а сайзинги» —
+   берём прошлый вопрос (как бот его понял) и меняем только названную деталь. Если в уточнении есть слова, которых мы не поняли, — отдаём Claude. */
+const R_POS = /(^|[^а-яё])в\s*позиц[а-яё]*|(^|[^а-яё])в\s*поз[еу](?![а-яё])|без\s*позиц[а-яё]*|вне\s*позиц[а-яё]*|не\s*в\s*позиц[а-яё]*|без\s*поз[ыу](?![а-яё])|вне\s*поз[ыу](?![а-яё])|(^|[^a-z])(ip|oop)(?![a-z])|out\s*of\s*position|in\s*position/g;
+const R_ROLE = /как\s*(рейзер[а-яё]*|колл?ер[а-яё]*|колер[а-яё]*|префлоп\s*рейзер[а-яё]*)|(^|[^а-яё])(рейзер[а-яё]*|колл?ер[а-яё]*|колер[а-яё]*)(?![а-яё])/g;
+const R_STACK = /(на|от|до|при)\s*\d+[\d\s,.-]*(до\s*\d+\s*)?(бб|bb|блайнд[а-яё]*|больших\s*блайнд[а-яё]*)|на\s*(коротк|мелк|средн|больш|глубок|супер\s*больш|очень\s*коротк)[а-яё]*(\s*стек[а-яё]*)?|по\s*ст[еэ]к[а-яё]*|ст[еэ]кам/g;
+const R_AI = /без\s*(олл|ал+|ул[ыи]н|пуш|all)[а-яё-]*|только\s*(олл|ал+|ул[ыи]н|пуш|all)[а-яё-]*|с\s*(олл|ал+|ул[ыи]н|пуш)[а-яё-]*|олл-?ином|(^|[^a-z])n?ai(?![a-z])/g;
+const R_SIZE = /((флоп[а-яё]*|т[её]рн[а-яё]*|терн[а-яё]*|ривер[а-яё]*|отлож[а-яё]*)\s*)?(сайзинг[а-яё]*\s*|размер[а-яё]*\s*)?((от|больше|выше|свыше|более)\s*\d{1,3}\s*%?\s*(до\s*\d{1,3})?|(до|меньше|ниже|менее)\s*\d{1,3}|\d{1,3})\s*(%|процент[а-яё]*|прц)(\s*(на\s*)?(флоп[а-яё]*|т[её]рн[а-яё]*|ривер[а-яё]*))?|((больше|меньше|от|до)\s*)?(половин[а-яё]*|две\s*трет[а-яё]*|трет[а-яё]*|четверт[а-яё]*)\s*(банка|пота)?|(овер|под|пот)\s*-?\s*б[еэ]т[а-яё]*(\s*(на\s*)?(флоп[а-яё]*|т[её]рн[а-яё]*|ривер[а-яё]*))?|маленьк[а-яё]*\s*(ставк|б[еэ]т)[а-яё]*/g;
+const R_STREET = /(на\s*)?(флоп[а-яё]*|т[её]рн[а-яё]*|терн[а-яё]*|ривер[а-яё]*)/g;
+const R_SEAT = /(с|из|на|для)\s*(баттон[а-яё]*|бтн|btn|кнопк[а-яё]*|катофф?[а-яё]*|кат\s*офф?[а-яё]*|co(?![a-z])|хайджек[а-яё]*|хай\s*джек[а-яё]*|hj(?![a-z])|мп(?![а-яё])|mp(?![a-z])|средн[а-яё]*\s*позиц[а-яё]*|ранн[а-яё]*\s*позиц[а-яё]*|утг|utg|ep(?![a-z])|сб(?![а-яё])|sb(?![a-z])|мал[а-яё]*\s*блайнд[а-яё]*|бб(?![а-яё])|bb(?![a-z])|больш[а-яё]*\s*блайнд[а-яё]*)/g;
+const R_FILL = /(^|\s)(а|и|ну|но|теперь|то\s*же(\s*самое)?|тоже(\s*самое)?|так\s*же|ещё|еще|покажи|покажите|мне|для|давай|пожалуйста|что|если|там|это|эту|этот|эти|таблиц[а-яё]*|то|же|самое|сделай|выведи|сейчас|вместо|в|на|с|как|когда|я|мой|мои|конбет[а-яё]*|цбет[а-яё]*|ставк[а-яё]*|ставкой|б[еэ]том|сайзинг[а-яё]*)(?=\s|$)/g;
+function isRefine(q, prev) { if (!prev) return false; const l = String(q).toLowerCase().trim(); if (statOf(l) && !/^(а|и|то\s*же|тоже|теперь)\s/.test(l)) return false; return /^(а|и|ну|теперь|то\s*же|тоже|так\s*же|а\s*теперь)(\s|,|$)/.test(l) || l.split(/\s+/).length <= 4; }
+function refineMerge(prev, q) {
+  const l = ' ' + String(q).toLowerCase().replace(/[?!.,;:]/g, ' ') + ' ';
+  let rest = l, p = ' ' + String(prev).toLowerCase() + ' ';
+  const take = (re) => { const m = l.match(re); if (!m) return null; rest = rest.replace(re, ' '); return m.map(x => x.trim()).join(' '); };
+  const noSz = /без\s*(размер|сайзинг)[а-яё]*/.test(l); if (noSz) rest = rest.replace(/без\s*(размер|сайзинг)[а-яё]*/g, ' ');
+  const pos = take(R_POS), role = take(R_ROLE), size = take(R_SIZE), stack = take(R_STACK), ai = take(R_AI), seat = take(R_SEAT);
+  const szTab = /сайзинг|размер/.test(rest) && !size ? (rest = rest.replace(/сайзинг[а-яё]*|размер[а-яё]*/g, ' '), 1) : 0;
+  let size2 = size; if (size) { const sw = rest.match(R_STREET); if (sw) { rest = rest.replace(R_STREET, ' '); if (!/флоп|т[её]рн|терн|ривер|отлож/.test(size)) size2 = sw.map(x => x.trim()).join(' ') + ' ' + size; } } /* «флоп больше половины банка» — улица к размеру */ if (size2 && !/флоп|т[её]рн|терн|ривер|отлож/.test(size2)) size2 = 'флоп ' + size2; /* размер без улицы — флоп, явно (чтобы следующее «а тёрн 50%» не перетянуло его) */
+  const street = !size ? take(R_STREET) : null;
+  const tab = /таблиц|по\s*улиц/.test(l) ? 1 : 0, one = /одн[а-яё]*\s*цифр/.test(l) ? (rest = rest.replace(/одн[а-яё]*\s*цифр[а-яё]*/g, ' '), 1) : 0;
+  if (rest.replace(R_FILL, ' ').replace(/(^|\s)(в|на|с|по)(?=\s|$)/g, ' ').trim()) return null; /* остались непонятые слова — пусть разберётся Claude */
+  if (!pos && !role && !size && !stack && !ai && !street && !szTab && !noSz && !tab && !one && !seat) return null;
+  return String(prev).split(' · ').map(part => {
+    let x = ' ' + part.toLowerCase() + ' ';
+    if (pos) x = x.replace(R_POS, ' ') + ' ' + pos;
+    if (role) { x = x.replace(R_ROLE, ' ') + ' ' + (/^как/.test(role) ? role : 'как ' + role); if (/колл?ер|колер/.test(role) && /конбет|цбет|c-?bet|комбет|контбет/.test(x)) x = x.replace(/мо[ийя]\s*(конбет|цбет|комбет|контбет|c-?bet)[а-яё]*/g, 'мои беты в пропуск').replace(/(конбет|цбет|комбет|контбет)[а-яё]*/g, 'бет в пропуск'); if (/рейзер/.test(role) && /пропуск|скип|skip/.test(x)) x = x.replace(/мо[ийя]\s*б[еэ]т[а-яё]*\s*в\s*пропуск/g, 'мои конбеты').replace(/(ставк[а-яё]*|б[еэ]т[а-яё]*)\s*(в|на)\s*пропуск/g, 'конбет'); }
+    if (noSz) x = noSize(x); else if (size) { const nk = Object.keys(sizeFilters(size2)); x = x.replace(R_SIZE, (frag) => { const k = Object.keys(sizeFilters(frag)); return k.some(z => nk.includes(z)) ? ' ' : frag; }) + ' ' + size2; } /* меняем размер только той же улицы */
+    if (stack) x = x.replace(R_STACK, ' ') + ' ' + (/(на|от|до)\s*(коротк|мелк|средн|больш|глубок|супер|очень)[а-яё\s]*$/.test(stack) && !/стек/.test(stack) ? stack + ' стеках' : stack);
+    if (seat) { let done = false; x = x.replace(R_SEAT, (m0) => (done ? m0 : ((done = true), ' ' + seat + ' '))); if (!done) x += ' ' + seat; } /* позиция — на том же месте (до «против» — моя) */
+    if (ai) x = x.replace(R_AI, ' ') + ' ' + ai;
+    if (street) { x = x.replace(R_STREET, ' ') + ' ' + (/^на/.test(street) ? street : 'на ' + street); }
+    if (szTab) x = 'сайзинги ' + x.replace(/мо[ийя]\s*(конбет|цбет)[а-яё]*\s*/, ' конбета ');
+    if (tab && !/таблиц/.test(x)) x += ' таблицей'; if (one) x = x.replace(/таблиц[а-яё]*/g, ' ');
+    return x.replace(/\s+/g, ' ').trim();
+  });
+}
+async function ask(q0, ctx, key, alts, voice, prevQ, mem) { const ql0 = String(q0 || '').toLowerCase();
+  if (!key && prevQ && isRefine(q0, prevQ)) { const m = refineMerge(prevQ, q0); if (m) { const own = isOwn(String(prevQ).toLowerCase()), o = m.length > 1 ? multiAnswer(m, ctx, voice && ctx ? { own, src: m.join(' ') } : null, own, true) : answer(m[0], ctx, null, voice && ctx ? { own, src: m[0] } : null); o.heard = m.join(' · '); o.refined = 1; return clarify(o, m[0], key); } }
+  if (!key && (NOBRAIN || !BRAIN.status().ready)) { const sp = splitParts(q0), parts = sp || expandVariants(q0); if (parts) { const src = ql0, own = isOwn(src); return multiAnswer(parts, ctx, voice && ctx ? { own, src } : null, own, !sp); } } if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ, mem), q0, key); }// ---------- несколько просьб в одном вопросе (владелец, 24.11.2026): все ответы подряд в одном сообщении ----------
 /* часть — самостоятельная просьба: в ней сам назван стат (не только позиция / стек / уточнение) */
 const partOwn = (sg) => { const l = wordsToNum(normRFI(String(sg))).toLowerCase(); return !!statOf(l) && !/^\s*(с|из|на|от|по|без|только|в)\s/.test(l); };
 const partId = (p) => { const l = wordsToNum(normRFI(String(p))).toLowerCase(); return statOf(l) || (intentOf(l) !== 'card' ? intentOf(l) : null); };
@@ -912,11 +950,11 @@ function multiAnswer(parts, ctx, lock, own, variants) {
   return Object.assign({}, base, { intent: 'multi', blocks: outs.flatMap(o => o.blocks || []), heard: outs.map(o => o.heard).filter(Boolean).join(' · ') });
 }/* страховка: в самом вопросе «4-бет в холодную / open 4bet», а Claude потерял «в холодную» — вернуть (25.11.2026) */
 function fixPhrase(q0, B) { if (!B || !B.phrase) return B; const src = String(q0).toLowerCase(); if (mwRoute(src) === 'MWB') { B.phrase = String(q0); B.parsed = null; return B; } /* мультивей без роли — не даём Claude выбрать роль за человека */ { const SZ = /(от|до|больше|меньше|выше|ниже)?\s*\d{1,3}\s*(%|процент[а-яё]*)/g; let mm; const add = []; while ((mm = SZ.exec(src))) { const w = src.slice(Math.max(0, mm.index - 45), mm.index); let sw = '', bi = -1; for (const re of [/отлож[а-яё]*|дил[еэ]й/g, /ривер[а-яё]*/g, /т[её]рн[а-яё]*/g, /флоп[а-яё]*/g]) { let z; while ((z = re.exec(w))) if (z.index > bi) { bi = z.index; sw = z[0]; } } add.push((sw ? sw + ' ' : '') + mm[0].trim()); } { const WS = /((больше|меньше|от|до|свыше|более|менее)\s*)?(половин[а-яё]*|две\s*трет[а-яё]*|трет[а-яё]*|четверт[а-яё]*)\s*(банка|пота)?|овер\s*-?\s*б[еэ]т[а-яё]*|(под|пот)\s*-?\s*б[еэ]т[а-яё]*|маленьк[а-яё]*\s*(ставк|б[еэ]т)[а-яё]*/g; let ww; while ((ww = WS.exec(src))) { const w = src.slice(Math.max(0, ww.index - 45), ww.index), w2 = src.slice(ww.index + ww[0].length, ww.index + ww[0].length + 18); let sw = (/^\s*(на\s*)?(флоп|т[её]рн|ривер)[а-яё]*/.exec(w2) || [])[0] || ''; if (!sw) { let bi = -1; for (const re of [/отлож[а-яё]*|дил[еэ]й/g, /ривер[а-яё]*/g, /т[её]рн[а-яё]*/g, /флоп[а-яё]*/g]) { let z; while ((z = re.exec(w))) if (z.index > bi) { bi = z.index; sw = z[0]; } } } add.push((ww[0] + ' ' + sw).trim()); } } if (add.length && !/\d\s*(%|процент)|половин|трет|четверт|овербет|подбет|маленьк/.test(B.phrase)) B.phrase += ' ' + add.join(' '); } /* размер словами тоже (26.11.2026) */ if (/\d\s*(%|процент)|половин|трет|четверт|овербет|подбет|маленьк/.test(src) && SQ_W.test(src) && !SQ_W.test(B.phrase.toLowerCase())) B.phrase += ' как часто'; /* вопрос про размер — не превращать в таблицу */ /* размер ставки из вопроса — всегда в фразу (26.11.2026) */ if (COLD4_RE.test(src) && !COLD4_RE.test(B.phrase.toLowerCase())) B.phrase = /4\s*-?\s*бет[а-яё]*/i.test(B.phrase) ? B.phrase.replace(/4\s*-?\s*бет[а-яё]*/i, '4-бет в холодную') : B.phrase + ' 4-бет в холодную'; if (FSQ_RE.test(src) && !FSQ_RE.test(B.phrase.toLowerCase()) && /сквиз/i.test(B.phrase)) B.phrase = B.phrase.replace(/сквиз[а-яё]*/i, 'фолд на сквиз'); return B; }
-async function ask0(q0, ctx, key, alts, voice, prevQ) {
+async function ask0(q0, ctx, key, alts, voice, prevQ, mem) {
   if (key || !q0) return answer(q0, ctx, key);
   if (voice && ctx) {
     const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
-    const B = fixPhrase(q0, await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick, prevQ));
+    const B = fixPhrase(q0, await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick, prevQ, mem));
     // явная смена игрока голосом: «… игрока X», «ник X» (или открыта своя база и назван чужой ник) — ищем X, нет — похожие ники
     const bNick = B && B.parsed && !B.parsed.me ? String(B.parsed.nick || '').trim() : '';
     const marker = /(^|[^a-zа-яё])(игрок[а-яё]*|ник[а-яё]*)([^a-zа-яё]|$)/i.test(src);
@@ -938,7 +976,7 @@ async function ask0(q0, ctx, key, alts, voice, prevQ) {
   }
   // мозг (Claude): понимает вопрос любыми словами → точная фраза; цифры — из базы. Нет ключа — свой разбор слов.
   const prev = ctx ? (qKey.get(ctx) || {}).nick : null;
-  const B = fixPhrase(q0, await BRAIN.understand(q0, prev, prevQ));
+  const B = fixPhrase(q0, await BRAIN.understand(q0, prev, prevQ, mem));
   const cands = [];
   if (B && B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1) { const o = multiAnswer(B.parsed.parts, ctx, null, isOwn(String(q0).toLowerCase())); o.brain = { model: BRAIN.status().model, phrase: o.heard }; return o; }
   if (B && B.phrase && expandVariants(B.phrase)) { const o = multiAnswer(expandVariants(B.phrase), ctx, null, isOwn(String(q0).toLowerCase()), true); o.brain = { model: BRAIN.status().model, phrase: B.phrase }; return o; }
@@ -968,7 +1006,7 @@ const srv = http.createServer(async (req, res) => {
     const t0 = Date.now(); let out;
     const q0 = u.searchParams.get('q'), ctx = u.searchParams.get('ctx'), key = u.searchParams.get('key');
     let alts = []; try { alts = JSON.parse(u.searchParams.get('alts') || '[]').filter(x => typeof x === 'string').slice(0, 12); } catch (e) { alts = []; }
-    try { NOBRAIN = !!u.searchParams.get('nobrain'); out = await ask(dedupPhrase(q0), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || ''); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; }
+    try { NOBRAIN = !!u.searchParams.get('nobrain'); let mem = []; try { mem = JSON.parse(u.searchParams.get('mem') || '[]').filter(x => x && typeof x === 'object').slice(-3); } catch (e) { mem = []; } out = await ask(dedupPhrase(q0), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || '', mem); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; }
     try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, brain: out.brain || null, heard: out.heard, intent: out.intent, player: out.player || null }) + '\n'); } catch (e) {}
     out.ms = Date.now() - t0;
     return J(out);

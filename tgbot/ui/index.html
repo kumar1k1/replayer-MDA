@@ -167,7 +167,7 @@ const $ = (s) => document.querySelector(s), feed = $('#feed'), inp = $('#q');
 const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
 const GR = { reg: 'рег', nit: 'нит', fish: 'фиш', superfish: 'суперфиш' };
 const BAR = { reg: 'rgba(60,207,142,.22)', nit: 'rgba(90,169,255,.22)', fish: 'rgba(255,182,72,.22)', superfish: 'rgba(255,107,107,.22)' };
-let ctx = null, ctxGroup = null, lastQ = ''; const hist = []; let hi = -1;
+let ctx = null, ctxGroup = null, lastQ = '', mem = []; /* mem — последние 3 вопроса для Claude: что спросил, как понял бот, что показал (26.11.2026) */ const hist = []; let hi = -1;
 const now = () => new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
 const scroll = () => { feed.scrollTop = feed.scrollHeight; };
 
@@ -301,8 +301,8 @@ async function ask(text, voice, key, alts) {
   if (text) { hist.unshift(text); hi = -1; }
   const t = typing();
   try {
-    const u = '/api/ask?q=' + encodeURIComponent(text) + (ctx ? '&ctx=' + encodeURIComponent(ctx) : '') + (key ? '&key=' + encodeURIComponent(key) : '') + (voice ? '&voice=1' : '') + (alts && alts.length ? '&alts=' + encodeURIComponent(JSON.stringify(alts.slice(0, 12))) : '') + (lastQ && !key ? '&prev=' + encodeURIComponent(lastQ) : '');
-    const a = await (await fetch(u)).json(); if (text && !key && a.intent && a.intent !== 'card' && a.intent !== 'clarify' && !a.nf) lastQ = a.heard || text; // прошлый вопрос — для уточнений «эту таблицу», «то же самое»
+    const u = '/api/ask?q=' + encodeURIComponent(text) + (ctx ? '&ctx=' + encodeURIComponent(ctx) : '') + (key ? '&key=' + encodeURIComponent(key) : '') + (voice ? '&voice=1' : '') + (alts && alts.length ? '&alts=' + encodeURIComponent(JSON.stringify(alts.slice(0, 12))) : '') + (lastQ && !key ? '&prev=' + encodeURIComponent(lastQ) : '') + (mem.length && !key ? '&mem=' + encodeURIComponent(JSON.stringify(mem)) : '');
+    const a = await (await fetch(u)).json(); if (text && !key && a.intent && a.intent !== 'card' && a.intent !== 'clarify' && !a.nf) lastQ = a.heard || text; if (text && !key && !a.nf) { mem.push({ q: String(text).slice(0, 200), u: String(a.heard || '').slice(0, 200), s: (a.blocks || []).map(b => b.title || '').filter(Boolean).map(t => t.replace(/^.*? — /, '')).join(' | ').slice(0, 200) }); if (mem.length > 3) mem = mem.slice(-3); } // прошлый вопрос — для уточнений «эту таблицу», «то же самое»
     if (a.heard && (voice || a.brain) && a.heard.toLowerCase() !== text.toLowerCase()) a.understood = a.heard; // «Понял: …» — ярко под названием
     botMsg(a, t);
   } catch (e) { t.querySelector('.bub').textContent = 'Нет связи с программой — перезапустите ярлык «TG-бот».'; }
