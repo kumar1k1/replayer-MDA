@@ -379,7 +379,7 @@ function cbbbBlocks(P, ql, o) {
   const row = (lab, ok) => { const fl = R.filter(r => r[2]), cb = fl.filter(r => r[3] && ok(r[4])), tu = cb.filter(r => r[7]), rv = tu.filter(r => r[8] && r[10]);
     return [lab, pc(cb.length, fl.length), pc(tu.filter(r => r[8]).length, tu.length), pc(rv.filter(r => r[11]).length, rv.length)]; };
   const pos = ', в позиции', st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
-  const rows = [row('CB', () => true), row('CB до 35% банка', (p) => p < 35), row('CB больше 50% банка', (p) => p > 50)];
+  const rows = [row('CB', () => true), row('CB до 35% банка', (p) => p < 35), row('CB больше 50% банка', (p) => p > 50), row('CB больше 80% банка', (p) => p > 80)];
   const note = 'я открылся (один рейз, без лимпов), заколлировал только большой блайнд, на флопе вдвоём, я в позиции (раздачи с моего SB не берём); флоп — как часто ставлю конбет этого размера, когда до меня чек (размер — % банка перед ставкой); тёрн — после заколлированного конбета этого размера, до меня чек, ставлю снова; ривер — после заколлированной ставки на тёрне ставлю ещё раз' + st;
   return [{ type: 'table', title: title(P) + ' — мои конбеты против BB, один на один' + pos, note, table: { head: ['против BB', 'Flop', 'Turn', 'River'], rows, grid: true } }];
 }

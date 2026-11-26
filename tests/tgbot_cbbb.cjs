@@ -5,7 +5,7 @@ const db = new DatabaseSync(__dirname + '/../tgbot/data/players.db'), E = JSON.p
 const ask = (q) => new Promise((ok, no) => http.get('http://127.0.0.1:8790/api/ask?nobrain=1&ctx=' + encodeURIComponent('alias:все') + '&q=' + encodeURIComponent(q), (r) => { let s = ''; r.on('data', d => (s += d)); r.on('end', () => { try { ok(JSON.parse(s)); } catch (e) { no(e); } }); }).on('error', no));
 const pv = (a, b) => (b ? String(Math.round(a / b * 1000) / 10).replace('.', ',') + '%' : '—');
 let n = 0, bad = 0; const chk = (c, m) => { n++; if (!c) { bad++; if (bad <= 15) console.log('✗ ' + m); } };
-const want = (R) => [['CB', () => true], ['CB до 35% банка', (p) => p < 35], ['CB больше 50% банка', (p) => p > 50]].map(([lab, ok]) => {
+const want = (R) => [['CB', () => true], ['CB до 35% банка', (p) => p < 35], ['CB больше 50% банка', (p) => p > 50], ['CB больше 80% банка', (p) => p > 80]].map(([lab, ok]) => {
   const fl = R.filter(r => r[2]), cb = fl.filter(r => r[3] && ok(r[4])), tu = cb.filter(r => r[7]), rv = tu.filter(r => r[8] && r[10]);
   return [lab, [cb.length, fl.length], [tu.filter(r => r[8]).length, tu.length], [rv.filter(r => r[11]).length, rv.length]]; });
 const Q = ['мои конбеты против BB', 'таблица моих конбетов как рейзер против большого блайнда вдвоём', 'мои цбеты против бб', 'c-bet против big blind', 'мои контбеты против ББ один на один', 'мои комбеты на бб'];
