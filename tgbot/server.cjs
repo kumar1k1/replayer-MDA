@@ -172,7 +172,7 @@ const VOCAB = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirna
 const KNOWN = new Set(VOCAB.words);
 const TERMS = ('ривер ривера ривере ривером тёрн тёрна тёрне флоп флопа флопе конбет конбеты конбета конбетов конбетом цбет цбеты цбета цбетов мультивей мультивее мультивея мультивеях мультипот мультипоте ' +
   'баттон баттона баттоне катофф катоффа хайджек хайджека блайнд блайнда блайндов лимп лимпы лимпа лимпов сквиз сквизы сквиза сквизов изолейт изолейты изолейта изолейтов шоудаун шоудауне шоудауна ' +
-  'рейзер рейзера рейзером коллер коллера коллером рейз рейза колл колла фолд фолда овербет подбет отложка отложки отложку отложками отложках отложенный отложенные пропуск сайзинг сайзинги сайзингов винрейт дилей вскрытие вскрытии позиции позиция').split(' ');
+  'рейзер рейзера рейзером рейзеры коллер коллера коллером коллеры рейз рейза рейзы рейзов рейзами рейзах рейзом колл колла коллы коллов фолд фолда фолды фолдов овербет подбет отложка отложки отложку отложками отложках отложенный отложенные пропуск сайзинг сайзинги сайзингов винрейт дилей вскрытие вскрытии позиции позиция').split(' ');
 const skel = (w) => w.toLowerCase().replace(/[ёэ]/g, 'е').replace(/о/g, 'а').replace(/[ъь-]/g, '').replace(/й/g, 'и').replace(/(.)\1+/g, '$1');
 const TSK = TERMS.map(t => [skel(t), t]);
 const lev1 = (a, b) => { if (Math.abs(a.length - b.length) > 1) return false; let i = 0, j = 0, e = 0; while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++e > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } } return e + (a.length - i) + (b.length - j) <= 1; };
@@ -460,8 +460,11 @@ function mwlBlocks(P, ql, o) {
   const head = ' в мультивее, ' + ML_KD[kd], qw = noSize(ql), SF = sizeFilters(ql);
   const pc = (a, b) => (b ? { v: pctS(a, b), n: b } : { v: '—', n: 0 });
   /* названная линия: «чек бет бет», «бет-чек-бет» — первое действие на каждой улице */
-  const lw = [...qw.matchAll(/(^|[^а-яё])(бет|чек|колл?|рейз|фолд)(?![а-яё])/g)].map(m => ({ бет: 'B', чек: 'X', кол: 'C', колл: 'C', рейз: 'R', фолд: 'F' })[m[2]]);
-  const namedLine = lw.length >= 2 && !/по\s*лини/.test(ql) ? lw : null;
+  /* названная линия: «чек бет бет» — по улицам; через дефис («чек-рейз», «бет-фолд») — ходы на одной улице (26.11.2026) */
+  const CODE = { бет: 'B', чек: 'X', кол: 'C', колл: 'C', рейз: 'R', фолд: 'F' };
+  const lw = [...qw.matchAll(/(^|[^а-яё])(чек|бет)\s*-\s*(рейз|колл?|фолд)[а-яё]?(?![а-яё])|(^|[^а-яё])(бет|чек|колл?|рейз|фолд)(?![а-яё])/g)].map(m => (m[2] ? CODE[m[2]] + CODE[m[3]] : CODE[m[5]]));
+  const namedLine = !/по\s*лини/.test(ql) && (lw.length >= 2 || (lw.length === 1 && lw[0].length === 2)) ? lw : null;
+  const onlyR = /(^|[^а-яё])(рейз(ов|ы|ами|ах|ом)|рейзы)(?![а-яё])/.test(qw) && !/ставк|ставок|бет(ов|ы)/.test(qw); /* «мои рейзы» — только рейзы */
   const sfK = Object.keys(SF).map(k => ({ f: 0, t: 1, dt: 1, r: 2 })[k]); /* назван размер — улица из него */
   const streets = sfK.length ? [...new Set(sfK)].sort() : /флоп/.test(qw) && !/т[её]рн|ривер/.test(qw) ? [0] : /т[её]рн/.test(qw) && !/флоп|ривер/.test(qw) ? [1] : /ривер/.test(qw) && !/флоп|т[её]рн/.test(qw) ? [2] : [0, 1, 2];
   const SN = ['флоп', 'тёрн', 'ривер'];
@@ -469,17 +472,19 @@ function mwlBlocks(P, ql, o) {
   const sizeTable = (rows, s, ttl) => { const T = []; const ag = rows.filter(r => r[5 + s] || r[16 + s]);
     const add = (lab, xs) => { if (!xs.length) return; const sd = xs.filter(r => r[11]); T.push([lab, { v: String(xs.length), n: 0 }, pc(xs.filter(r => r[8 + s] === 1).length, xs.length), pc(xs.filter(r => r[8 + s] === 2).length, xs.length), pc(xs.filter(r => r[8 + s] === 3).length, xs.length), pc(xs.filter(r => r[13]).length, xs.length), pc(sd.length, xs.length), pc(sd.filter(r => r[12]).length, sd.length)]); };
     const fs = SF[['f', 't', 'r'][s]];
-    SZB.forEach(([lo, hi], i) => add(SZL[i], ag.filter(r => r[5 + s] && r[5 + s] >= lo && r[5 + s] < hi && (!fs || (r[5 + s] >= fs[0] && r[5 + s] < fs[1])))));
+    if (!onlyR) SZB.forEach(([lo, hi], i) => add(SZL[i], ag.filter(r => r[5 + s] && r[5 + s] >= lo && r[5 + s] < hi && (!fs || (r[5 + s] >= fs[0] && r[5 + s] < fs[1])))));
     if (!fs) RXB.forEach(([lo, hi, lab]) => add(lab, ag.filter(r => r[16 + s] && r[16 + s] >= lo && r[16 + s] < hi)));
-    if (!fs && ag.length) add('все мои ставки и рейзы', ag);
+    if (onlyR) { const rr = ag.filter(r => r[16 + s]); if (rr.length) add('все мои рейзы', rr); } else if (!fs && ag.length) add('все мои ставки и рейзы', ag);
     return { type: 'table', title: title(P) + ' — ' + ttl, note: 'по каждой моей ставке (размер — % банка перед ставкой) и рейзу (во сколько раз больше ставки, на которую рейзю) на ' + SN[s] + 'е: все сбросили — забрал банк сразу; колл / рейз — что сделали соперники; выиграл банк — в итоге раздачи (и без вскрытия, и на вскрытии); вскрытие и выигрыш на нём — в этих раздачах' + st,
       table: { head: ['размер', 'раз', 'все сбросили', 'колл', 'рейз на меня', 'выиграл банк', 'вскрытие', 'выиграл на вскрытии'], rows: T, grid: true } }; };
   if (namedLine) {
-    const mine = R.filter(r => namedLine.every((a, i) => (r[2 + i] || '')[0] === a));
-    const lt = namedLine.map(a => ACT_RU[a]).join(' · '), sd = mine.filter(r => r[11]);
-    const card = { type: 'table', title: title(P) + ' — линия ' + lt + head, note: 'линия — моё первое действие на каждой улице; велью — топ-пара и сильнее на последней моей улице, блеф — дро или ничего' + st,
+    const one = namedLine.length === 1, s1 = one ? (streets.length === 1 ? streets[0] : 0) : -1; /* одна связка ходов («чек-рейз») — на названной улице, иначе на флопе */
+    const mine = one ? R.filter(r => (r[2 + s1] || '').startsWith(namedLine[0])) : R.filter(r => namedLine.every((a, i) => (r[2 + i] || '').startsWith(a)));
+    const lt = one ? namedLine[0].split('').map(a => ACT_RU[a]).join('-') + ' на ' + SN[s1] + 'е' : namedLine.map(a => a.split('').map(c => ACT_RU[c]).join('-')).join(' · '), sd = mine.filter(r => r[11]);
+    const card = { type: 'table', title: title(P) + ' — линия ' + lt + head, note: 'линия — мои действия по улицам (через дефис — ходы на одной улице: чек-рейз, бет-фолд); велью — топ-пара и сильнее на последней моей улице, блеф — дро или ничего' + st,
       table: { head: ['', 'значение'], rows: [['Раздач с этой линией', { v: String(mine.length), n: 0 }], ['Велью', pc(mine.filter(r => r[15] >= 3).length, mine.length)], ['Блеф', pc(mine.filter(r => r[15] <= 1).length, mine.length)], ['Выиграл банк', pc(mine.filter(r => r[13]).length, mine.length)], ['Дошло до вскрытия', pc(sd.length, mine.length)], ['Выиграл на вскрытии', pc(sd.filter(r => r[12]).length, sd.length)]], grid: true } };
-    return [card, ...namedLine.map((a, s) => (a === 'B' || a === 'R') && streets.includes(s) ? sizeTable(mine, s, 'ставки на ' + SN[s] + 'е в линии ' + lt + head) : null).filter(Boolean)];
+    if (one) return [card, ...(/[BR]/.test(namedLine[0]) ? [sizeTable(mine, s1, 'ставки и рейзы на ' + SN[s1] + 'е в линии ' + lt + head)] : [])];
+    return [card, ...namedLine.map((a, s) => /[BR]/.test(a) && streets.includes(s) ? sizeTable(mine, s, 'ставки на ' + SN[s] + 'е в линии ' + lt + head) : null).filter(Boolean)];
   }
   if (/лини/.test(ql) && !/успешн|успех|эффективн|сработ/.test(ql) || /по\s*лини/.test(ql)) {
     const G = {}; for (const r of R) { const k = lineRu(r); (G[k] = G[k] || []).push(r); }
@@ -487,7 +492,7 @@ function mwlBlocks(P, ql, o) {
     return [{ type: 'table', title: title(P) + ' — мои линии' + head, note: 'линия — мои действия по улицам (флоп · тёрн · ривер); велью — топ-пара и сильнее на последней моей улице, блеф — дро или ничего; все сбросили — на мою последнюю ставку / рейз; линии от 3 раздач' + st,
       table: { head: ['линия', 'раздач', 'велью', 'блеф', 'все сбросили', 'выиграл банк', 'выиграл на вскрытии'], rows, grid: true } }];
   }
-  return streets.map(s => sizeTable(R, s, 'успешность ставок на ' + SN[s] + 'е' + head));
+  return streets.map(s => sizeTable(R, s, 'успешность ' + (onlyR ? 'рейзов' : 'ставок') + ' на ' + SN[s] + 'е' + head));
 }
 /* вопрос про сам размер (26.11.2026): «как часто ставлю овербет ривера», «как часто конбет 33% и выигрыш на вскрытии» —
    как часто ставлю этот размер, доля среди моих ставок на этой улице, дошло до вскрытия, выиграл на вскрытии */
