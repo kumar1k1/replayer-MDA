@@ -290,7 +290,7 @@ function botMsg(a, holder) {
     if (B.text) box.append(el('div', 'txt', B.text));
     b.append(box);
   }
-  if (a.sugg && a.sugg.length) { const s = el('div', 'sugg'); a.sugg.forEach(x => { const c = el('button', 'chip', x.label); c.onclick = () => ask(x.label.split(' · ')[0], false, x.key); s.append(c); }); b.append(s); }
+  if (a.sugg && a.sugg.length) { const s = el('div', 'sugg'); a.sugg.forEach(x => { const c = el('button', 'chip', x.label); c.onclick = () => (x.q ? ask(x.q) : ask(x.label.split(' · ')[0], false, x.key)); /* x.q — готовый вопрос («Может, вы имели в виду…») */ s.append(c); }); b.append(s); }
   holder.append(el('div', 'time', now() + (a.ms != null ? ' · ' + a.ms + ' мс' : '')));
   if (a.key && !a.oneOff) setCtx(a.key, a.player, a.group); // вопрос голосом о себе при открытой карточке — разовый
   scroll();

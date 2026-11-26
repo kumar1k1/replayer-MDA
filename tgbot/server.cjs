@@ -166,6 +166,29 @@ const voiceFix = (q) => String(q || '').replace(/(^|[^а-яё])рив[еэ](н|�
   .replace(/шоу?\s*-?\s*д[ао]?у?н[а-яё]*/gi, 'шоудауне').replace(/(^|[^а-яё])мультиве(?![а-яё])/gi, '$1мультивее').replace(/(^|[^а-яё])мойц\s*бет/gi, '$1мой цбет').replace(/бетфолд/gi, 'бет-фолд').replace(/бетколл?/gi, 'бет-колл').replace(/(^|[^а-яё])(ботана|баттана|батона)(?![а-яё])/gi, '$1баттона')
   .replace(/без\s*-?\s*ол\s*-?\s*л?ин[а-яё]*|безол+ын[а-яё]*|без\s*ул+ын[а-яё]*/gi, 'без олл-инов').replace(/(^|[^а-яё])лимбы(?![а-яё])/gi, '$1лимпы').replace(/(^|[^а-яё])на\s*т[еёэ]рни(?![а-яё])|(^|[^а-яё])нат[еёэ]рни(?![а-яё])/gi, ' на тёрне').replace(/(^|[^а-яё])реизер/gi, '$1рейзер')
   .replace(/(на|против)\s+рейс(?![а-яё])/gi, '$1 рейз').replace(/(4\s*-?\s*бет[а-яё]*|четыр[её]х\s*-?\s*бет[а-яё]*)\s+холодн/gi, '$1 в холодн'); /* остальные частые искажения голоса (26.11.2026) */
+/* автоисправление похожих слов (26.11.2026): незнакомое слово, очень похожее на покерный термин по написанию и звучанию, заменяем на термин —
+   для любого человека и любого нового искажения голоса. Знакомые слова (из всех проверок, tgbot/vocab.json) не трогаем. */
+const VOCAB = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'vocab.json'), 'utf8')); } catch (e) { return { words: [], catalog: [] }; } })();
+const KNOWN = new Set(VOCAB.words);
+const TERMS = ('ривер ривера ривере ривером тёрн тёрна тёрне флоп флопа флопе конбет конбеты конбета конбетов конбетом цбет цбеты цбета цбетов мультивей мультивее мультивея мультивеях мультипот мультипоте ' +
+  'баттон баттона баттоне катофф катоффа хайджек хайджека блайнд блайнда блайндов лимп лимпы лимпа лимпов сквиз сквизы сквиза сквизов изолейт изолейты изолейта изолейтов шоудаун шоудауне шоудауна ' +
+  'рейзер рейзера рейзером коллер коллера коллером рейз рейза колл колла фолд фолда овербет подбет отложка отложки отложку отложками отложках отложенный отложенные пропуск сайзинг сайзинги сайзингов винрейт дилей вскрытие вскрытии позиции позиция').split(' ');
+const skel = (w) => w.toLowerCase().replace(/[ёэ]/g, 'е').replace(/о/g, 'а').replace(/[ъь-]/g, '').replace(/й/g, 'и').replace(/(.)\1+/g, '$1');
+const TSK = TERMS.map(t => [skel(t), t]);
+const lev1 = (a, b) => { if (Math.abs(a.length - b.length) > 1) return false; let i = 0, j = 0, e = 0; while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++e > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } } return e + (a.length - i) + (b.length - j) <= 1; };
+function fuzzyFix(q) {
+  return String(q).replace(/[а-яё][а-яё-]{3,}/gi, (w) => { const l = w.toLowerCase(); if (KNOWN.has(l) || TERMS.includes(l.replace(/ё/g, 'е')) || TERMS.includes(l)) return w;
+    const s = skel(l), ex = TSK.filter(([k]) => k === s); if (ex.length) return ex[0][1];
+    if (s.length >= 6) { const near = TSK.filter(([k]) => lev1(k, s)); if (near.length && new Set(near.map(x => x[1])).size === 1) return near[0][1]; }
+    return w; });
+}
+/* кнопки «Может, вы имели в виду…» — самые похожие вопросы из каталога */
+function suggestQs(q, n) {
+  const toks = (t) => String(t).toLowerCase().split(/[^а-яёa-z0-9$]+/).filter(w => w.length >= 3 && !/^(мой|мои|моя|мне|как|что|для|это|покажи|часто)$/.test(w)).map(skel);
+  const qt = toks(q); if (!qt.length) return [];
+  const sc = VOCAB.catalog.map(c => { const ct = toks(c); let s = 0; for (const t of qt) { if (ct.includes(t)) s += 1; else if (t.length >= 5 && ct.some(x => lev1(x, t) || (x.length >= 5 && (x.startsWith(t.slice(0, 5)) || t.startsWith(x.slice(0, 5)))))) s += 0.6; } return [s / Math.sqrt(ct.length + 1), c]; });
+  return sc.filter(x => x[0] > 0).sort((a, b) => b[0] - a[0] || a[1].length - b[1].length).slice(0, n || 3).map(x => x[1]);
+}
 const dedupPhrase = (q) => { const p = String(q || '').split(/(?<=[.!?])\s+/); const out = p.filter((x, i) => i === 0 || x.trim().toLowerCase() !== p[i - 1].trim().toLowerCase()); return out.join(' '); };
 const grpLabel = (name, bs) => { const a = BANDR[bs[0]][0], z = BANDR[bs[bs.length - 1]][1]; const r = a === 0 ? 'до ' + z + ' bb' : z === Infinity ? a + '+ bb' : a + '–' + (z - 1) + ' bb'; return name ? name + ' (' + r + ')' : r; };
 const SG = { short: ['короткие', 0, 20], mid: ['средние', 20, 60], deep: ['большие', 60, null] };
@@ -881,7 +904,7 @@ function clarify(out, q0, key) {
   const nk = nnorm(((qKey.get(out.key) || {}).nick) || '');
   const left = ql.replace(/[.,!?«»"]+/g, ' ').split(/\s+/).filter(t => t && !FILLER.has(t) && !STOP.has(t) && !(nk && nnorm(t).length >= 2 && nk.includes(nnorm(t))));
   if (!left.length) return out; // только ник — карточка
-  return { key: out.key, player: out.player, group: out.group, intent: 'clarify', heard: out.heard, brain: out.brain, blocks: [{ type: 'text', text: 'Не понял, что показать' + (out.player ? ' по ' + out.player : '') + '. Уточните, например: «VPIP», «3-беты по позициям», «RFI по стекам», «фолд на 3-бет», «винрейт» или «карточка».' }] };
+  return { key: out.key, player: out.player, group: out.group, intent: 'clarify', heard: out.heard, brain: out.brain, blocks: [{ type: 'text', text: (() => { const sg = suggestQs(q0, 3); return sg.length ? 'Не совсем понял' + (out.player ? ' про ' + out.player : '') + '. Может, вы имели в виду — нажмите нужное:' : 'Не понял, что показать' + (out.player ? ' по ' + out.player : '') + '. Уточните, например: «VPIP», «3-беты по позициям», «RFI по стекам», «фолд на 3-бет», «винрейт» или «карточка».'; })() }], sugg: suggestQs(q0, 3).map(t => ({ label: t, q: t })) };
 }
 // прошлый вопрос даём Claude только для уточнений: в новом вопросе назван стат и нет слов «эту / то же самое / а … / теперь» — это новый вопрос
 const REFINE = /(^|[^а-яё])(эт[уоаиы]|то\s*же|тоже|теперь|так\s*же|ещё|еще)([^а-яё]|$)|^\s*(а|и|но|нет)[\s,]/;
@@ -1013,7 +1036,7 @@ const srv = http.createServer(async (req, res) => {
     const t0 = Date.now(); let out;
     const q0 = u.searchParams.get('q'), ctx = u.searchParams.get('ctx'), key = u.searchParams.get('key');
     let alts = []; try { alts = JSON.parse(u.searchParams.get('alts') || '[]').filter(x => typeof x === 'string').slice(0, 12); } catch (e) { alts = []; }
-    try { NOBRAIN = !!u.searchParams.get('nobrain'); let mem = []; try { mem = JSON.parse(u.searchParams.get('mem') || '[]').filter(x => x && typeof x === 'object').slice(-3); } catch (e) { mem = []; } out = await ask(dedupPhrase(voiceFix(q0)), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || '', mem); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; }
+    try { NOBRAIN = !!u.searchParams.get('nobrain'); let mem = []; try { mem = JSON.parse(u.searchParams.get('mem') || '[]').filter(x => x && typeof x === 'object').slice(-3); } catch (e) { mem = []; } out = await ask(dedupPhrase(fuzzyFix(voiceFix(q0))), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || '', mem); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; }
     try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, brain: out.brain || null, heard: out.heard, intent: out.intent, player: out.player || null }) + '\n'); } catch (e) {}
     out.ms = Date.now() - t0;
     return J(out);
