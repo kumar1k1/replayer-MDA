@@ -9,20 +9,20 @@ const want = (R) => [['CB', () => true], ['CB до 35% банка', (p) => p < 3
   const fl = R.filter(r => r[2]), cb = fl.filter(r => r[3] && ok(r[4])), tu = cb.filter(r => r[7]), rv = tu.filter(r => r[8] && r[10]);
   return [lab, [cb.length, fl.length], [tu.filter(r => r[8]).length, tu.length], [rv.filter(r => r[11]).length, rv.length]]; });
 const Q = ['мои конбеты против BB', 'таблица моих конбетов как рейзер против большого блайнда вдвоём', 'мои цбеты против бб', 'c-bet против big blind', 'мои контбеты против ББ один на один', 'мои комбеты на бб'];
-const POS = [['', -1], [' в позиции', 1], [' без позиции', 0]], STK = [['', null], [' на 20-35 бб', [20, 35]], [' на больших стеках', 'big']];
+const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] /* только в позиции (владелец 26.11.2026): SB не берём, «без позиции» — та же таблица */, STK = [['', null], [' на 20-35 бб', [20, 35]], [' на больших стеках', 'big']];
 (async () => {
   const bandsOf = async () => null;
   for (const q0 of Q) for (const [pw, ip] of POS) for (const [sw] of STK) {
     const q = q0 + pw + sw, a = await ask(q), B = (a.blocks || []).find(b => b.table);
     if (!B) { chk(false, q + ': нет таблицы — ' + (a.blocks || []).map(b => b.title || b.text).join(' | ')); continue; }
     chk(/конбеты против BB, один на один/.test(B.title), q + ': заголовок ' + B.title);
-    chk(ip === 1 ? /в позиции$/.test(B.title) : ip === 0 ? /без позиции/.test(B.title) : !/позиции/.test(B.title), q + ': позиция в заголовке ' + B.title);
+    chk(/, в позиции$/.test(B.title) && !/SB/.test(B.title), q + ': позиция в заголовке ' + B.title);
     /* стек — бот сам переводит слова в банды; пересчёт берёт те же банды из подписи «стек …» нельзя — берём все записи при пустом стеке */
-    if (!sw) { const R = ALL.filter(r => ip < 0 || r[34] === ip), W = want(R);
+    if (!sw) { const R = ALL.filter(r => r[34] === 1), W = want(R);
       W.forEach((w, i) => { const row = B.table.rows[i]; chk(row && row[0] === w[0], q + ': строка ' + (row && row[0]) + ', ждали ' + w[0]);
         for (let c = 1; c <= 3; c++) chk(row && row[c].v === pv(w[c][0], w[c][1]) && row[c].n === w[c][1], q + ' · ' + w[0] + ' · улица ' + c + ': бот ' + (row && row[c].v) + '/' + (row && row[c].n) + ', пересчёт ' + pv(w[c][0], w[c][1]) + '/' + w[c][1]); }); }
     else { /* со стеком — суммы: каждая клетка не больше, чем без стека */
-      const R = ALL.filter(r => ip < 0 || r[34] === ip), W = want(R);
+      const R = ALL.filter(r => r[34] === 1), W = want(R);
       W.forEach((w, i) => { const row = B.table.rows[i]; for (let c = 1; c <= 3; c++) chk(row && row[c].n <= w[c][1], q + ' · ' + w[0] + ': знаменатель со стеком больше общего'); });
       chk(/стек/.test(B.note), q + ': в подписи нет стека'); }
   }
