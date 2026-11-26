@@ -16,6 +16,9 @@ const log = (s) => console.log(new Date().toTimeString().slice(0, 8) + ' ' + s);
 
 const NCL = ST.CL.length, NPF = ST.PF_SLOTS;
 /* продолженная ставка: виды банков — ip все, hu один на один, mw — трое и больше, я открылся первым (владелец 26.11.2026); в mw тёрн / ривер — только если на улице ещё трое и больше */
+/* банк перед событием idx (26.11.2026): анте + блайнды + все вложения прошлых улиц + ставки этой улицы до события; размер ставки = ставка / банк × 100 */
+function potBefore(rp, idx) { let pot = 0, st = 0, cur = {}; for (let k = 0; k < idx && k < rp.ev.length; k++) { const e = rp.ev[k]; const s = e.st || 0; if (s !== st) { pot += Object.values(cur).reduce((a, b) => a + b, 0); cur = {}; st = s; } if (!(e.i >= 0)) continue; if (e.t === 'A') pot += e.a || 0; else if (e.t === 'SB' || e.t === 'BB') cur[e.i] = (cur[e.i] || 0) + (e.a || 0); else if (e.t === 'c') cur[e.i] = (cur[e.i] || 0) + (e.a || 0); else if (e.t === 'r' || e.t === 'b') cur[e.i] = e.a || 0; } return pot + Object.values(cur).reduce((a, b) => a + b, 0); }
+const betPct = (rp, e) => { if (!e || e.t !== 'b') return 0; const p = potBefore(rp, rp.ev.indexOf(e)); return p ? Math.round(e.a / p * 100) : 0; };
 const cbKinds = (pc) => (pc.ip ? ['ip', pc.n === 1 ? 'hu' : null, pc.n >= 2 && pc.onlyOpen ? 'mw' : null] : ['oop', pc.n === 1 ? 'huo' : null, pc.n >= 2 && pc.onlyOpen ? 'mwo' : null]).filter(Boolean);
 const cbView = (pc, kd) => { if (kd !== 'mw' && kd !== 'mwo') return pc; const z = (v, ok) => (ok ? v : [0, 0]); return { ...pc, t: z(pc.t, pc.nT >= 2), r: z(pc.r, pc.nRv >= 2), drA: z(pc.drA, pc.nRv >= 2), pb: pc.pb /* +Bet — без условия «трое на ривере» (сверено: 43,8 против 41 у владельца) */, dt: z(pc.dt, pc.nT >= 2) }; };
 const sparse = (a) => { const o = []; for (let i = 0; i < a.length; i++) if (a[i]) o.push(i + ':' + a[i]); return o.join(','); };
@@ -33,7 +36,7 @@ function aliasStats() {
   const mine = new Set(Object.keys(cfg['ники'] || {})); // «рум:ник»
   const P_ = C.loadParser(), { frames } = P_, parse = C.makeParse(P_);
   const acc = {}; // рум → { pf, cl, f, n, ns, nf }
-  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, v3m: {}, iso: {}, oc: {}, b3i: {}, s3: {}, f3: {}, c3: {}, f4: {}, sq: {}, sqm: {}, fsq: {}, lmp: {}, cb: {}, cbs: {}, bsk: {}, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
+  const A = (room) => acc[room] = acc[room] || { pf: new Float64Array(NPF), cl: new Float64Array(2 * 2 * NCL * 2), f: new Float64Array(24), raw: new Float64Array(24), pos: {}, h3: {}, rfi: {}, vso: {}, v3m: {}, iso: {}, oc: {}, b3i: {}, s3: {}, f3: {}, c3: {}, f4: {}, sq: {}, sqm: {}, fsq: {}, lmp: {}, cb: {}, cbs: {}, bsk: {}, rec: { mw: [], mwo: [], bsk: [] }, tot: { fl: 0, sd: 0, won: 0, sdw: 0, fl2: 0, sd2: 0, won2: 0, sdw2: 0 }, ser: [], n: 0, ns: 0, nf: 0, nicks: new Set() };
   // 3-бет как в Hand2Note (сверено 23.11.2026 с его поп-апом владельца, все позиции): против ровно одного рейза,
   // без коллеров (сквиз — отдельно), опен не олл-ином, на BB — не против опена с SB (блайнд против блайнда — отдельно)
   const HF = require(path.join(ROOT, 'lib', 'handfix.js'));
@@ -173,7 +176,9 @@ function aliasStats() {
           const nT = ord(S(2)).length - 1, nRv = ord(S(3)).length - 1, onlyOpen = pre.length === 1 && !rp.ev.some((e, k) => e.st === 0 && e.t === 'c' && e.i >= 0 && k < rp.ev.indexOf(pre[0])) ? 1 : 0;
           /* линии (только сверка, TGBOT_AUDIT): мои ходы по улицам, карты, борд, итог */
           const ln = AUDIT ? { l: [1, 2, 3].map(st => S(st).filter(e => e.i === hero).map(e => ({ x: 'X', b: 'B', r: 'R', c: 'C', f: 'F' })[e.t]).join('')), hc: (rp.hc && rp.hc[hero]) || null, bd: rp.bd || [], rb: Math.round(rb * 100) / 100, sd: wentSD0 ? 1 : 0 } : null;
-          pc = { ln, ip, csz, nT, nRv, onlyOpen, n: o1.length - 1, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, t, r, fr, dt, drA, drB, pb, pre3: pre.length >= 2 ? 1 : 0 }; } }
+          /* запись для таблиц с фильтром размера: первый мой ход на улице — ставка → её размер */
+          const hb = (st) => { const e = S(st).find(x => x.i === hero); return e && e.t === 'b' ? betPct(rp, e) : 0; }, szF = hb(1), szT = hb(2), szR = hb(3);
+          pc = { szF, szT, szR, ln, ip, csz, nT, nRv, onlyOpen, n: o1.length - 1, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, t, r, fr, dt, drA, drB, pb, pre3: pre.length >= 2 ? 1 : 0 }; } }
       /* ставка на пропуск (26.11.2026): мультивей, до флопа был один рейз (не мой), я его заколлировал; на флопе хожу последним; все до меня чекнули → ставлю?
          bk = { n, ip, f: [возм, ставка], fr: [рейз на мою ставку, ответ, олл-ин], t: [возм, ставка] — после заколлированной ставки на флопе тёрн прочекан до меня, ta: [возм, ставка] — тёрн прочекан до меня (любой флоп), r: [возм, ставка] } */
       let bk = null; { const pre = rp.ev.filter(e => e.st === 0 && e.i >= 0 && e.t === 'r'), heroC = rp.ev.some(e => e.st === 0 && e.i === hero && e.t === 'c');
@@ -186,7 +191,8 @@ function aliasStats() {
           const ta = [T && T.ck ? 1 : 0, 0]; ta[1] = ta[0] && T.act === 'b' ? 1 : 0; const tc = t[1] && !T.raised, r = [tc && R && R.ck ? 1 : 0, 0]; r[1] = r[0] && R.act === 'b' ? 1 : 0;
           const d0 = C.preflopDecisions(rp, () => '').find(x => x.i === hero);
           const nT = ord(S(2)).length - 1, nRv = ord(S(3)).length - 1, ta3 = nT >= 2 ? ta : [0, 0], ra = [nRv >= 2 && R && R.ck ? 1 : 0, 0]; ra[1] = ra[0] && R.act === 'b' ? 1 : 0;
-          bk = { ta3, ra, nRv, n: o1.length - 1, ip, nT, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, fr: f[1] && F.raised ? [1, F.resp, F.raiseAI ? 1 : 0] : null, t, ta, r }; } }
+          const hb = (st) => { const e = S(st).find(x => x.i === hero); return e && e.t === 'b' ? betPct(rp, e) : 0; };
+          bk = { szF: hb(1), szT: hb(2), szR: hb(3), ta3, ra, nRv, n: o1.length - 1, ip, nT, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, fr: f[1] && F.raised ? [1, F.resp, F.raiseAI ? 1 : 0] : null, t, ta, r }; } }
       // полная сверка (TGBOT_AUDIT=1): как подсчёт понял каждую раздачу → tgbot/data/audit.ndjson
       if (AUDIT) AUD.push(JSON.stringify({ id: room + '#' + rp.handId, rf, vo, oc, iz, bi, sz: sz && [sz[0], sz[1], Math.round(sz[3] * 10) / 10, sz[4], sz[5]], f3i, c3i, fq, fqx, lp, pc, bk }));
       // образцы раздач для ручной проверки (TGBOT_SAMPLE=1 → tgbot/data/samples.json, только на ПК)
@@ -235,7 +241,10 @@ function aliasStats() {
         // cb[ip][стек] = [флоп: возм, ставка, тёрн: возм, ставка, ривер: возм, ставка, рейз на флопе: раз, фолд, колл, против рейза не олл-ином: раз, рейз, против олл-ина: раз, фолд, колл, отложенная тёрн: возм, ставка, отложенная ривер: возм, ставка, +Bet ривер: возм, ставка]
         // bsk[ip|oop][стек] = [флоп: возм, ставка, тёрн (до меня чек): возм, ставка, ривер (3+): возм, ставка, рейз на ставку флопа: раз, фолд, колл, рейз]
         if (bk) for (const bd of [bk.band, 'all']) { const kd = bk.ip ? 'ip' : 'oop', X = (a.bsk[kd] = a.bsk[kd] || {})[bd] = a.bsk[kd][bd] || new Array(12).fill(0); X[10] += bk.t[0]; X[11] += bk.t[1]; /* [10], [11] — бет флоп + бет тёрн: моя ставка на флопе заколлирована, на тёрне до меня чек */ X[0] += bk.f[0]; X[1] += bk.f[1]; X[2] += bk.ta[0]; X[3] += bk.ta[1]; /* тёрн — до меня прочекали, любое число игроков: 56,9 против 55 у владельца (с условием «трое на тёрне» — 48,7) */ X[4] += bk.ra[0]; X[5] += bk.ra[1]; if (bk.fr) { X[6]++; if (bk.fr[1] === 'f') X[7]++; else if (bk.fr[1] === 'c') X[8]++; else if (bk.fr[1] === 'r') X[9]++; } }
-        // cbs[вид банка][корзина размера][стек] = [ставок, рейз на неё, фолд, колл, рейз, сумма % банка]
+        /* записи раздач для таблиц с фильтром размера (26.11.2026): рейзер — [стек, рука, флоп возм, ставка, размер, ответ на рейз 0/1 фолд/2 колл/3 рейз, рейз олл-ин, тёрн возм, ставка, размер, ривер возм, ставка, размер, отл. тёрн возм, ставка, размер, отл. ривер возм, ставка, размер, +бет возм, ставка, размер]; коллер — [стек, рука, флоп возм, ставка, размер, ответ на рейз, олл-ин, тёрн возм, ставка, размер, ривер возм, ставка, размер, бет+бет возм, ставка, размер] */
+        { const cm = /^Dealt to .+? \[(\S\S) (\S\S)\]/m.exec(h), cls = cm ? handClass(cm[1], cm[2]) : '', frc = (fr) => (fr ? ({ f: 1, c: 2, r: 3 })[fr[1]] || 4 : 0); /* 4 — рейз был, моего ответа нет */
+          if (pc && pc.n >= 2 && pc.onlyOpen) { const q = cbView(pc, pc.ip ? 'mw' : 'mwo'); a.rec[pc.ip ? 'mw' : 'mwo'].push([pc.band, cls, q.f[0], q.f[1], q.f[1] ? pc.szF : 0, frc(q.fr), q.fr && q.fr[2] ? 1 : 0, q.t[0], q.t[1], q.t[1] ? pc.szT : 0, q.r[0], q.r[1], q.r[1] ? pc.szR : 0, q.dt[0], q.dt[1], q.dt[1] ? pc.szT : 0, q.drA[0], q.drA[1], q.drA[1] ? pc.szR : 0, q.pb[0], q.pb[1], q.pb[1] ? pc.szR : 0]); }
+          if (bk && bk.ip) a.rec.bsk.push([bk.band, cls, bk.f[0], bk.f[1], bk.f[1] ? bk.szF : 0, frc(bk.fr), bk.fr && bk.fr[2] ? 1 : 0, bk.ta[0], bk.ta[1], bk.ta[1] ? bk.szT : 0, bk.ra[0], bk.ra[1], bk.ra[1] ? bk.szR : 0, bk.t[0], bk.t[1], bk.t[1] ? bk.szT : 0]); }        // cbs[вид банка][корзина размера][стек] = [ставок, рейз на неё, фолд, колл, рейз, сумма % банка]
         if (pc && pc.csz) for (const kd of cbKinds(pc)) for (const bd of [pc.band, 'all']) { const G = (a.cbs[kd] = a.cbs[kd] || {}), X = ((G[pc.csz[0]] = G[pc.csz[0]] || {})[bd] = G[pc.csz[0]][bd] || [0, 0, 0, 0, 0, 0]); X[0]++; X[5] += pc.csz[1]; if (pc.fr) { X[1]++; if (pc.fr[1] === 'f') X[2]++; else if (pc.fr[1] === 'c') X[3]++; else if (pc.fr[1] === 'r') X[4]++; } }
         if (pc) for (const kd of cbKinds(pc)) { const q = cbView(pc, kd); for (const bd of [pc.band, 'all']) { const X = (a.cb[kd] = a.cb[kd] || {})[bd] = a.cb[kd][bd] || new Array(22).fill(0); X[0] += q.f[0]; X[1] += q.f[1]; X[2] += q.t[0]; X[3] += q.t[1]; X[4] += q.r[0]; X[5] += q.r[1]; if (q.fr) { X[6]++; if (q.fr[1] === 'f') X[7]++; if (q.fr[1] === 'c') X[8]++; if (!q.fr[2]) { X[9]++; if (q.fr[1] === 'r') X[10]++; } else { X[11]++; if (q.fr[1] === 'f') X[12]++; if (q.fr[1] === 'c') X[13]++; } } X[14] += q.dt[0]; X[15] += q.dt[1]; X[16] += q.drA[0]; X[17] += q.drA[1]; X[18] += q.pb[0]; X[19] += q.pb[1]; } }
         // lmp[поз][стек] = [возможностей, лимп, был рейз после лимпа, фолд, колл, рейз, рейз олл-ином: раз, фолд, колл, рейз]; TOT — без SB
@@ -288,7 +297,7 @@ function aliasStats() {
     ser.forEach((p, k) => { w += p[1]; e += p[2]; if (p[3]) s += p[1]; else ns += p[1]; if ((k + 1) % step === 0 || k === N - 1) out.push([k + 1, Math.round(w), Math.round(e), Math.round(s), Math.round(ns)]); });
     return out;
   };
-  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, v3m: a.v3m, iso: a.iso, oc: a.oc, b3i: a.b3i, s3: a.s3, f3: a.f3, c3: a.c3, f4: a.f4, sq: a.sq, sqm: a.sqm, fsq: a.fsq, lmp: a.lmp, cb: a.cb, cbs: a.cbs, bsk: a.bsk, tot: a.tot, graph: graph(a.ser) }) }));
+  return Object.entries(acc).map(([room, a]) => ({ key: 'alias:' + room, room: 'alias', nick: room === 'все' ? 'Я (все румы)' : 'Я · ' + room, n: a.n, ns: a.ns, nf: a.nf, cl: null, cls: Array.from(a.cl), pf: sparse(a.pf), r: r2(a.f), nicks: [...a.nicks].join(', '), ext: JSON.stringify({ raw: r2(a.raw), pos: a.pos, dup: dupN, h3: a.h3, rfi: a.rfi, vso: a.vso, v3m: a.v3m, iso: a.iso, oc: a.oc, b3i: a.b3i, s3: a.s3, f3: a.f3, c3: a.c3, f4: a.f4, sq: a.sq, sqm: a.sqm, fsq: a.fsq, lmp: a.lmp, cb: a.cb, cbs: a.cbs, bsk: a.bsk, rec: a.rec, tot: a.tot, graph: graph(a.ser) }) }));
 }
 
 // ---------- сборка ----------
