@@ -27,6 +27,7 @@ const num = (v) => parseFloat(String(v).replace(',', '.').replace('%', ''));
   for (const q of Q) { if (seen.has(q)) continue; seen.add(q);
     const a = await (await fetch(B + '/api/ask?nobrain=1&ctx=' + encodeURIComponent('alias:все') + '&q=' + encodeURIComponent(q))).json();
     const items = [];
+    if (/конбет|цбет|комбет|пропуск|скип|бет\s*флоп|ставки\s*в\s*мульти|мультивее|мультипот/.test(q)) continue; /* постфлоп — без матриц (владелец 26.11.2026) */
     for (const b of a.blocks || []) { if (b.big && b.hm) items.push([b.title, { v: b.big, n: b.n, hm: [].concat(b.hm) }]); else if (b.big && b.n) noHm.push(q + ' · ' + b.title); if (b.table) for (const r of b.table.rows) r.slice(1).forEach((c, k) => { if (c && c.rng) return; /* Range — произведение двух частот, матрица — руки 4-бета */ if (c && c.hm) items.push([r[0] + ' · ' + b.table.head[k + 1], { v: c.v, n: c.n, hm: [c.hm] }]); else if (c && c.n) noHm.push(q + ' · ' + r[0] + ' · ' + b.table.head[k + 1]); }); }
     for (const [lab, c] of items) {
       if (!c.n) continue; cells++;

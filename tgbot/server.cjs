@@ -606,7 +606,10 @@ function fsqBlocks(P, ql, o) {
   if (o.table || cols) { const cs = cols || FSQ_POS; return [{ type: 'table', title: title(P) + ' — ' + A[a][2] + ' по позициям', note, ai, table: { head: ['', ...cs], rows: rls.map(r => [RL[r], ...cs.map(p => { const c = cell(r, p, a, bands); return c.n ? c : ''; })]), grid: true, heatRow: true } }]; }
   /* одна цифра (роль не названа — две: как открывший и как коллер) */
   return rls.map(r => { const c = cell(r, pos, a, bands); return { type: 'big', hm: c.hm, title: title(P) + ' — ' + A[a][2] + pT + ' (' + RLr[r] + ')', big: c.n ? c.v : 'нет данных', n: c.n, ai, note }; });
-}function statBlocks(P, id, ql, TT) {
+}/* постфлоп — без матриц рук (владелец 26.11.2026): матрицы только у префлоп-статов */
+function noHm(bl) { for (const b of bl) { delete b.hm; if (b.table) for (const r of b.table.rows) for (const c of r) if (c && typeof c === 'object') delete c.hm; } return bl; }
+function statBlocks(P, id, ql, TT) { if (id === 'CB' || id === 'BSK' || id === 'MWB') return noHm(statBlocks0(P, id, ql, TT)); return statBlocks0(P, id, ql, TT); }
+function statBlocks0(P, id, ql, TT) {
   const f1 = (v) => (v == null ? '—' : String(v).replace('.', ','));
   const big = (name, v, n, note) => ({ type: 'big', title: title(P) + ' — ' + name, big: n ? v : 'нет данных', n, note });
   const c = (nm) => clStat(P, nm);
