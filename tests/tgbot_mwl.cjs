@@ -18,13 +18,14 @@ const SN = ['флоп', 'тёрн', 'ривер'];
   for (const kd of Object.keys(KIND)) for (const [st, bands] of STK) for (let s = 0; s < 3; s++) {
     const q = 'успешность моих ставок на ' + SN[s] + 'е ' + KIND[kd] + (st ? ' ' + st : ''), a = await ask(q), T = (a.blocks || []).find(b => b.table);
     if (!T) { chk(false, q + ': нет таблицы'); continue; }
-    const R = E.ml[kd].filter(r => bands.includes(r[0]) && (r[5 + s] || r[16 + s]));
-    const groups = [...SZB.map(([lo, hi]) => R.filter(r => r[5 + s] && r[5 + s] >= lo && r[5 + s] < hi)), ...RXB.map(([lo, hi]) => R.filter(r => r[16 + s] && r[16 + s] >= lo && r[16 + s] < hi)), R].filter(g => g.length);
+    const R = E.ml[kd].filter(r => bands.includes(r[0]) && r[5 + s]); /* «ставки» — только ставки (владелец 26.11.2026) */
+    const groups = [...SZB.map(([lo, hi]) => R.filter(r => r[5 + s] >= lo && r[5 + s] < hi)), R].filter(g => g.length);
+    chk(T.table.head.join('|') === 'размер|раз|все сбросили|колл|рейз на меня', q + ': колонки ' + T.table.head.join('|'));
     chk(T.table.rows.length === groups.length, q + ': строк ' + T.table.rows.length + ', ждали ' + groups.length);
     groups.forEach((g, i) => { const row = T.table.rows[i]; if (!row) return; const sd = g.filter(r => r[11]);
       chk(num(row[1].v) === g.length, q + ' · ' + row[0] + ': раз ' + row[1].v + ', ждали ' + g.length);
       cell(row[2], g.filter(r => r[8 + s] === 1).length, g.length, q + ' · ' + row[0] + ' все сбросили'); cell(row[3], g.filter(r => r[8 + s] === 2).length, g.length, q + ' · ' + row[0] + ' колл'); cell(row[4], g.filter(r => r[8 + s] === 3).length, g.length, q + ' · ' + row[0] + ' рейз');
-      cell(row[5], g.filter(r => r[13]).length, g.length, q + ' · ' + row[0] + ' выиграл банк'); cell(row[6], sd.length, g.length, q + ' · ' + row[0] + ' вскрытие'); cell(row[7], sd.filter(r => r[12]).length, sd.length, q + ' · ' + row[0] + ' выиграл на вскрытии'); });
+      chk(row.length === 5, q + ' · ' + row[0] + ': лишние колонки'); });
   }
   // 2) названные линии
   const LINES = [['чек бет бет', ['X', 'B', 'B']], ['бет бет бет', ['B', 'B', 'B']], ['чек чек бет', ['X', 'X', 'B']], ['бет чек бет', ['B', 'X', 'B']], ['чек колл чек', ['X', 'C', 'X']]];

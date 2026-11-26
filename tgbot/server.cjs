@@ -469,22 +469,30 @@ function mwlBlocks(P, ql, o) {
   const streets = sfK.length ? [...new Set(sfK)].sort() : /флоп/.test(qw) && !/т[её]рн|ривер/.test(qw) ? [0] : /т[её]рн/.test(qw) && !/флоп|ривер/.test(qw) ? [1] : /ривер/.test(qw) && !/флоп|т[её]рн/.test(qw) ? [2] : [0, 1, 2];
   const SN = ['флоп', 'тёрн', 'ривер'];
   /* успешность ставок по размерам на улице */
-  const sizeTable = (rows, s, ttl) => { const T = []; const ag = rows.filter(r => r[5 + s] || r[16 + s]);
-    const add = (lab, xs) => { if (!xs.length) return; const sd = xs.filter(r => r[11]); T.push([lab, { v: String(xs.length), n: 0 }, pc(xs.filter(r => r[8 + s] === 1).length, xs.length), pc(xs.filter(r => r[8 + s] === 2).length, xs.length), pc(xs.filter(r => r[8 + s] === 3).length, xs.length), pc(xs.filter(r => r[13]).length, xs.length), pc(sd.length, xs.length), pc(sd.filter(r => r[12]).length, sd.length)]); };
+  /* успешность по размерам на улице (владелец 26.11.2026): «ставки» — только ставки, «рейзы» — только рейзы; колонки — раз, все сбросили, колл, рейз на меня */
+  const sizeTable = (rows, s, ttl, what) => { const T = [], w = what || (onlyR ? 'r' : 'b'), ag = rows.filter(r => (w !== 'r' && r[5 + s]) || (w !== 'b' && r[16 + s]));
+    const add = (lab, xs) => { if (!xs.length) return; T.push([lab, { v: String(xs.length), n: 0 }, pc(xs.filter(r => r[8 + s] === 1).length, xs.length), pc(xs.filter(r => r[8 + s] === 2).length, xs.length), pc(xs.filter(r => r[8 + s] === 3).length, xs.length)]); };
     const fs = SF[['f', 't', 'r'][s]];
-    if (!onlyR) SZB.forEach(([lo, hi], i) => add(SZL[i], ag.filter(r => r[5 + s] && r[5 + s] >= lo && r[5 + s] < hi && (!fs || (r[5 + s] >= fs[0] && r[5 + s] < fs[1])))));
-    if (!fs) RXB.forEach(([lo, hi, lab]) => add(lab, ag.filter(r => r[16 + s] && r[16 + s] >= lo && r[16 + s] < hi)));
-    if (onlyR) { const rr = ag.filter(r => r[16 + s]); if (rr.length) add('все мои рейзы', rr); } else if (!fs && ag.length) add('все мои ставки и рейзы', ag);
-    return { type: 'table', title: title(P) + ' — ' + ttl, note: 'по каждой моей ставке (размер — % банка перед ставкой) и рейзу (во сколько раз больше ставки, на которую рейзю) на ' + SN[s] + 'е: все сбросили — забрал банк сразу; колл / рейз — что сделали соперники; выиграл банк — в итоге раздачи (и без вскрытия, и на вскрытии); вскрытие и выигрыш на нём — в этих раздачах' + st,
-      table: { head: ['размер', 'раз', 'все сбросили', 'колл', 'рейз на меня', 'выиграл банк', 'вскрытие', 'выиграл на вскрытии'], rows: T, grid: true } }; };
+    if (w !== 'r') SZB.forEach(([lo, hi], i) => add(SZL[i], ag.filter(r => r[5 + s] && r[5 + s] >= lo && r[5 + s] < hi && (!fs || (r[5 + s] >= fs[0] && r[5 + s] < fs[1])))));
+    if (w !== 'b' && !fs) RXB.forEach(([lo, hi, lab]) => add(lab, ag.filter(r => r[16 + s] && r[16 + s] >= lo && r[16 + s] < hi)));
+    if (!fs && ag.length) add(w === 'r' ? 'все мои рейзы' : w === 'b' ? 'все мои ставки' : 'все мои ставки и рейзы', ag);
+    return { type: 'table', title: title(P) + ' — ' + ttl, note: (w === 'r' ? 'по каждому моему рейзу (во сколько раз больше ставки, на которую рейзю)' : 'по каждой моей ставке (размер — % банка перед ставкой)') + ' на ' + SN[s] + 'е: все сбросили — забрал банк сразу; колл — меня заколлировали; рейз на меня — меня порейзили' + st,
+      table: { head: ['размер', 'раз', 'все сбросили', 'колл', 'рейз на меня'], rows: T, grid: true } }; };
+
+
+
+
+
+
+
   if (namedLine) {
     const one = namedLine.length === 1, s1 = one ? (streets.length === 1 ? streets[0] : 0) : -1; /* одна связка ходов («чек-рейз») — на названной улице, иначе на флопе */
     const mine = one ? R.filter(r => (r[2 + s1] || '').startsWith(namedLine[0])) : R.filter(r => namedLine.every((a, i) => (r[2 + i] || '').startsWith(a)));
     const lt = one ? namedLine[0].split('').map(a => ACT_RU[a]).join('-') + ' на ' + SN[s1] + 'е' : namedLine.map(a => a.split('').map(c => ACT_RU[c]).join('-')).join(' · '), sd = mine.filter(r => r[11]);
     const card = { type: 'table', title: title(P) + ' — линия ' + lt + head, note: 'линия — мои действия по улицам (через дефис — ходы на одной улице: чек-рейз, бет-фолд); велью — топ-пара и сильнее на последней моей улице, блеф — дро или ничего' + st,
       table: { head: ['', 'значение'], rows: [['Раздач с этой линией', { v: String(mine.length), n: 0 }], ['Велью', pc(mine.filter(r => r[15] >= 3).length, mine.length)], ['Блеф', pc(mine.filter(r => r[15] <= 1).length, mine.length)], ['Выиграл банк', pc(mine.filter(r => r[13]).length, mine.length)], ['Дошло до вскрытия', pc(sd.length, mine.length)], ['Выиграл на вскрытии', pc(sd.filter(r => r[12]).length, sd.length)]], grid: true } };
-    if (one) return [card, ...(/[BR]/.test(namedLine[0]) ? [sizeTable(mine, s1, 'ставки и рейзы на ' + SN[s1] + 'е в линии ' + lt + head)] : [])];
-    return [card, ...namedLine.map((a, s) => /[BR]/.test(a) && streets.includes(s) ? sizeTable(mine, s, 'ставки на ' + SN[s] + 'е в линии ' + lt + head) : null).filter(Boolean)];
+    if (one) return [card, ...(/[BR]/.test(namedLine[0]) ? [sizeTable(mine, s1, (/R/.test(namedLine[0]) ? 'рейзы' : 'ставки') + ' на ' + SN[s1] + 'е в линии ' + lt + head, /R/.test(namedLine[0]) ? 'r' : 'b')] : [])];
+    return [card, ...namedLine.map((a, s) => /[BR]/.test(a) && streets.includes(s) ? sizeTable(mine, s, (/R/.test(a) ? 'рейзы' : 'ставки') + ' на ' + SN[s] + 'е в линии ' + lt + head, /R/.test(a) ? 'r' : 'b') : null).filter(Boolean)];
   }
   if (/лини/.test(ql) && !/успешн|успех|эффективн|сработ/.test(ql) || /по\s*лини/.test(ql)) {
     const G = {}; for (const r of R) { const k = lineRu(r); (G[k] = G[k] || []).push(r); }
