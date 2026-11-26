@@ -20,7 +20,7 @@ const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] 
     chk(/Total CBET: я рейзер против большого блайнда, хедс-ап банк/.test(B.title), q + ': заголовок ' + B.title);
     chk(/, в позиции( · стек .*)?$/.test(B.title) && !/SB/.test(B.title), q + ': позиция в заголовке ' + B.title);
     /* стек — бот сам переводит слова в банды; пересчёт берёт те же банды из подписи «стек …» нельзя — берём все записи при пустом стеке */
-    if (!sw) { const R = ALL.filter(r => r[34] === 1), W = want(R).concat(wantR(R));
+    if (!sw) { const R = ALL.filter(r => r[34] === 1), W = want(R).concat(wantR(R)); { const o = R.filter(r => r[39]), row = B.table.rows.find(x => x[0] === 'CB · XX · B'); chk(row && row[3].v === pv(o.filter(r => r[40]).length, o.length) && row[3].n === o.length, q + ' · CB · XX · B: бот ' + (row && row[3].v) + ', пересчёт ' + pv(o.filter(r => r[40]).length, o.length)); }
       W.forEach((w, i) => { const row = B.table.rows[i]; chk(row && row[0] === w[0], q + ': строка ' + (row && row[0]) + ', ждали ' + w[0]);
         for (let c = 1; c <= 3; c++) chk(row && row[c].v === pv(w[c][0], w[c][1]) && row[c].n === w[c][1], q + ' · ' + w[0] + ' · улица ' + c + ': бот ' + (row && row[c].v) + '/' + (row && row[c].n) + ', пересчёт ' + pv(w[c][0], w[c][1]) + '/' + w[c][1]); }); }
     else { /* со стеком — суммы: каждая клетка не больше, чем без стека */
@@ -43,7 +43,8 @@ const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] 
     const OI = [2, 7, 10], BI = [3, 8, 11], ZI = [4, 9, 12], RI = [[5, 6], [35, 37], [36, 38]], inS = (r, s) => s !== s0 || (r[BI[s]] && r[ZI[s]] >= lo && r[ZI[s]] < hi), up = (r, s) => { for (let i = 0; i < s; i++) if (!inS(r, i)) return false; return true; };
     const W = [['CB', ...[0, 1, 2].map(s => { if (s < s0) return null; const b = R.filter(r => up(r, s) && r[OI[s]]); return [b.filter(r => r[BI[s]] && inS(r, s)).length, b.length]; })], ...[['CB-Fold', 1], ['CB-Call', 2], ['CB-3Bet', 3]].map(([lab, k]) => [lab, ...[0, 1, 2].map(s => { if (s < s0) return null; const [i, ai] = RI[s], b = R.filter(r => up(r, s + 1) && r[i] >= 1 && r[i] <= 3 && (k !== 3 || !r[ai])); return [b.filter(r => r[i] === k).length, b.length]; })])];
     W.forEach((w, j) => { const row = B.table.rows[j]; chk(row && row[0] === w[0], q + ': строка ' + (row && row[0])); for (let c = 1; c <= 3; c++) { const x = w[c]; chk(row && (x ? row[c].v === pv(x[0], x[1]) && row[c].n === x[1] : row[c].v === '—'), q + ' · ' + w[0] + ' · улица ' + c + ': бот ' + (row && row[c].v) + '/' + (row && row[c].n) + ', пересчёт ' + (x ? pv(x[0], x[1]) + '/' + x[1] : '—')); } });
-    chk(B.table.rows.length === 4, q + ': строк ' + B.table.rows.length);
+    { const row = B.table.rows[4], b = s0 === 1 ? null : R.filter(r => r[39] && (s0 !== 0 || (r[3] && r[4] >= lo && r[4] < hi))), x = b && [b.filter(r => r[40] && (s0 !== 2 || (r[41] >= lo && r[41] < hi))).length, b.length]; chk(row && row[0] === 'CB · XX · B' && (x ? row[3].v === pv(x[0], x[1]) && row[3].n === x[1] : row[3].v === '—'), q + ' · CB · XX · B: бот ' + (row && row[3].v) + ', пересчёт ' + (x ? pv(x[0], x[1]) : '—')); }
+    chk(B.table.rows.length === 5, q + ': строк ' + B.table.rows.length);
   }
   /* мультивей не задет */
   { const a = await ask('мои конбеты в мультивее в позиции как рейзер'), B = (a.blocks || []).find(b => b.table); chk(B && /мультивее/.test(B.title), 'мультивей: ' + (B && B.title)); }
