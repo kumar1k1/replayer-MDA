@@ -32,6 +32,19 @@ const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] 
   for (const r of ALL) { if (r[3]) chk(r[4] > 0, 'запись: конбет без размера'); if (r[7]) chk(r[3], 'запись: тёрн без конбета'); if (r[10]) chk(r[8], 'запись: ривер без ставки на тёрне'); chk(r[34] === 0 || r[34] === 1, 'запись: позиция'); }
   /* голое «Total CBET» без пояснения — подсказка, не таблица (владелец 26.11.2026) */
   for (const q of ['Total CBET', 'тотал цбет', 'мой тотал конбет']) { const a = await ask(q); chk(!(a.blocks || []).some(b => b.table && /Total CBET/.test(b.title || '')) && (a.blocks || []).some(b => /хедс-ап банка, когда я рейзер против большого блайнда/.test(b.text || '')), q + ': ждали подсказку, пришло ' + (a.blocks || []).map(b => b.title || b.text).join(' | ')); }
+  /* названный размер × стек (владелец 26.11.2026): все клетки — только раздачи с этим размером на этой улице, ответы на чек-рейз — после этого размера; стек — фильтр */
+  const SZQ = [['больше 60%', 0, 60, 1e5], ['до 35%', 0, 0, 35.5], ['от 40 до 60%', 0, 40, 60.5], ['тёрн больше 60%', 1, 60, 1e5], ['тёрн до 50%', 1, 0, 50.5], ['ривер от 50%', 2, 50, 1e5], ['овербет', 0, 100.5, 1e5], ['флоп треть', 0, 29, 40]];
+  for (const [sw, s0, lo, hi] of SZQ) for (const [stw] of STK) {
+    const q = 'мои конбеты против BB ' + sw + stw, a = await ask(q), B = (a.blocks || []).find(b => b.table);
+    if (!B) { chk(false, q + ': нет таблицы'); continue; }
+    chk(/размер:/.test(B.title), q + ': в заголовке нет размера ' + B.title);
+    /* стек: банды берём из ответа бота на тот же стек без размера — число раздач CB флоп совпадает */
+    const SB = { '': null, ' на 20-35 бб': ['20-35'], ' на больших стеках': ['60-99', '100-149', '150+'] }[stw]; const R = ALL.filter(r => r[34] === 1 && (!SB || SB.includes(r[0])));
+    const OI = [2, 7, 10], BI = [3, 8, 11], ZI = [4, 9, 12], RI = [[5, 6], [35, 37], [36, 38]], inS = (r, s) => s !== s0 || (r[BI[s]] && r[ZI[s]] >= lo && r[ZI[s]] < hi), up = (r, s) => { for (let i = 0; i < s; i++) if (!inS(r, i)) return false; return true; };
+    const W = [['CB', ...[0, 1, 2].map(s => { if (s < s0) return null; const b = R.filter(r => up(r, s) && r[OI[s]]); return [b.filter(r => r[BI[s]] && inS(r, s)).length, b.length]; })], ...[['CB-Fold', 1], ['CB-Call', 2], ['CB-3Bet', 3]].map(([lab, k]) => [lab, ...[0, 1, 2].map(s => { if (s < s0) return null; const [i, ai] = RI[s], b = R.filter(r => up(r, s + 1) && r[i] >= 1 && r[i] <= 3 && (k !== 3 || !r[ai])); return [b.filter(r => r[i] === k).length, b.length]; })])];
+    W.forEach((w, j) => { const row = B.table.rows[j]; chk(row && row[0] === w[0], q + ': строка ' + (row && row[0])); for (let c = 1; c <= 3; c++) { const x = w[c]; chk(row && (x ? row[c].v === pv(x[0], x[1]) && row[c].n === x[1] : row[c].v === '—'), q + ' · ' + w[0] + ' · улица ' + c + ': бот ' + (row && row[c].v) + '/' + (row && row[c].n) + ', пересчёт ' + (x ? pv(x[0], x[1]) + '/' + x[1] : '—')); } });
+    chk(B.table.rows.length === 4, q + ': строк ' + B.table.rows.length);
+  }
   /* мультивей не задет */
   { const a = await ask('мои конбеты в мультивее в позиции как рейзер'), B = (a.blocks || []).find(b => b.table); chk(B && /мультивее/.test(B.title), 'мультивей: ' + (B && B.title)); }
   console.log('проверок: ' + n + ', совпало: ' + (n - bad) + ', ошибок: ' + bad);
