@@ -150,6 +150,7 @@ function aliasStats() {
             if (role) { const opI = role === 'cc' ? raiseBefore(rp, d0.k) : hero, opA = role === 'cc' ? (evB(sqK, nx.k, 'f').concat(evB(sqK, nx.k, 'c'), evB(sqK, nx.k, 'r')).find(([e]) => e.i === opI) || [null])[0] : null;
               fqx = { role, p5: TP.p5(hero), tbl: d0.tbl, act0: d0.act, lim: dd.some(x => x.k < d0.k && x.act === 'limp') ? 1 : 0, cBefore: evB(role === 'pfr' ? d0.k : -1, sqK, 'c').length, nR: rr.length, sqAI: rr[0][0].a && rp.stacks ? null : null, faceAI: nx.tbl === 'AI' ? 1 : 0, ans: nx.act, cAfter: evB(sqK, nx.k, 'c').filter(([e]) => e.i !== opI).length, opA: opA ? opA.t : null, meFirstC: role === 'cc' ? evB(-1, d0.k, 'c').length : 0, sqPos: TP.p5(rr[0][0].i), stk: Math.round(d0.stackTot) }; } } } }
       /* продолженная ставка (26.11.2026): я последний рейзил до флопа; IP — на флопе хожу последним. pc = { n соперников, f/t/r — [возможность, ставка], fr — ответ на рейз после ставки на флопе, dt — отложенная на тёрне, drA / drB — на ривере, pb — ривер после отложенной } */
+      const wentSD0 = !fin.folded[hero] && fin.folded.filter(x => !x).length >= 2;
       let pc = null; { const pre = rp.ev.filter(e => e.st === 0 && e.i >= 0 && e.t === 'r'), pfa = pre.length && pre[pre.length - 1].i === hero;
         const S = (s) => rp.ev.filter(e => e.st === s && e.i >= 0 && 'xbrcf'.includes(e.t)), ord = (E) => [...new Set(E.map(e => e.i))];
         const E1 = S(1), o1 = ord(E1);
@@ -170,7 +171,9 @@ function aliasStats() {
           let csz = null; if (f[1]) { let pot = 0; const cur = {}; for (const e of rp.ev) { if (e.st && e.st > 0) break; if (!(e.i >= 0)) continue; if (e.t === 'A') pot += e.a || 0; else if (e.t === 'SB' || e.t === 'BB') cur[e.i] = (cur[e.i] || 0) + (e.a || 0); else if (e.t === 'c') cur[e.i] = (cur[e.i] || 0) + (e.a || 0); else if (e.t === 'r') cur[e.i] = e.a || 0; } pot += Object.values(cur).reduce((a, b) => a + b, 0); const me = E1.find(e => e.i === hero && e.t === 'b'), pp = pot && me ? me.a / pot * 100 : null;
             if (pp != null) csz = [pp < 29 ? '1:25' : pp < 40 ? '2:33' : pp < 58 ? '3:50' : pp < 70 ? '4:66' : pp < 88 ? '5:75' : pp < 115 ? '6:100' : '7:120+', Math.round(pp), me.ai ? 1 : 0]; }
           const nT = ord(S(2)).length - 1, nRv = ord(S(3)).length - 1, onlyOpen = pre.length === 1 && !rp.ev.some((e, k) => e.st === 0 && e.t === 'c' && e.i >= 0 && k < rp.ev.indexOf(pre[0])) ? 1 : 0;
-          pc = { ip, csz, nT, nRv, onlyOpen, n: o1.length - 1, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, t, r, fr, dt, drA, drB, pb, pre3: pre.length >= 2 ? 1 : 0 }; } }
+          /* линии (только сверка, TGBOT_AUDIT): мои ходы по улицам, карты, борд, итог */
+          const ln = AUDIT ? { l: [1, 2, 3].map(st => S(st).filter(e => e.i === hero).map(e => ({ x: 'X', b: 'B', r: 'R', c: 'C', f: 'F' })[e.t]).join('')), hc: (rp.hc && rp.hc[hero]) || null, bd: rp.bd || [], rb: Math.round(rb * 100) / 100, sd: wentSD0 ? 1 : 0 } : null;
+          pc = { ln, ip, csz, nT, nRv, onlyOpen, n: o1.length - 1, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, t, r, fr, dt, drA, drB, pb, pre3: pre.length >= 2 ? 1 : 0 }; } }
       // полная сверка (TGBOT_AUDIT=1): как подсчёт понял каждую раздачу → tgbot/data/audit.ndjson
       if (AUDIT) AUD.push(JSON.stringify({ id: room + '#' + rp.handId, rf, vo, oc, iz, bi, sz: sz && [sz[0], sz[1], Math.round(sz[3] * 10) / 10, sz[4], sz[5]], f3i, c3i, fq, fqx, lp, pc }));
       // образцы раздач для ручной проверки (TGBOT_SAMPLE=1 → tgbot/data/samples.json, только на ПК)
