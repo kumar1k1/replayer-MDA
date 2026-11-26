@@ -183,7 +183,7 @@ function specFromBrain(o) {
   if (Array.isArray(o.positions) && o.positions.length > 1) sp.pos = ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'].filter(p => o.positions.includes(p));
   return sp.groups || sp.pos ? sp : null;
 }function intentOf(q) {
-  if (/донк|c-?bet|кбет|конт|си-?бет|чек-?рейз|чекрейз|флоп|т[её]рн|проб|флоат|барр?ел/.test(q)) return 'postflop';
+  if (CB_RE.test(q)) return 'stat'; if (/донк|c-?bet|кбет|конт|си-?бет|чек-?рейз|чекрейз|флоп|т[её]рн|проб|флоат|барр?ел/.test(q)) return 'postflop';
   if (/сквиз|squeeze/.test(q)) return 'sqz';
   if (/(?<![а-яё])(фолд|ответ|против|на)\s*(на\s*)?(3|три|тр[её]х)\s*-?\s*бет|4\s*-?\s*бет|четыр[её]х?бет|vs\s*3/.test(q)) return 'vs3';
   if (/3\s*-?\s*бет|трибет|тр[её]хбет|3bet|защит|против опен|колл опен|на опен/.test(q)) return 'vso';
@@ -237,7 +237,7 @@ const STATS = [
   ['SQ', /квадрат|фиат/],
 ];
 const NO_STAT = /rfi|опен|открыт|первым|стил|сквиз|изо|изол|iso|против\s*(опен|лимп|олл)|колл\s*опен|на\s*опен|винрейт|winrate|выигрыш|профит|bb\/100|бб\/100/;
-function statOf(ql) { if (isBVS(ql)) return 'BVS'; if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
+function statOf(ql) { if (CB_RE.test(ql)) return 'CB'; if (isBVS(ql)) return 'BVS'; if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
 const H3POS = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -331,6 +331,22 @@ function lmpBlocks(P, ql, o) {
   if (!o.table && !o.PL) { const p = pos || 'TOT'; return rows.slice(0, want ? 1 : 1).map(k => { const c = cell(k, p); return { type: 'big', hm: c && c.hm, title: title(P) + ' — ' + K[k][3] + (p === 'TOT' ? '' : ' с ' + p), big: c ? c.v : 'нет данных', n: c ? c.n : 0, ai, note: (k === 'limp' && c ? ['lf', 'lc', 'lr'].map(q => { const z = cell(q, p); return K[q][0] + ' ' + (z ? z.v : '—'); }).join(' · ') + ' · ' : '') + note }; }); }
   const cols = o.PL ? ['TOT', ...o.PL.filter(p => LMP_POS.includes(p) && p !== 'TOT')] : ['TOT', 'EP', 'MP', 'HJ', 'CO', 'BTN'];
   return [{ type: 'table', title: title(P) + ' — лимпы по позициям', note, ai, table: { head: ['Limp', ...cols], rows: rows.map(k => [k === 'limp' ? 'TOT' : K[k][0], ...cols.map(p => cell(k, p))]), grid: true, heatRow: true } }];
+}// ---------- продолженная ставка в позиции (алиас — ext.cb.ip; 26.11.2026) ----------
+// я последний рейзил до флопа и на флопе хожу последним; CB — ставка, когда мне чекнули; Turn / River — следующая ставка после ставки, которую заколлировали;
+// CB-Fold / Call / Raise — ответ на рейз после ставки на флопе (Raise — против рейза не олл-ином); Delay CB — флоп прочекали, ставка на тёрне; River — флоп и тёрн прочекали; +Bet — ривер после отложенной на тёрне
+const CB_RE = /c-?bet|си-?бет|ц-?бет|цэ-?бет|кбет|конт[а-яё]*\s*ставк|продолж[а-яё]*\s*ставк|отложенн[а-яё]*\s*(ставк|бет|цбет)|delay/;
+function cbBlocks(P, ql, o) {
+  if (/без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)/.test(ql)) return [{ type: 'text', text: 'Продолженная ставка без позиции пока не посчитана — сейчас есть в позиции (IP).' }];
+  const { bands } = o, mode = aiMode(ql), st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
+  const x = new Array(22).fill(0); for (const b of bands) { const r = P.ext.cb.ip && P.ext.cb.ip[b]; if (r) for (let j = 0; j < 22; j++) x[j] += r[j] || 0; }
+  const c = (num, den, m) => (den ? { v: pctS(num, den), n: den, hm: HMref(P, 'cb|ip', m, bands) } : { v: '—', n: 0 });
+  const fd = mode === 'ai' ? x[11] : mode === 'nai' ? x[9] : x[6], ffv = mode === 'ai' ? x[12] : mode === 'nai' ? x[7] - x[12] : x[7], fcv = mode === 'ai' ? x[13] : mode === 'nai' ? x[8] - x[13] : x[8], sfx = mode === 'all' ? '' : mode;
+  const C = { f: ['CB флоп', c(x[1], x[0], 'f')], t: ['CB тёрн', c(x[3], x[2], 't')], r: ['CB ривер', c(x[5], x[4], 'r')], ff: ['CB-Fold', c(ffv, fd, 'ff' + sfx)], fc: ['CB-Call', c(fcv, fd, 'fc' + sfx)], fr: ['CB-Raise', c(x[10], x[9], 'frnai')], dt: ['Delay CB тёрн', c(x[15], x[14], 'dt')], dr: ['Delay CB ривер', c(x[17], x[16], 'dr')], pb: ['+Bet ривер', c(x[19], x[18], 'pb')] };
+  const note = 'я последним рейзил до флопа и на флопе хожу последним; CB — ставка, когда мне чекнули; тёрн / ривер — следующая ставка после заколлированной; CB-Fold / Call / Raise — мой ответ на рейз после ставки на флопе (Raise — против рейза не олл-ином); Delay CB — флоп прочекали, ставка на тёрне (ривер — флоп и тёрн прочекали); +Bet — ставка на ривере после заколлированной отложенной' + st;
+  const ai = mode === 'nai' ? 'рейз на мою ставку — не олл-ин' : mode === 'ai' ? 'рейз на мою ставку — олл-ин' : 'любой рейз; CB-Raise — против рейза не олл-ином';
+  const want = /(c-?bet|бет|ставк)[а-яё]*[\s-]*(фолд|fold)|фолд[а-яё]*\s*(на\s*)?рейз/.test(ql) ? 'ff' : /(c-?bet|бет|ставк)[а-яё]*[\s-]*(колл?|кол|call)|колл?[а-яё]*\s*(на\s*)?рейз/.test(ql) ? 'fc' : /(c-?bet|бет|ставк)[а-яё]*[\s-]*(рейз|raise|ререйз)|ререйз/.test(ql) ? 'fr' : /отложен|delay/.test(ql) ? (/ривер/.test(ql) ? 'dr' : 'dt') : /\+\s*бет|плюс\s*бет/.test(ql) ? 'pb' : /ривер/.test(ql) ? 'r' : /т[её]рн/.test(ql) ? 't' : 'f';
+  if (!WANT_TABLE.test(ql) && !/таблиц|все|по\s*улиц|бет(ы|ов)|ставки|bets/.test(ql)) { const k = C[want]; return [{ type: 'big', hm: k[1].hm, title: title(P) + ' — ' + k[0] + ' в позиции', big: k[1].n ? k[1].v : 'нет данных', n: k[1].n, ai: ['ff', 'fc', 'fr'].includes(want) ? ai : undefined, note: (want === 'f' && x[0] ? 'тёрн ' + C.t[1].v + ' · ривер ' + C.r[1].v + ' · ' : '') + note }]; }
+  return [{ type: 'table', title: title(P) + ' — продолженная ставка в позиции', note, ai, table: { head: ['IP', 'Flop', 'Turn', 'River'], rows: [['CB', C.f[1], C.t[1], C.r[1]], ['CB-Fold', C.ff[1], '', ''], ['CB-Call', C.fc[1], '', ''], ['CB-Raise', C.fr[1], '', ''], ['Delay CB', '', C.dt[1], C.dr[1]], ['+Bet', '', '', C.pb[1]]], grid: true } }];
 }// ---------- изолейт по позициям (алиас — ext.iso; сверено с таблицей владельца 24.11.2026) ----------
 // строки: против 1 лимпера / ISO Fold / против 2+ лимперов / ISO Fold; ISO Fold — изолировали, лимпер ответил рейзом (3-бет / пуш), мы сбросили
 const IPOS = ['TOT', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -537,6 +553,7 @@ function fsqBlocks(P, ql, o) {
   if (id === 'F3') { const a = c('F3Bet'); return [big('фолд на 3-бет', f1(a.p) + '%', a.n, '')]; }
   if (id === 'BR' || id === 'FRB') { const a = c(id === 'BR' ? 'BetRiverHU' : 'FoldRiverBetHU'); return [big(STAT_RU[id], f1(a.p) + '%', a.n, 'банки один на один')]; }
   if (id === 'SQZ') { if (!(P.ext && P.ext.sq)) { const t = famTable(P, 'sqz', TT.bands, TT.byBand, TT.G); return [{ type: 'table', title: title(P) + ' — ' + FAM_T.sqz, note: 'у игроков базы — по стекам, без позиций', table: t }]; } return sqBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql)), byBand: TT.byBand, vs: true }); }
+  if (id === 'CB') { if (!(P.ext && P.ext.cb)) return [{ type: 'text', text: 'Продолженная ставка пока посчитана только по вашей базе; у игроков базы появится после прохода по базе.' }]; return cbBlocks(P, ql, { bands: TT.bands }); }
   if (id === 'BVS') { if (!(P.ext && P.ext.v3m)) return [{ type: 'text', text: 'Таблица «блайнд против опенов» пока посчитана только по вашей базе.' }]; return bvsBlocks(P, ql, (TT.G && TT.G.length === 1 ? TT.G[0][1] : null) || TT.bands); }
   if (id === 'FSQ') { if (!(P.ext && P.ext.fsq)) return [{ type: 'text', text: 'Ответ на сквиз пока посчитан только по вашей базе.' }]; return fsqBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql)) && !TT.byBand, byBand: TT.byBand }); }
   if (id === 'F4') { if (!(P.ext && P.ext.f4)) return [{ type: 'text', text: 'Фолд на 4-бет пока посчитан только по вашей базе.' }]; return f4Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) }, 'fold'); }
