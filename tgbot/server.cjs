@@ -308,6 +308,29 @@ function bvsBlocks(P, ql, bands) {
   return H.map(h => { const get = (o) => { const x = [0, 0, 0, 0]; for (const b of bands) { const r = P.ext.v3m[h] && P.ext.v3m[h][o] && P.ext.v3m[h][o][b]; if (r) for (let j = 0; j < 4; j++) x[j] += r[j]; } return x; };
     return { type: 'table', title: title(P) + ' — ' + h + ' против опенов', note: 'колонки — кто открыл; один опен (не олл-ин) без коллеров и лимпов, мы на ' + h + ' отвечаем' + st, ai: mode === 'nai' ? '3-бет без олл-инов' : mode === 'ai' ? '3-бет олл-ином' : '3B — общий · NAI — без олл-ина · AI — олл-ином',
       table: { head: [h + ' vs', ...O.map(o => LAB[o] || o)], rows: R.map(([lab, m, f]) => [lab, ...O.map(o => { const x = get(o); return x[0] ? { v: pctS(f(x), x[0]), n: x[0], hm: HMref(P, 'v3m|' + h + '|' + o, m, bands) } : ''; })]), grid: true, heatRow: true } }; });
+}// ---------- лимп первым (алиас — ext.lmp; 26.11.2026, правило сверено с таблицей владельца) ----------
+// TOT — лимп из возможностей открыться; L-F / L-C / L-R — после лимпа ровно один рейз, за нами никто не лимпил, рейз никто не заколлировал;
+// L-R — только против рейза не олл-ином (на олл-ин рейзить нельзя). TOT колонки — без SB
+const LMP_POS = ['TOT', 'EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'];
+function lmpBlocks(P, ql, o) {
+  if (o.pos === 'BB') return [{ type: 'text', title: title(P) + ' — лимп с BB', text: 'С BB лимпа не бывает: BB уже поставил блайнд и может только чекнуть или рейзнуть.' }];
+  const { bands } = o, mode = aiMode(ql), st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
+  const get = (p) => { const x = new Array(10).fill(0); for (const b of bands) { const r = P.ext.lmp[p] && P.ext.lmp[p][b]; if (r) for (let j = 0; j < 10; j++) x[j] += r[j] || 0; } return x; };
+  const d = (x) => (mode === 'ai' ? x[6] : mode === 'nai' ? x[2] - x[6] : x[2]), v = (x, j) => (mode === 'ai' ? x[j + 4] : mode === 'nai' ? x[j] - x[j + 4] : x[j]), sfx = mode === 'all' ? '' : mode;
+  const K = {
+    limp: ['Limp', (x) => ({ v: pctS(x[1], x[0]), n: x[0] }), 'limp', 'лимп первым'],
+    lf: ['L-F', (x) => ({ v: pctS(v(x, 3), d(x)), n: d(x) }), 'lf' + sfx, 'лимп-фолд'],
+    lc: ['L-C', (x) => ({ v: pctS(v(x, 4), d(x)), n: d(x) }), 'lc' + sfx, 'лимп-колл'],
+    lr: ['L-R', (x) => ({ v: pctS(x[5] - x[9], x[2] - x[6]), n: x[2] - x[6] }), 'lrnai', 'лимп-рейз'] };
+  const want = /лимп[\s-]*(фолд|fold)|(^|[^a-z])l-?f([^a-z]|$)/.test(ql) ? 'lf' : /лимп[\s-]*(колл?|кол|call)|(^|[^a-z])l-?c([^a-z]|$)/.test(ql) ? 'lc' : /лимп[\s-]*(рейз|рэйз|raise)|(^|[^a-z])l-?r([^a-z]|$)/.test(ql) ? 'lr' : null;
+  const rows = want ? [want] : mode === 'ai' ? ['limp', 'lf', 'lc'] : ['limp', 'lf', 'lc', 'lr'];
+  const note = 'лимп — первыми в банк коллируем BB (из возможностей открыться); L-F / L-C / L-R — после лимпа ровно один рейз, за нами никто не лимпил, рейз до нас никто не заколлировал; L-R — против рейза не олл-ином; TOT — без SB' + st;
+  const ai = mode === 'nai' ? 'рейз после лимпа — не олл-ин' : mode === 'ai' ? 'рейз после лимпа — олл-ин' : 'любой рейз, L-R — против рейза не олл-ином';
+  const cell = (k, p) => { const x = get(p), c = K[k][1](x); return c.n ? { v: c.v, n: c.n, hm: HMref(P, 'lmp|' + p, K[k][2], bands) } : ''; };
+  const pos = o.pos && LMP_POS.includes(o.pos) ? o.pos : null;
+  if (!o.table && !o.PL) { const p = pos || 'TOT'; return rows.slice(0, want ? 1 : 1).map(k => { const c = cell(k, p); return { type: 'big', hm: c && c.hm, title: title(P) + ' — ' + K[k][3] + (p === 'TOT' ? '' : ' с ' + p), big: c ? c.v : 'нет данных', n: c ? c.n : 0, ai, note: (k === 'limp' && c ? ['lf', 'lc', 'lr'].map(q => { const z = cell(q, p); return K[q][0] + ' ' + (z ? z.v : '—'); }).join(' · ') + ' · ' : '') + note }; }); }
+  const cols = o.PL ? ['TOT', ...o.PL.filter(p => LMP_POS.includes(p) && p !== 'TOT')] : ['TOT', 'EP', 'MP', 'HJ', 'CO', 'BTN'];
+  return [{ type: 'table', title: title(P) + ' — лимпы по позициям', note, ai, table: { head: ['Limp', ...cols], rows: rows.map(k => [k === 'limp' ? 'TOT' : K[k][0], ...cols.map(p => cell(k, p))]), grid: true, heatRow: true } }];
 }// ---------- изолейт по позициям (алиас — ext.iso; сверено с таблицей владельца 24.11.2026) ----------
 // строки: против 1 лимпера / ISO Fold / против 2+ лимперов / ISO Fold; ISO Fold — изолировали, лимпер ответил рейзом (3-бет / пуш), мы сбросили
 const IPOS = ['TOT', 'MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'];
@@ -507,6 +530,7 @@ function fsqBlocks(P, ql, o) {
   if (id === 'SQ') { const k = card(P); return [{ type: 'card', title: title(P) + ' — квадрат', square: k.square }]; }
   if (id === 'VPIPPFR') { const a = c('VPIP'), b = c('PFR'); return [big('VPIP / PFR', f1(a.p) + ' / ' + f1(b.p), a.n, '')]; }
   if (id === 'VPIP' || id === 'PFR') { const a = c(id); return [big(id, f1(a.p) + '%', a.n, '')]; }
+  if (id === 'LIMP' && P.ext && P.ext.lmp && TT) return lmpBlocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) });
   if (id === 'LIMP') { const a = c('LimpNSB'); return [big('лимп первым (кроме SB)', f1(a.p) + '%', a.n, '')]; }
   if (id === 'F3' && P.ext && P.ext.f3 && TT) return f3Blocks(P, ql, { bands: TT.bands, PL: TT.PL, pos: TT.PL ? null : posOf(ql), table: !!(WANT_TABLE.test(ql) || TT.byBand) });
   if (id === 'F3' && /в\s*позиц|без\s*позиц|oop|(^|[^a-z])ip([^a-z]|$)/.test(ql) && !(P.ext && P.ext.f3)) { const a = c('F3Bet'); return [{ type: 'big', title: title(P) + ' — фолд на 3-бет', big: f1(a.p) + '%', n: a.n, note: 'в позиции / без позиции отдельно пока посчитано только по вашей базе — здесь общий фолд на 3-бет' }]; }

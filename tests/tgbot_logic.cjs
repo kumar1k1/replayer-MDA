@@ -56,5 +56,8 @@ const POS6 = ['MP', 'HJ', 'CO', 'BTN', 'SB', 'BB'], OPEN = ['EP', 'MP', 'HJ', 'C
       const bs = sumV(Object.keys(R[p]).filter(b => b !== 'all').map(b => R[p][b])); chk('ответ на сквиз ' + rl + ' ' + p + ': стеки = все', x.every((v, j) => v === bs[j]), bs + ' / ' + x); }
     const s = sumV(POS7.map(p => A(R[p]))), t = A(R.TOT); chk('ответ на сквиз ' + rl + ': TOT = позиции', t.every((v, j) => v === s[j]), t + ' / ' + s); }
   const c = A(E.fsq.cc.TOT), f = A(E.fsq.ccF && E.fsq.ccF.TOT), k = A(E.fsq.ccC && E.fsq.ccC.TOT); chk('ответ на сквиз: открывший сбросил + заколлировал ≤ коллер', f[0] + k[0] <= c[0], f[0] + ' + ' + k[0] + ' / ' + c[0]); }
+// 10) лимпы: фолд + колл + рейз = раз (и против олл-ина); лимп ≤ возможностей; TOT = позиции без SB; стеки = все
+{ const M = E.lmp || {}; for (const p of Object.keys(M)) { const x = A(M[p]); chk('лимп ' + p + ': фолд+колл+рейз = раз', x[3] + x[4] + x[5] === x[2] && x[7] + x[8] + x[9] === x[6] && x[6] <= x[2] && x[2] <= x[1] && x[1] <= x[0], x); const bs = sumV(Object.keys(M[p]).filter(b => b !== 'all').map(b => M[p][b])); chk('лимп ' + p + ': стеки = все', x.every((v, j) => v === bs[j]), bs + ' / ' + x); }
+  const s = sumV(['EP', 'MP', 'HJ', 'CO', 'BTN'].map(p => A(M[p]))), t = A(M.TOT); chk('лимп: TOT = позиции без SB', t.every((v, j) => v === s[j]), t + ' / ' + s); }
 console.log('проверок: ' + (ok + bad.length) + ', прошли: ' + ok + ', не прошли: ' + bad.length);
 for (const b of bad) console.log('✗ ' + b);
