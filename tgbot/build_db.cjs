@@ -17,7 +17,7 @@ const log = (s) => console.log(new Date().toTimeString().slice(0, 8) + ' ' + s);
 const NCL = ST.CL.length, NPF = ST.PF_SLOTS;
 /* продолженная ставка: виды банков — ip все, hu один на один, mw — трое и больше, я открылся первым (владелец 26.11.2026); в mw тёрн / ривер — только если на улице ещё трое и больше */
 const cbKinds = (pc) => ['ip', pc.n === 1 ? 'hu' : null, pc.n >= 2 && pc.onlyOpen ? 'mw' : null].filter(Boolean);
-const cbView = (pc, kd) => { if (kd !== 'mw') return pc; const z = (v, ok) => (ok ? v : [0, 0]); return { ...pc, t: z(pc.t, pc.nT >= 2), r: z(pc.r, pc.nRv >= 2), drA: z(pc.drA, pc.nRv >= 2), pb: pc.pb /* +Bet — без условия «трое на ривере» (так ближе к таблице владельца, уточнить) */, dt: z(pc.dt, pc.nT >= 2) }; };
+const cbView = (pc, kd) => { if (kd !== 'mw') return pc; const z = (v, ok) => (ok ? v : [0, 0]); return { ...pc, t: z(pc.t, pc.nT >= 2), r: z(pc.r, pc.nRv >= 2), drA: z(pc.drA, pc.nRv >= 2), pb: pc.pb /* +Bet — без условия «трое на ривере» (сверено: 43,8 против 41 у владельца) */, dt: z(pc.dt, pc.nT >= 2) }; };
 const sparse = (a) => { const o = []; for (let i = 0; i < a.length; i++) if (a[i]) o.push(i + ':' + a[i]); return o.join(','); };
 // ---------- алиас владельца: статы по его раздачам ----------
 // образцы для ручной проверки: по 6 случайных раздач на стат (резервуар)
