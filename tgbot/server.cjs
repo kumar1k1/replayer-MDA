@@ -161,6 +161,8 @@ const BANDR = { '<12': [0, 12], '12-19': [12, 20], '20-35': [20, 36], '36-59': [
 // диапазон стеков берём, если он хотя бы наполовину внутри названного интервала (40–80 → 36–59 и 60–99)
 const bandsIn = (lo, hi) => BANDS.filter(b => { const [a, z0] = BANDR[b], z = z0 === Infinity ? 200 : z0, L = lo == null ? 0 : lo, H = hi == null ? Infinity : hi; const ov = Math.min(z, H) - Math.max(a, L); return ov > 0 && ov / (z - a) >= 0.5; });
 // Whisper иногда повторяет фразу дважды — убираем повтор
+/* частые ошибки распознавания голоса (26.11.2026): «ривень / ривел / ривэр» → ривер, «размером в под» → в пот, «тэрн» → тёрн */
+const voiceFix = (q) => String(q || '').replace(/(^|[^а-яё])рив[еэ](н|л)[ьяеюи]?(?![а-яё])/gi, '$1ривер').replace(/(^|[^а-яё])рив[еэ]р(а|е|у|ом)?(?![а-яё])/gi, (m, a, b) => a + 'ривер' + (b || '')).replace(/(^|[^а-яё])т[эе]рн/gi, '$1тёрн').replace(/(размер[а-яё]*\s*(в\s*)?)под(?![а-яё])/gi, '$1пот').replace(/(ставк[а-яё]*|б[еэ]т[а-яё]*)\s+в\s+под(?![а-яё])/gi, '$1 в пот');
 const dedupPhrase = (q) => { const p = String(q || '').split(/(?<=[.!?])\s+/); const out = p.filter((x, i) => i === 0 || x.trim().toLowerCase() !== p[i - 1].trim().toLowerCase()); return out.join(' '); };
 const grpLabel = (name, bs) => { const a = BANDR[bs[0]][0], z = BANDR[bs[bs.length - 1]][1]; const r = a === 0 ? 'до ' + z + ' bb' : z === Infinity ? a + '+ bb' : a + '–' + (z - 1) + ' bb'; return name ? name + ' (' + r + ')' : r; };
 const SG = { short: ['короткие', 0, 20], mid: ['средние', 20, 60], deep: ['большие', 60, null] };
@@ -1006,7 +1008,7 @@ const srv = http.createServer(async (req, res) => {
     const t0 = Date.now(); let out;
     const q0 = u.searchParams.get('q'), ctx = u.searchParams.get('ctx'), key = u.searchParams.get('key');
     let alts = []; try { alts = JSON.parse(u.searchParams.get('alts') || '[]').filter(x => typeof x === 'string').slice(0, 12); } catch (e) { alts = []; }
-    try { NOBRAIN = !!u.searchParams.get('nobrain'); let mem = []; try { mem = JSON.parse(u.searchParams.get('mem') || '[]').filter(x => x && typeof x === 'object').slice(-3); } catch (e) { mem = []; } out = await ask(dedupPhrase(q0), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || '', mem); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; }
+    try { NOBRAIN = !!u.searchParams.get('nobrain'); let mem = []; try { mem = JSON.parse(u.searchParams.get('mem') || '[]').filter(x => x && typeof x === 'object').slice(-3); } catch (e) { mem = []; } out = await ask(dedupPhrase(voiceFix(q0)), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || '', mem); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; }
     try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, brain: out.brain || null, heard: out.heard, intent: out.intent, player: out.player || null }) + '\n'); } catch (e) {}
     out.ms = Date.now() - t0;
     return J(out);
