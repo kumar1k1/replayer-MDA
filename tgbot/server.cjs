@@ -366,8 +366,10 @@ function cbBlocks(P, ql, o) {
 const BSK_RE = /б[еэ]т[а-яё]*\s*-?\s*(фолд[а-яё]*\s*)?(в\s*|на\s*)?(скип|пропуск)|ставк[а-яё]*\s*(в|на)\s*пропуск|(bet|b)\s*vs\s*skip|bet\s*-?\s*skip|пропущенн[а-яё]*\s*(бет|ставк)/;
 function bskBlocks(P, ql, o) {
   const OOP = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|(^|[^a-z])oop([^a-z]|$)|out\s*of\s*position|аут\s*оф\s*поз/, qi = ql.replace(new RegExp(OOP.source, 'g'), ' '), isMW = /мульти|мульт[иы]\s*-?\s*пот|мультик|multi/.test(ql), isOOP = OOP.test(ql), isIP = /(^|[^а-яё])в\s*позици|(^|[^a-z])ip([^a-z]|$)|in\s*position/.test(qi);
-  if (!isMW || (!isIP && !isOOP)) return [{ type: 'text', text: 'Ставка на пропуск посчитана в мультивее, когда я коллер до флопа — в позиции и без позиции. Спросите со словами «в мультивее» и «в позиции» / «без позиции», например: «мой бет в пропуск в мультивее в позиции».' }];
-  if (isIP && isOOP) return [...bskBlocks(P, qi + ' в позиции', o), ...bskBlocks(P, qi.replace(/(^|[^а-яё])в\s*позици[а-яё]*/g, ' ') + ' без позиции', o)];
+  if (!isMW || (!isIP && !isOOP)) return [{ type: 'text', text: 'Ставка на пропуск посчитана в мультивее, когда я коллер до флопа и хожу последним. Спросите со словами «в мультивее» и «в позиции», например: «мои беты в пропуск в мультивее в позиции».' }];
+  /* без позиции пока не показываем (владелец 26.11.2026) — только в позиции */
+  if (isOOP && !isIP) return [{ type: 'text', text: 'Ставка на пропуск без позиции пока не показывается — есть только в позиции: «мои беты в пропуск в мультивее в позиции».' }];
+  if (isIP && isOOP) return bskBlocks(P, qi + ' в позиции', o);
   const kd = isOOP ? 'oop' : 'ip', { bands } = o, x = new Array(10).fill(0); for (const b of bands) { const r = P.ext.bsk[kd] && P.ext.bsk[kd][b]; if (r) for (let j = 0; j < 10; j++) x[j] += r[j]; }
   const c = (num, den, m) => (den ? { v: pctS(num, den), n: den, hm: HMref(P, 'bsk|' + kd, m, bands) } : { v: '—', n: 0 });
   const C = { f: ['B vs Skip флоп', c(x[1], x[0], 'f')], t: ['B vs Skip тёрн', c(x[3], x[2], 't')], r: ['B vs Skip ривер', c(x[5], x[4], 'r')], ff: ['B-Fold', c(x[7], x[6], 'ff')] }, KD = { ip: ' в мультивее, в позиции', oop: ' в мультивее, без позиции' };
