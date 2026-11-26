@@ -16,8 +16,8 @@ const log = (s) => console.log(new Date().toTimeString().slice(0, 8) + ' ' + s);
 
 const NCL = ST.CL.length, NPF = ST.PF_SLOTS;
 /* продолженная ставка: виды банков — ip все, hu один на один, mw — трое и больше, я открылся первым (владелец 26.11.2026); в mw тёрн / ривер — только если на улице ещё трое и больше */
-const cbKinds = (pc) => ['ip', pc.n === 1 ? 'hu' : null, pc.n >= 2 && pc.onlyOpen ? 'mw' : null].filter(Boolean);
-const cbView = (pc, kd) => { if (kd !== 'mw') return pc; const z = (v, ok) => (ok ? v : [0, 0]); return { ...pc, t: z(pc.t, pc.nT >= 2), r: z(pc.r, pc.nRv >= 2), drA: z(pc.drA, pc.nRv >= 2), pb: pc.pb /* +Bet — без условия «трое на ривере» (сверено: 43,8 против 41 у владельца) */, dt: z(pc.dt, pc.nT >= 2) }; };
+const cbKinds = (pc) => (pc.ip ? ['ip', pc.n === 1 ? 'hu' : null, pc.n >= 2 && pc.onlyOpen ? 'mw' : null] : ['oop', pc.n === 1 ? 'huo' : null, pc.n >= 2 && pc.onlyOpen ? 'mwo' : null]).filter(Boolean);
+const cbView = (pc, kd) => { if (kd !== 'mw' && kd !== 'mwo') return pc; const z = (v, ok) => (ok ? v : [0, 0]); return { ...pc, t: z(pc.t, pc.nT >= 2), r: z(pc.r, pc.nRv >= 2), drA: z(pc.drA, pc.nRv >= 2), pb: pc.pb /* +Bet — без условия «трое на ривере» (сверено: 43,8 против 41 у владельца) */, dt: z(pc.dt, pc.nT >= 2) }; };
 const sparse = (a) => { const o = []; for (let i = 0; i < a.length; i++) if (a[i]) o.push(i + ':' + a[i]); return o.join(','); };
 // ---------- алиас владельца: статы по его раздачам ----------
 // образцы для ручной проверки: по 6 случайных раздач на стат (резервуар)
@@ -153,7 +153,7 @@ function aliasStats() {
       let pc = null; { const pre = rp.ev.filter(e => e.st === 0 && e.i >= 0 && e.t === 'r'), pfa = pre.length && pre[pre.length - 1].i === hero;
         const S = (s) => rp.ev.filter(e => e.st === s && e.i >= 0 && 'xbrcf'.includes(e.t)), ord = (E) => [...new Set(E.map(e => e.i))];
         const E1 = S(1), o1 = ord(E1);
-        if (pfa && o1.length >= 2 && o1[o1.length - 1] === hero) {
+        if (pfa && o1.length >= 2 && o1.includes(hero)) { const ip = o1[o1.length - 1] === hero ? 1 : 0; /* OOP — после меня на флопе ходит кто-то ещё (26.11.2026) */
           /* на улице: всё до моего первого хода — чеки? мой первый ход; после моей ставки — рейз соперника и мой ответ */
           const st = (E) => { const k = E.findIndex(e => e.i === hero); if (k < 0) return null; const me = E[k], before = E.slice(0, k), after = E.slice(k + 1), rz = after.findIndex(e => e.i !== hero && e.t === 'r'), nx = after.findIndex(e => e.i === hero);
             return { ck: before.every(e => e.t === 'x'), act: me.t, raised: rz >= 0, raiseAI: rz >= 0 ? !!after[rz].ai : false, nR: after.filter(e => e.t === 'r').length, resp: rz >= 0 && nx > rz ? after[nx].t : null, allX: E.every(e => e.t === 'x'), meAI: !!me.ai }; };
@@ -170,7 +170,7 @@ function aliasStats() {
           let csz = null; if (f[1]) { let pot = 0; const cur = {}; for (const e of rp.ev) { if (e.st && e.st > 0) break; if (!(e.i >= 0)) continue; if (e.t === 'A') pot += e.a || 0; else if (e.t === 'SB' || e.t === 'BB') cur[e.i] = (cur[e.i] || 0) + (e.a || 0); else if (e.t === 'c') cur[e.i] = (cur[e.i] || 0) + (e.a || 0); else if (e.t === 'r') cur[e.i] = e.a || 0; } pot += Object.values(cur).reduce((a, b) => a + b, 0); const me = E1.find(e => e.i === hero && e.t === 'b'), pp = pot && me ? me.a / pot * 100 : null;
             if (pp != null) csz = [pp < 29 ? '1:25' : pp < 40 ? '2:33' : pp < 58 ? '3:50' : pp < 70 ? '4:66' : pp < 88 ? '5:75' : pp < 115 ? '6:100' : '7:120+', Math.round(pp), me.ai ? 1 : 0]; }
           const nT = ord(S(2)).length - 1, nRv = ord(S(3)).length - 1, onlyOpen = pre.length === 1 && !rp.ev.some((e, k) => e.st === 0 && e.t === 'c' && e.i >= 0 && k < rp.ev.indexOf(pre[0])) ? 1 : 0;
-          pc = { csz, nT, nRv, onlyOpen, n: o1.length - 1, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, t, r, fr, dt, drA, drB, pb, pre3: pre.length >= 2 ? 1 : 0 }; } }
+          pc = { ip, csz, nT, nRv, onlyOpen, n: o1.length - 1, band: rfiBand(d0 ? d0.stackTot : rp.stacks[hero] / rp.bb), f, t, r, fr, dt, drA, drB, pb, pre3: pre.length >= 2 ? 1 : 0 }; } }
       // полная сверка (TGBOT_AUDIT=1): как подсчёт понял каждую раздачу → tgbot/data/audit.ndjson
       if (AUDIT) AUD.push(JSON.stringify({ id: room + '#' + rp.handId, rf, vo, oc, iz, bi, sz: sz && [sz[0], sz[1], Math.round(sz[3] * 10) / 10, sz[4], sz[5]], f3i, c3i, fq, fqx, lp, pc }));
       // образцы раздач для ручной проверки (TGBOT_SAMPLE=1 → tgbot/data/samples.json, только на ПК)
