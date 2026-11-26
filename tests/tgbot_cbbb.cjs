@@ -9,7 +9,7 @@ const want = (R) => [['CB', () => true], ['CB до 35% банка', (p) => p < 3
   const fl = R.filter(r => r[2]), cb = fl.filter(r => r[3] && ok(r[4])), tu = cb.filter(r => r[7]), rv = tu.filter(r => r[8] && r[10]);
   return [lab, [cb.length, fl.length], [tu.filter(r => r[8]).length, tu.length], [rv.filter(r => r[11]).length, rv.length]]; });
 /* CB-Fold / Call / 3Bet: ответ на рейз после моей ставки — флоп [5], тёрн [35], ривер [36] (1 фолд, 2 колл, 3 рейз) */
-const wantR = (R) => [['CB-Fold', 1], ['CB-Call', 2], ['CB-3Bet', 3]].map(([lab, k]) => [lab, ...[5, 35, 36].map(i => { const xs = R.filter(r => r[i] >= 1 && r[i] <= 3); return [xs.filter(r => r[i] === k).length, xs.length]; })]);
+const wantR = (R) => [['CB-Fold', 1], ['CB-Call', 2], ['CB-3Bet', 3]].map(([lab, k]) => [lab, ...[[5, 6], [35, 37], [36, 38]].map(([i, ai]) => { const xs = R.filter(r => r[i] >= 1 && r[i] <= 3 && (k !== 3 || !r[ai])); return [xs.filter(r => r[i] === k).length, xs.length]; })]); /* 3Bet — без чек-рейзов олл-ином */
 const Q = ['мои конбеты против BB', 'таблица моих конбетов как рейзер против большого блайнда вдвоём', 'мои цбеты против бб', 'c-bet против big blind', 'мои контбеты против ББ один на один', 'мои комбеты на бб', 'Total CBET рейзер против BB, хедс-ап', 'тотал цбет хедс-ап банк как рейзер', 'total c-bet рейзер против большого блайнда', 'мои конбеты в хедз-ап банке', 'мой цбет один на один как рейзер'];
 const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] /* только в позиции (владелец 26.11.2026): SB не берём, «без позиции» — та же таблица */, STK = [['', null], [' на 20-35 бб', [20, 35]], [' на больших стеках', 'big']];
 (async () => {
