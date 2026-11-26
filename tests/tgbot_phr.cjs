@@ -65,7 +65,7 @@ const IDX = { mw: { f: [2, 3, 4], at: [22, 23, 24], ar: [25, 26, 27], dt: [13, 1
     if (!T) { chk(false, q, 'нет ответа про размер: ' + titles); continue; }
     chk(String(T.title).includes(KDT[kind]), q, 'не тот спот: ' + T.title);
     const [o, d, s] = IDX[kind][cell], R = E.rec[kind].filter(r => bands.includes(r[0])), den = R.filter(r => r[o]), all = den.filter(r => r[d]), nm = all.filter(r => r[s] >= lo && r[s] < hi), SDI = kind === 'bsk' ? 19 : 28, sd = nm.filter(r => r[SDI]), won = sd.filter(r => r[SDI + 1]), wa = nm.filter(r => r[SDI + 2]);
-    const want = [[nm.length, den.length], [nm.length, all.length], [wa.length, nm.length], [sd.length, nm.length], [won.length, sd.length]];
+    const SXI = (kind === 'bsk' ? 22 : 31) + ({ f: 0, t: 1, at: 1, dt: 1 }[cell] != null ? { f: 0, t: 1, at: 1, dt: 1 }[cell] : 2), suc = nm.filter(r => r[SXI] === 1); const want = [[nm.length, den.length], [nm.length, all.length], [suc.length, nm.length], [wa.length, nm.length], [sd.length, nm.length], [won.length, sd.length]];
     T.table.rows.forEach((row, i) => { const [x, y] = want[i], c = row[1]; chk(y ? c.n === y && Math.abs(num(c.v) - pct(x, y)) < 0.06 : !c.n, q, row[0] + ': бот ' + c.v + ' / ' + c.n + ', пересчёт ' + pct(x, y) + '% / ' + y); });
     chk((a.blocks || []).length === 1, q, 'лишние ответы: ' + titles);
   }

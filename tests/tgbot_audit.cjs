@@ -98,7 +98,7 @@ function textLines(h) {
     return [line, sz, out, rx]; });
 }
 const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(f => f.isDirectory() ? walk(path.join(d, f.name)) : [path.join(d, f.name)]);
-const stat = {}, ex = {}, IND = {}, SKIP = [], SKC = new Set(), SZ = { n: 0, ok: 0, bad: [] }, MLC = { n: 0, ok: 0, bad: [] }; let seen = 0;
+const stat = {}, ex = {}, IND = {}, SKIP = [], SKC = new Set(), SZ = { n: 0, ok: 0, bad: [] }, MLC = { n: 0, ok: 0, bad: [] }, SUC = { n: 0, ok: 0, bad: [] }; let seen = 0;
 const bump = (k, ok, id, info) => { const s = stat[k] = stat[k] || { ok: 0, bad: 0 }; if (ok) s.ok++; else { s.bad++; (ex[k] = ex[k] || []).length < 8 && ex[k].push(id + '  ' + info); } };
 for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
   const t = fs.readFileSync(f, 'utf8').replace(/^﻿/, ''); if (/^\s*Winamax Poker - Tournament summary/.test(t)) continue;
@@ -121,6 +121,7 @@ for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
       if (I.c3) for (const p of [I.c3[0], 'TOT']) H('c3|' + p, 'call', I.c3[1]);
       if (I.f3) for (const p of I.f3[0] === 'SB' ? ['SB'] : [I.f3[0], 'TOT']) for (const w of [I.f3[1] ? 'ip' : 'oop', 'all']) { H('f3|' + p + '|' + w, 'fold', I.f3[3]); H('f3|' + p + '|' + w, 'call', I.f3[4]); }
     } }
+    /* успешность ставки (pc.fo / bk.fo — что было после моей ставки на улице) против текста */ for (const X of [A.pc, A.bk]) { if (!X || !X.fo) continue; const T = textLines(h); if (!T) continue; for (let s = 0; s < 3; s++) { SUC.n++; const want = (T[s][0] || '')[0] === 'B' ? T[s][2] : 0; if (X.fo[s] === want) SUC.ok++; else if (SUC.bad.length < 10) SUC.bad.push(id + ' улица ' + (s + 1) + ': подсчёт ' + X.fo[s] + ', текст ' + want + ' (' + T[s][0] + ')'); } }
     /* линии мультивея: подсчёт (ml) против текста — линия, размер ставки, рейз во сколько раз, что было после */ if (A.ml) { const T = textLines(h); if (T) for (let s = 0; s < 3; s++) { MLC.n++; const x = A.ml.st[s], t = T[s], ok = x[0] === t[0] && Math.abs(x[1] - t[1]) <= 1 && x[2] === t[2] && Math.abs((x[3] || 0) - t[3]) <= 1; if (ok) MLC.ok++; else if (MLC.bad.length < 10) MLC.bad.push(id + ' улица ' + (s + 1) + ': подсчёт ' + JSON.stringify(x) + ', текст ' + JSON.stringify(t)); } }
     /* размеры ставок: подсчёт (pc / bk) против текста */ { const T = textSizes(h), X = A.pc || A.bk; if (T && X) for (const [st, k] of [[1, 'szF'], [2, 'szT'], [3, 'szR']]) { if (!X[k]) continue; SZ.n++; const tv = T[st]; if (tv != null && Math.abs(tv - X[k]) <= 1) SZ.ok++; else if (SZ.bad.length < 10) SZ.bad.push(id + ' улица ' + st + ': подсчёт ' + X[k] + '%, текст ' + tv + '%'); } }
     const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -147,3 +148,4 @@ for (const [k, list] of Object.entries(ex)) { console.log('\n— ' + k); list.fo
 console.log('\nраздач, которые второй разбор пропустил: ' + SKIP.length + ', из них подсчёт взял в статы: ' + SKIP.filter(x => /подсчёт взял/.test(x)).length); SKIP.filter(x => /подсчёт взял/.test(x)).slice(0, 30).forEach(x => console.log('   ' + x));
 console.log('\nразмеры ставок (флоп / тёрн / ривер) против текста: ' + SZ.n + ', совпало: ' + SZ.ok + ', расходится: ' + (SZ.n - SZ.ok)); SZ.bad.forEach(x => console.log('   ' + x));
 console.log('\nлинии мультивея (улица × раздача: ходы, размер ставки, рейз во сколько раз, что было после) против текста: ' + MLC.n + ', совпало: ' + MLC.ok + ', расходится: ' + (MLC.n - MLC.ok)); MLC.bad.forEach(x => console.log('   ' + x));
+console.log('\nуспешность ставок (что было после моей ставки на улице: все сбросили / колл / рейз) против текста: ' + SUC.n + ', совпало: ' + SUC.ok + ', расходится: ' + (SUC.n - SUC.ok)); SUC.bad.forEach(x => console.log('   ' + x));
