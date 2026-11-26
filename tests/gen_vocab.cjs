@@ -4,7 +4,7 @@
 //  catalog — готовые вопросы для кнопок «Может, вы имели в виду…».
 // node tests/gen_vocab.cjs → tgbot/vocab.json (перезапускать после новых проверок)
 const fs = require('fs'), path = require('path');
-const FILES = ['tgbot_phr.cjs', 'tgbot_pfl.cjs', 'tgbot_multi.cjs', 'tgbot_queries.cjs', 'tgbot_refine.cjs', 'tgbot_hm.cjs'];
+const FILES = ['tgbot_phr.cjs', 'tgbot_pfl.cjs', 'tgbot_multi.cjs', 'tgbot_queries.cjs', 'tgbot_refine.cjs', 'tgbot_hm.cjs', 'tgbot_mwl.cjs'];
 const words = new Set(), cat = new Set();
 for (const f of FILES) {
   const p = path.join(__dirname, f); if (!fs.existsSync(p)) continue;
@@ -23,7 +23,7 @@ const BASE = ['мой VPIP', 'мой PFR', 'мой винрейт', 'мой ви
   'мои конбеты в мультивее в позиции как рейзер', 'мои конбеты в мультивее без позиции как рейзер', 'сайзинги конбета в мультивее в позиции как рейзер', 'сайзинги конбета в мультивее без позиции как рейзер',
   'мой цбет-фолд в мультивее в позиции как рейзер', 'мой отложенный цбет в мультивее без позиции как рейзер', 'мои беты в пропуск в мультивее в позиции как коллер',
   'как часто я ставлю овербет на ривере в мультивее в позиции как рейзер', 'как часто я ставлю подбет на тёрне в мультивее без позиции как рейзер', 'как часто я выигрываю банк, когда ставлю в пропуск больше половины пота в мультивее в позиции как коллер',
-  'выигрыш на шоудауне общий', 'мой WTSD', 'мой WWSF', 'квадрат', 'карточка'];
+  'успешность моих ставок в мультивее как рейзер в позиции', 'мои линии в мультивее как коллер без позиции', 'успешность линии чек бет бет в мультивее как рейзер без позиции', 'выигрыш на шоудауне общий', 'мой WTSD', 'мой WWSF', 'квадрат', 'карточка'];
 for (const t of BASE) { cat.add(t); for (const w of t.toLowerCase().split(/[^а-яёa-z0-9$-]+/)) if (w.length >= 2) words.add(w); }const out = { words: [...words].sort(), catalog: [...cat].sort((a, b) => a.length - b.length).slice(0, 4000) };
 fs.writeFileSync(path.join(__dirname, '..', 'tgbot', 'vocab.json'), JSON.stringify(out));
 console.log('слов: ' + out.words.length + ', вопросов в каталоге: ' + out.catalog.length);

@@ -77,8 +77,28 @@ function textSizes(h) {
   }
   return out;
 }
+// линии мультивея по тексту раздачи: на каждой улице — мои ходы (X B C R F), размер моей ставки (% банка), рейз во сколько раз ×10, что было после моей ставки / рейза (1 все сбросили, 2 колл, 3 рейз)
+function textLines(h) {
+  const hero = (/^Dealt to (.+?) \[/m.exec(h) || [])[1]; if (!hero) return null;
+  const S = [null, { a: [] }, { a: [] }, { a: [] }]; let st = 0, pot = 0, cur = {};
+  for (const l of h.split(/\r?\n/)) {
+    if (/^\*\*\* (FLOP|TURN|RIVER) \*\*\*/.test(l)) { pot += Object.values(cur).reduce((x, y) => x + y, 0); cur = {}; st++; continue; }
+    if (/^\*\*\* (SHOW ?DOWN|SUMMARY)/.test(l)) break; let m;
+    if ((m = /^(.+?): posts the ante ([\d,.]+)/.exec(l))) { pot += num(m[2]); continue; }
+    if ((m = /^(.+?): posts (?:small|big) blind ([\d,.]+)/.exec(l))) { cur[m[1]] = (cur[m[1]] || 0) + num(m[2]); continue; }
+    if (!(m = /^(.+?): (checks|bets|calls|raises|folds)(?: ([\d,.]+))?(?: to ([\d,.]+))?/.exec(l))) continue;
+    const who = m[1], t = { checks: 'X', bets: 'B', calls: 'C', raises: 'R', folds: 'F' }[m[2]], amt = m[4] ? num(m[4]) : m[3] ? num(m[3]) : 0, potNow = pot + Object.values(cur).reduce((x, y) => x + y, 0);
+    if (st >= 1) S[st].a.push({ who, t, amt, potNow });
+    if (t === 'C') cur[who] = (cur[who] || 0) + amt; else if (t === 'B' || t === 'R') cur[who] = amt;
+  }
+  return [1, 2, 3].map(s => { const A = S[s].a, my = A.filter(x => x.who === hero); if (!my.length) return ['', 0, 0, 0];
+    const line = my.map(x => x.t).join(''), ag = my.find(x => x.t === 'B' || x.t === 'R'); let sz = 0, rx = 0, out = 0;
+    if (ag) { const k = A.indexOf(ag); if (ag.t === 'B') sz = ag.potNow ? Math.max(1, Math.round(ag.amt / ag.potNow * 100)) : 0; else { const prev = A.slice(0, k).filter(x => x.who !== hero && (x.t === 'B' || x.t === 'R')).pop(); rx = prev && prev.amt ? Math.round(ag.amt / prev.amt * 10) : 0; }
+      const after = A.slice(k + 1); out = after.some(x => x.who !== hero && x.t === 'R') ? 3 : after.some(x => x.who !== hero && x.t === 'C') ? 2 : 1; }
+    return [line, sz, out, rx]; });
+}
 const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(f => f.isDirectory() ? walk(path.join(d, f.name)) : [path.join(d, f.name)]);
-const stat = {}, ex = {}, IND = {}, SKIP = [], SKC = new Set(), SZ = { n: 0, ok: 0, bad: [] }; let seen = 0;
+const stat = {}, ex = {}, IND = {}, SKIP = [], SKC = new Set(), SZ = { n: 0, ok: 0, bad: [] }, MLC = { n: 0, ok: 0, bad: [] }; let seen = 0;
 const bump = (k, ok, id, info) => { const s = stat[k] = stat[k] || { ok: 0, bad: 0 }; if (ok) s.ok++; else { s.bad++; (ex[k] = ex[k] || []).length < 8 && ex[k].push(id + '  ' + info); } };
 for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
   const t = fs.readFileSync(f, 'utf8').replace(/^﻿/, ''); if (/^\s*Winamax Poker - Tournament summary/.test(t)) continue;
@@ -101,6 +121,7 @@ for (const f of walk(cfg['папка']).filter(f => /\.txt$/i.test(f))) {
       if (I.c3) for (const p of [I.c3[0], 'TOT']) H('c3|' + p, 'call', I.c3[1]);
       if (I.f3) for (const p of I.f3[0] === 'SB' ? ['SB'] : [I.f3[0], 'TOT']) for (const w of [I.f3[1] ? 'ip' : 'oop', 'all']) { H('f3|' + p + '|' + w, 'fold', I.f3[3]); H('f3|' + p + '|' + w, 'call', I.f3[4]); }
     } }
+    /* линии мультивея: подсчёт (ml) против текста — линия, размер ставки, рейз во сколько раз, что было после */ if (A.ml) { const T = textLines(h); if (T) for (let s = 0; s < 3; s++) { MLC.n++; const x = A.ml.st[s], t = T[s], ok = x[0] === t[0] && Math.abs(x[1] - t[1]) <= 1 && x[2] === t[2] && Math.abs((x[3] || 0) - t[3]) <= 1; if (ok) MLC.ok++; else if (MLC.bad.length < 10) MLC.bad.push(id + ' улица ' + (s + 1) + ': подсчёт ' + JSON.stringify(x) + ', текст ' + JSON.stringify(t)); } }
     /* размеры ставок: подсчёт (pc / bk) против текста */ { const T = textSizes(h), X = A.pc || A.bk; if (T && X) for (const [st, k] of [[1, 'szF'], [2, 'szT'], [3, 'szR']]) { if (!X[k]) continue; SZ.n++; const tv = T[st]; if (tv != null && Math.abs(tv - X[k]) <= 1) SZ.ok++; else if (SZ.bad.length < 10) SZ.bad.push(id + ' улица ' + st + ': подсчёт ' + X[k] + '%, текст ' + tv + '%'); } }
     const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     // RFI
@@ -125,3 +146,4 @@ for (const [k, list] of Object.entries(ex)) { console.log('\n— ' + k); list.fo
   console.log('\nматрицы рук: сравнено клеток (путь × действие × рука): ' + cells + ', совпало: ' + same + ', расходится: ' + diff.length); diff.slice(0, 25).forEach(x => console.log('   ' + x)); }
 console.log('\nраздач, которые второй разбор пропустил: ' + SKIP.length + ', из них подсчёт взял в статы: ' + SKIP.filter(x => /подсчёт взял/.test(x)).length); SKIP.filter(x => /подсчёт взял/.test(x)).slice(0, 30).forEach(x => console.log('   ' + x));
 console.log('\nразмеры ставок (флоп / тёрн / ривер) против текста: ' + SZ.n + ', совпало: ' + SZ.ok + ', расходится: ' + (SZ.n - SZ.ok)); SZ.bad.forEach(x => console.log('   ' + x));
+console.log('\nлинии мультивея (улица × раздача: ходы, размер ставки, рейз во сколько раз, что было после) против текста: ' + MLC.n + ', совпало: ' + MLC.ok + ', расходится: ' + (MLC.n - MLC.ok)); MLC.bad.forEach(x => console.log('   ' + x));
