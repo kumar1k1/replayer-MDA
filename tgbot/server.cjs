@@ -769,7 +769,7 @@ function aiTag(B) {
 }function answerFor(P, ql, intent, rows0, spec) {
   const others = rows0.slice(1).map(r => ({ label: r.nick + ' · ' + (ROOM_RU[r.room] || r.room) + ' · ' + r.n.toLocaleString('ru') + ' рук', key: r.key }));
   const blocks = [];
-  spec = spec || {}; const qs = ql.replace(/(от|до|больше|меньше|выше|ниже|свыше|более|менее)?\s*\d{1,3}\s*(%|процент[а-яё]*|прц)/g, ' '); /* размер ставки в % — не стек (26.11.2026) */ let G = spec.groups || groupsRule(qs); const PL = spec.pos || (posListRule(ql).length > 1 ? posListRule(ql) : null);
+  spec = spec || {}; const qs = ql.replace(/(от|до|больше|меньше|выше|ниже|свыше|более|менее)?\s*\d{1,3}\s*(%|процент[а-яё]*|прц)/g, ' ').replace(/(от|до|больше|меньше|выше|ниже|свыше|более|менее)?\s*(половин[а-яё]*|две\s*трет[а-яё]*|трет[а-яё]*|четверт[а-яё]*)\s*(банка|пота)?|(овер|под|пот)\s*-?\s*б[еэ]т[а-яё]*|маленьк[а-яё]*\s*(ставк|б[еэ]т)[а-яё]*/g, ' '); /* размер ставки в % — не стек (26.11.2026) */ let G = spec.groups || groupsRule(qs); const PL = spec.pos || (posListRule(ql).length > 1 ? posListRule(ql) : null);
   // одна названная группа стеков — это фильтр всей таблицы, а не строка (владелец, 24.11.2026)
   const G1 = G && G.length === 1 ? G[0][1] : null; if (G1) G = null;
   const bands0 = G ? null : (G1 || bandsOf(qs)), bands = bands0 || BANDS, byBand = /по ст[еэ]к|ст[еэ]кам|ст[еэ]ков|разбив|сайз/.test(qs) && !(bands0 && bands0.num != null);
