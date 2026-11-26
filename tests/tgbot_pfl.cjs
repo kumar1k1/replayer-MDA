@@ -14,7 +14,7 @@ const BIG = 100000;
 const SIZES = [
   ['', {}],
   ['конбет до 33%', { f: [0, 33.5] }], ['флоп 25%', { f: [0, 29] }], ['флоп 33%', { f: [29, 40] }], ['флоп 50%', { f: [40, 58] }], ['флоп 66%', { f: [58, 70] }],
-  ['флоп 75%', { f: [70, 88] }], ['флоп 100%', { f: [88, 115] }], ['флоп от 40%', { f: [40, BIG] }], ['флоп от 30 до 50%', { f: [30, 50.5] }], ['флоп больше 60%', { f: [60, BIG] }],
+  ['флоп 75%', { f: [70, 88] }], ['флоп 100%', { f: [88, 100.5] }], ['флоп овербет', { f: [100.5, BIG] }], ['подбет на флопе', { f: [0, 29] }], ['флоп от 40%', { f: [40, BIG] }], ['флоп от 30 до 50%', { f: [30, 50.5] }], ['флоп больше 60%', { f: [60, BIG] }],
   ['флоп треть банка', { f: [29, 40] }], ['флоп половина банка', { f: [40, 58] }], ['сайзингом до 40%', { f: [0, 40.5] }],
   ['тёрн 50%', { t: [40, 58] }], ['тёрн до 40%', { t: [0, 40.5] }], ['тёрн от 60%', { t: [60, BIG] }], ['терн 33%', { t: [29, 40] }],
   ['отложка до 40%', { dt: [0, 40.5] }], ['отложка 50%', { dt: [40, 58] }],
@@ -52,7 +52,7 @@ function expect(kind, cell, F, bands, mode) {
   }
   const n = den.filter(numf).length; return { d: den.length, n, p: pct(n, den.length) };
 }
-const fltTxt = (F) => Object.entries(F).map(([k, [lo, hi]]) => ({ f: 'флоп', t: 'тёрн', r: 'ривер', dt: 'отложка на тёрне' })[k] + ' ' + (hi >= BIG ? 'от ' + lo + '%' : lo <= 0 ? 'до ' + Math.floor(hi) + '%' : lo + '–' + Math.floor(hi) + '%')).join(', ');
+const fltTxt = (F) => Object.entries(F).map(([k, [lo, hi]]) => ({ f: 'флоп', t: 'тёрн', r: 'ривер', dt: 'отложка на тёрне' })[k] + ' ' + (hi >= BIG ? (lo === 100.5 ? 'больше банка' : 'от ' + lo + '%') : lo <= 0 ? 'до ' + Math.floor(hi) + '%' : lo + '–' + Math.floor(hi) + '%')).join(', ');
 const ask = async (q) => (await fetch(B + '/api/ask?nobrain=1&ctx=' + encodeURIComponent(KEY) + '&q=' + encodeURIComponent(q))).json();
 const hm = async (ref) => (await fetch(B + '/api/hm?r=' + encodeURIComponent(JSON.stringify([ref])))).json();
 (async () => {
@@ -75,7 +75,7 @@ const hm = async (ref) => (await fetch(B + '/api/hm?r=' + encodeURIComponent(JSO
     for (const [lab, cs] of K.rows) { const row = T.table.rows.find(r => r[0] === lab); if (!row) { chk(false, q + ': нет строки ' + lab); continue; } for (let i = 0; i < cs.length; i++) if (cs[i]) await checkCell(q, lab + ' ' + ['флоп', 'тёрн', 'ривер'][i], row[i + 1], K.id, cs[i], F, bands, mode); }
   }
   // одиночные цифры
-  for (const K of KINDS) for (const [w, cell] of ONE[K.id]) for (const [sz, F] of SIZES.filter((_, i) => i % 3 === 0)) for (const [st, bands] of STACKS.slice(0, 2)) {
+  for (const K of KINDS) for (const [w, cell] of ONE[K.id]) for (const [sz, F] of SIZES.filter((x, i) => i % 3 === 0 && (!x[0] || /флоп|т[её]рн|терн|ривер|отлож/.test(x[0])))) /* в одиночном вопросе со словом улицы размер без улицы неоднозначен */ for (const [st, bands] of STACKS.slice(0, 2)) {
     const q = [K.one.replace('{X}', w), st, K.id === 'bsk' ? sz.replace('конбет', 'бет флоп') : sz].filter(Boolean).join(' '); qs++; const a = await ask(q), b = (a.blocks || []).find(z => z.big);
     if (!b) { chk(false, q + ': нет цифры (' + (a.blocks || []).map(z => z.title || z.text).join(' | ') + ')'); continue; }
     const x = expect(K.id, cell, F, bands, 'all');
@@ -85,7 +85,7 @@ const hm = async (ref) => (await fetch(B + '/api/hm?r=' + encodeURIComponent(JSO
   }
   // вопросы про сам размер: как часто ставлю, доля среди ставок, вскрытие, выигрыш на вскрытии — независимый пересчёт
   const SQ = [
-    ['mw', 'как часто я ставлю овербет ривера в мультивее как рейзер в позиции', 'ar', [115, BIG]], ['mwo', 'как часто я ставлю овербет ривера в мультивее как рейзер без позиции', 'ar', [115, BIG]],
+    ['mw', 'как часто я ставлю овербет ривера в мультивее как рейзер в позиции', 'ar', [100.5, BIG]], ['mwo', 'как часто я ставлю овербет ривера в мультивее как рейзер без позиции', 'ar', [100.5, BIG]], ['mw', 'как часто я ставлю подбет на ривере в мультивее как рейзер в позиции', 'ar', [0, 29]],
     ['mw', 'как часто ставлю конбет 33% в мультивее в позиции как рейзер', 'f', [29, 40]], ['mwo', 'как часто ставлю конбет 33% в мультивее без позиции как рейзер и как часто выигрываю на шоудауне', 'f', [29, 40]],
     ['mwo', 'как часто ставлю конбет до 33% в мультивее без позиции как рейзер', 'f', [0, 33.5]], ['mw', 'как часто ставлю 50% на тёрне в мультивее в позиции как рейзер', 'at', [40, 58]],
     ['mwo', 'как часто отложка 50% в мультивее без позиции как рейзер', 'dt', [40, 58]], ['mwo', 'как часто ставлю ривер от 50% в мультивее без позиции как рейзер', 'ar', [50, BIG]],
@@ -106,7 +106,7 @@ const hm = async (ref) => (await fetch(B + '/api/hm?r=' + encodeURIComponent(JSO
     const e = expect(kd, 'ff', {}, BANDS, 'all'); chk(e.d === x[6] && e.n === x[7], 'старый подсчёт ' + kd + ' CB-Fold: записи ' + e.n + '/' + e.d + ', ext.cb ' + x[7] + '/' + x[6]); }
   { const x = sumB(E.bsk.ip); for (const [cell, ni, di] of [['f', 1, 0], ['t', 3, 2], ['r', 5, 4], ['bt', 11, 10], ['ff', 7, 6]]) { const e = expect('bsk', cell, {}, BANDS, 'all'); chk(e.d === x[di] && e.n === x[ni], 'старый подсчёт bsk ' + cell + ': записи ' + e.n + '/' + e.d + ', ext.bsk ' + x[ni] + '/' + x[di]); } }
   // сумма по корзинам размера = общая цифра (числитель), знаменатель не меняется
-  const BK = [[0, 29], [29, 40], [40, 58], [58, 70], [70, 88], [88, 115], [115, BIG]];
+  const BK = [[0, 29], [29, 40], [40, 58], [58, 70], [70, 88], [88, 100.5], [100.5, BIG]];
   for (const kd of ['mw', 'mwo', 'bsk']) for (const [cell, st] of [['f', 'f'], ['t', 't'], ['r', 'r'], ...(kd === 'bsk' ? [['bt', 't']] : [['dt', 'dt'], ['pb', 'r']])]) {
     const all = expect(kd, cell, {}, BANDS, 'all'); let n = 0; for (const b of BK) { const e = expect(kd, cell, { [st]: b }, BANDS, 'all'); n += e.n; chk(e.d === all.d, 'корзины ' + kd + ' ' + cell + ': знаменатель ' + e.d + ' ≠ ' + all.d); }
     chk(n === all.n, 'корзины ' + kd + ' ' + cell + ': сумма ' + n + ' ≠ ' + all.n); }
