@@ -506,9 +506,10 @@ function mwlBlocks(P, ql, o) {
        забрал банк — все сбросили на мою ставку на последней улице линии. Действие на улице: бет, чек, чек-рейз, колл, рейз, фолд */
     const act = (a) => (!a ? '' : a[0] === 'X' && a.includes('R') ? 'XR' : a[0]), AN = { B: 'бет', X: 'чек', XR: 'чек-рейз', C: 'колл', R: 'рейз', F: 'фолд' };
     const G = {}; for (const r of R) { const ks = []; for (let s = 0; s < 3; s++) { const a = act(r[2 + s]); if (!a) break; ks.push(a); const k = ks.join('|'); (G[k] = G[k] || { s, xs: [] }).xs.push(r); } }
-    const tot = R.length, rows = Object.entries(G).filter(([, g]) => g.xs.length >= 3).sort((a, b) => b[1].xs.length - a[1].xs.length).map(([k, g]) => { const parts = k.split('|'), last = parts[parts.length - 1], ag = /B|R/.test(last);
+    /* только самые частые связки (владелец 26.11.2026): линии из 2–3 улиц, 10 самых частых, от 1% раздач спота */
+    const tot = R.length, rows = Object.entries(G).filter(([k, g]) => k.includes('|') && g.xs.length >= 3 && g.xs.length >= tot * 0.01).sort((a, b) => b[1].xs.length - a[1].xs.length).slice(0, 10).map(([k, g]) => { const parts = k.split('|'), last = parts[parts.length - 1], ag = /B|R/.test(last);
       return [parts.map(p => AN[p]).join(' · '), { v: String(g.xs.length), n: 0 }, pc(g.xs.length, tot), ag ? pc(g.xs.filter(r => r[8 + g.s] === 1).length, g.xs.length) : { v: '—', n: 0 }]; });
-    return [{ type: 'table', title: title(P) + ' — мои линии' + head, note: 'линия — моё действие на каждой улице по порядку (флоп · тёрн · ривер); в линию «бет» входят все раздачи, где я поставил на флопе, в «бет · бет» — где поставил на флопе и тёрне, и т. д.; частота — доля раздач спота, где играю эту линию; забрал банк — все сбросили на мою ставку на последней улице линии; линии от 3 раздач' + st,
+    return [{ type: 'table', title: title(P) + ' — мои линии' + head, note: 'линия — моё действие на каждой улице по порядку (флоп · тёрн · ривер); в линию «бет» входят все раздачи, где я поставил на флопе, в «бет · бет» — где поставил на флопе и тёрне, и т. д.; частота — доля раздач спота, где играю эту линию; забрал банк — все сбросили на мою ставку на последней улице линии; показаны 10 самых частых связок из двух-трёх улиц (от 1% раздач)' + st,
       table: { head: ['линия', 'раздач', 'частота', 'забрал банк (все сбросили)'], rows, grid: true } }];
   }
   return streets.map(s => sizeTable(R, s, 'успешность ' + (onlyR ? 'рейзов' : 'ставок') + ' на ' + SN[s] + 'е' + head));
