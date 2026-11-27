@@ -136,9 +136,10 @@ const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] 
     const a2 = await ask('выигрыш на шоудауне по линии бет-чек-бет против BB с епмп'), B2 = (a2.blocks || [])[0], R2 = ALL.filter(r => r[34] === 1 && ['EP', 'MP', 'HJ'].includes(r[51]) && 'BXB'.split('').every((c, s) => (r[42 + s] || '')[0] === c) && r[28]); chk(B2 && B2.big === pv(R2.filter(r => r[29]).length, R2.length) && /с EP\/MP/.test(B2.title), 'линия с EP/MP: ' + (B2 && (B2.big + ' ' + B2.title))); }
   /* рейзер против SB (владелец 27.11.2026): та же таблица по ext.rec.sb — Total / EP/MP / CO/BTN, подписи SB; одна цифра, реакция SB, линия */
   { const S = E.rec.sb.filter(r => r[34] === 1);
-    for (const [q, pos, lab] of [['мои конбеты против SB', null, ''], ['total cbet против малого блайнда с EP MP', ['EP', 'MP', 'HJ'], 'EP/MP'], ['мои цбеты против сб с цо батон', ['CO', 'BTN'], 'CO/BTN']]) {
-      const a = await ask(q), B = (a.blocks || [])[0], R = S.filter(r => !pos || pos.includes(r[51]));
-      if (!B || !B.table) { chk(false, q + ': нет таблицы'); continue; } chk(/против малого блайнда/.test(B.title) && (!lab || B.title.includes('с ' + lab)) && !/BB/.test(B.title), q + ': заголовок ' + B.title);
+    /* против SB — только Total (владелец 27.11.2026): названная позиция не режет данные, бот пишет, что разбивки нет */
+    for (const [q, pos, lab] of [['мои конбеты против SB', null, ''], ['total cbet против малого блайнда с EP MP', null, ''], ['мои цбеты против сб с цо батон', null, '']]) {
+      const a = await ask(q), B = (a.blocks || []).find(b => b.table), R = S.filter(r => !pos || pos.includes(r[51])); if (/с (EP|ЦО|цо)/i.test(q)) chk((a.blocks || [])[0] && /разбивки по позициям нет/.test((a.blocks || [])[0].text || ''), q + ': нет пояснения, что разбивки нет');
+      if (!B || !B.table) { chk(false, q + ': нет таблицы'); continue; } chk(/против малого блайнда/.test(B.title) && !/с (EP|CO)/.test(B.title) && !/BB/.test(B.title), q + ': заголовок ' + B.title);
       const W = want(R).concat(wantR(R)); W.forEach((w, i) => { const row = B.table.rows[i]; for (let c = 1; c <= 3; c++) chk(row && row[c].v === pv(w[c][0], w[c][1]) && row[c].n === w[c][1], q + ' · ' + w[0] + ' · улица ' + c + ': бот ' + (row && row[c].v) + ', пересчёт ' + pv(w[c][0], w[c][1])); });
       chk(B.table.rows.some(r => r[0] === 'SB: фолд (успешность)') && !B.table.rows.some(r => /^BB:/.test(r[0])), q + ': строки реакции SB'); }
     { const a = await ask('мой цбет-фолд на флопе против SB'), B = (a.blocks || [])[0], xs = S.filter(r => r[5] >= 1 && r[5] <= 3); chk(B && B.big === pv(xs.filter(r => r[5] === 1).length, xs.length) && /против SB/.test(B.title), 'SB цбет-фолд: ' + (B && (B.big + ' ' + B.title))); }
