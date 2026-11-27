@@ -107,6 +107,12 @@ const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] 
     /* «чек-чек» в Total CBET — не линия */
     { const a = await ask('мой конбет на ривере после чек-чек на тёрне против BB'), B = (a.blocks || [])[0]; chk(B && /CB · XX · B/.test(B.title), 'чек-чек не линия: ' + (B && B.title)); }
   }
+  /* линия записью размеров (журнал 27.11.2026): «b33%+b60%+b75%+» — бет от 33 / 60 / 75%; «x» — чек; число без «+» — корзина размера */
+  { const SZB = [[0, 29], [29, 40], [40, 58], [58, 70], [70, 88], [88, 100.5], [100.5, 100000]], bk = (n) => SZB.find(([lo, hi]) => n >= lo && n < hi);
+    for (const [q, code, fs, what] of [['выйгрыш на шд после связки сайзингов когдя я рейзер против ББ b 33%+b60%++b75%+', 'BBB', [[33, 1e5], [60, 1e5], [75, 1e5]], 'sd'], ['выигрыш на шоудауне по линии b33+ x b75+ против BB', 'BXB', [[33, 1e5], null, [75, 1e5]], 'sd'], ['выигрыш банка b50 b75 против бб', 'BB', [bk(50), bk(75)], 'pot']]) {
+      const a = await ask(q), B = (a.blocks || [])[0], R = ALL.filter(r => r[34] === 1 && code.split('').every((c, s) => (r[42 + s] || '')[0] === c) && fs.every((f, s) => !f || (r[48 + s] && r[48 + s] >= f[0] && r[48 + s] < f[1]))), sd = R.filter(r => r[28]);
+      const want = what === 'sd' ? (sd.length ? pv(sd.filter(r => r[29]).length, sd.length) : 'нет данных') : (R.length ? pv(R.filter(r => r[30]).length, R.length) : 'нет данных');
+      chk(B && B.type === 'big' && B.big === want && B.title.includes('линия ' + code.split('').map(c => (c === 'B' ? 'бет' : 'чек')).join(' · ')), q + ': бот ' + (B && (B.big + ' ' + B.title)) + ', пересчёт ' + want); } }
   /* мультивей не задет */
   { const a = await ask('мои конбеты в мультивее в позиции как рейзер'), B = (a.blocks || []).find(b => b.table); chk(B && /мультивее/.test(B.title), 'мультивей: ' + (B && B.title)); }
   console.log('проверок: ' + n + ', совпало: ' + (n - bad) + ', ошибок: ' + bad);

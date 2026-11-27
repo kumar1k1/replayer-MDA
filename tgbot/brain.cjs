@@ -2,16 +2,17 @@
 // «Мозг» TG-бота (владелец, 23.11.2026): Claude понимает вопрос любыми словами (текст или то, что услышал Whisper)
 // и переводит его в точный запрос. Цифры Claude НЕ считает и не придумывает — их всегда даёт база (server.cjs answer()).
 // Ключа нет / нет связи / ошибка — бот работает как раньше, по своему разбору слов.
-// Ключ: переменная ANTHROPIC_API_KEY или `ant auth login`; модель — TGBOT_MODEL (по умолчанию claude-opus-5-5).
+// Ключ: переменная ANTHROPIC_API_KEY или `ant auth login`; модели — TGBOT_MODEL (по умолчанию claude-haiku-5-5) и запасная TGBOT_MODEL2 (claude-opus-5-5).
 let Anthropic = null;
 try { Anthropic = require('@anthropic-ai/sdk'); Anthropic = Anthropic.default || Anthropic; } catch (e) { Anthropic = null; }
 
-const MODEL = process.env.TGBOT_MODEL || 'claude-opus-5-5';
+/* связка (владелец 27.11.2026): обычно — Haiku (быстро, дёшево); Opus — запасной, его зовёт server.cjs, когда сверка видит, что Haiku потерял условие или не понял (TGBOT_ESCALATE=0 — без запасного) */
+const MODEL = process.env.TGBOT_MODEL || 'claude-haiku-5-5', MODEL2 = process.env.TGBOT_MODEL2 || 'claude-opus-5-5', ESCALATE = process.env.TGBOT_ESCALATE !== '0';
 /* справочник (tests/gen_brain_ref.cjs → brain_ref.txt): что бот умеет, словарь голоса, правильные фразы — кешируется вместе с подсказкой */
 const REF = (() => { try { return require('fs').readFileSync(require('path').join(__dirname, 'brain_ref.txt'), 'utf8'); } catch (e) { return ''; } })();
 /* расход (27.11.2026): токены и деньги с запуска — для проверок с потолком трат (/api/brainstats); цена за 1 млн токенов: вход, запись в кеш, чтение кеша, выход */
-const PRICE = { 'claude-haiku-5-5': [0.10, 0.125, 0.01, 0.50], 'claude-sonnet-5-5': [2, 2.5, 0.10, 10], 'claude-opus-5-5': [4, 5, 0.20, 20] }[MODEL] || [4, 5, 0.20, 20];
-const USE = { calls: 0, in: 0, cw: 0, cr: 0, out: 0, usd: 0 };
+const PRICES = { 'claude-haiku-5-5': [0.10, 0.125, 0.01, 0.50], 'claude-sonnet-5-5': [2, 2.5, 0.10, 10], 'claude-opus-5-5': [4, 5, 0.20, 20] }, priceOf = (m) => PRICES[m] || [4, 5, 0.20, 20];
+const USE = { calls: 0, in: 0, cw: 0, cr: 0, out: 0, usd: 0, by: {} }; /* by[модель] — то же по каждой модели */
 let client = null, disabledUntil = 0, lastErr = '', keySeen = null;
 // ключ: файл tgbot/data/ключ_claude.txt (папка не в git) — владелец вставляет ключ Блокнотом, бот подхватывает без перезапуска;
 // иначе — переменная ANTHROPIC_API_KEY / `ant auth login`
@@ -112,23 +113,23 @@ function toPhrase(o) {
 }
 
 // текст → { phrase, parsed } или null (тогда бот разбирает слова сам)
-async function understand(text, prevPlayer, prevQ, mem) {
+async function understand(text, prevPlayer, prevQ, mem, model) { const MDL = model || MODEL;
   /* память разговора (26.11.2026): последние 3 вопроса — что спросил, как понял бот, что показал; для «вернись к прошлой», «то же для второй таблицы», «сравни» */
   const memTxt = Array.isArray(mem) && mem.length ? 'Разговор (последние вопросы, от старых к новым):\n' + mem.map((m, i) => (i + 1) + ') спросил: ' + String(m.q || '') + ' → бот понял: ' + String(m.u || '') + (m.s ? ' → показал: ' + String(m.s) : '')).join('\n') + '\n' : '';
   const c = getClient(); if (!c || Date.now() < disabledUntil) return null;
   try {
     const r = await c.beta.messages.create({
-      model: MODEL, max_tokens: 2000,
-      ...(/haiku/.test(MODEL) ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }), /* у Haiku запасной модели при отказе нет */
+      model: MDL, max_tokens: 2000,
+      ...(/haiku/.test(MDL) ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }), /* у Haiku запасной модели при отказе нет */
       output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
       system: [{ type: 'text', text: SYSTEM + (REF ? '\n\n' + REF : ''), cache_control: { type: 'ephemeral' } }], /* подсказка и справочник кешируются — повторные вопросы дешевле */
       messages: [{ role: 'user', content: (prevPlayer ? 'Прошлый игрок в разговоре: ' + prevPlayer + '\n' : '') + memTxt + (prevQ ? 'Прошлый вопрос: ' + prevQ + '\n' : '') + 'Вопрос: ' + text }],
     });
-    { const u = r.usage || {}; USE.calls++; USE.in += u.input_tokens || 0; USE.cw += u.cache_creation_input_tokens || 0; USE.cr += u.cache_read_input_tokens || 0; USE.out += u.output_tokens || 0; USE.usd = (USE.in * PRICE[0] + USE.cw * PRICE[1] + USE.cr * PRICE[2] + USE.out * PRICE[3]) / 1e6; }
+    { const u = r.usage || {}, P = priceOf(MDL), b = (USE.by[MDL] = USE.by[MDL] || { calls: 0, in: 0, cw: 0, cr: 0, out: 0, usd: 0 }); for (const X of [USE, b]) { X.calls++; X.in += u.input_tokens || 0; X.cw += u.cache_creation_input_tokens || 0; X.cr += u.cache_read_input_tokens || 0; X.out += u.output_tokens || 0; } const usd = ((u.input_tokens || 0) * P[0] + (u.cache_creation_input_tokens || 0) * P[1] + (u.cache_read_input_tokens || 0) * P[2] + (u.output_tokens || 0) * P[3]) / 1e6; USE.usd += usd; b.usd += usd; }
     if (r.stop_reason === 'refusal') return null;
     const t = (r.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const o = JSON.parse(t);
-    return { phrase: toPhrase(o), parsed: o };
+    return { phrase: toPhrase(o), parsed: o, model: MDL };
   } catch (e) {
     lastErr = (e && e.status ? e.status + ' ' : '') + (e && e.message || String(e));
     // нет ключа / неверный ключ — не дёргаем API каждую фразу (проверим снова через 5 минут)
@@ -137,5 +138,5 @@ async function understand(text, prevPlayer, prevQ, mem) {
     return null;
   }
 }
-const status = () => ({ sdk: !!Anthropic, model: MODEL, keyInFile: !!fileKey(), ready: !!getClient() && Date.now() >= disabledUntil, lastErr, use: USE });
+const status = () => ({ sdk: !!Anthropic, model: MODEL, model2: MODEL2, escalate: ESCALATE && MODEL2 !== MODEL, keyInFile: !!fileKey(), ready: !!getClient() && Date.now() >= disabledUntil, lastErr, use: USE });
 module.exports = { understand, status, toPhrase };
