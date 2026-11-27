@@ -1110,7 +1110,9 @@ function refineMerge(prev, q) {
   });
 }
 /* сверка понимания (владелец 27.11.2026, tgbot/guard.cjs): условия вопроса должны быть в ответе; Claude потерял условие — берём свой разбор слов, если он точнее; не помогло — пишем «проверьте» */
-const GUARD = require('./guard.cjs'); let FAKE = '';
+const GUARD = require('./guard.cjs');
+/* постфлоп-вопрос: берём clean — вопрос, переписанный Claude словами бота по справочнику (все условия сохранены, голос исправлен); свой разбор слов понимает его точно (27.11.2026) */
+function withClean(q0, R) { const c = R && R.parsed && R.parsed.clean ? String(R.parsed.clean).trim() : ''; const B = fixPhrase(q0, R); if (B && c && GUARD.conds(q0).length && !(B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1)) { B.phrase = c; B.clean = 1; } return B; } let FAKE = '';
 async function ask(q0, ctx, key, alts, voice, prevQ, mem) {
   let o = await ask1(q0, ctx, key, alts, voice, prevQ, mem);
   if (key || !o || !o.blocks) return o;
@@ -1163,7 +1165,7 @@ async function ask0(q0, ctx, key, alts, voice, prevQ, mem) {
   if (key || !q0) return answer(q0, ctx, key);
   if (voice && ctx) {
     const src = String(q0).toLowerCase(), lock = { own: isOwn(src), src };
-    const B = fixPhrase(q0, await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick, prevQ, mem));
+    const B = withClean(q0, await BRAIN.understand(q0, (qKey.get(ctx) || {}).nick, prevQ, mem));
     // явная смена игрока голосом: «… игрока X», «ник X» (или открыта своя база и назван чужой ник) — ищем X, нет — похожие ники
     const bNick = B && B.parsed && !B.parsed.me ? String(B.parsed.nick || '').trim() : '';
     const marker = /(^|[^a-zа-яё])(игрок[а-яё]*|ник[а-яё]*)([^a-zа-яё]|$)/i.test(src);
@@ -1185,7 +1187,7 @@ async function ask0(q0, ctx, key, alts, voice, prevQ, mem) {
   }
   // мозг (Claude): понимает вопрос любыми словами → точная фраза; цифры — из базы. Нет ключа — свой разбор слов.
   const prev = ctx ? (qKey.get(ctx) || {}).nick : null;
-  const B = fixPhrase(q0, FAKE ? { phrase: FAKE, parsed: null } : await BRAIN.understand(q0, prev, prevQ, mem)); /* FAKE — только для проверки: «как будто Claude понял так» (tests/tgbot_logcheck.cjs), бесплатно */
+  const B = withClean(q0, FAKE ? { phrase: FAKE, parsed: null } : await BRAIN.understand(q0, prev, prevQ, mem)); /* FAKE — только для проверки: «как будто Claude понял так» (tests/tgbot_logcheck.cjs), бесплатно */
   const cands = [];
   if (B && B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1) { const o = multiAnswer(B.parsed.parts, ctx, null, isOwn(String(q0).toLowerCase())); o.brain = { model: BRAIN.status().model, phrase: o.heard }; return o; }
   if (B && B.phrase && expandVariants(B.phrase)) { const o = multiAnswer(expandVariants(B.phrase), ctx, null, isOwn(String(q0).toLowerCase()), true); o.brain = { model: BRAIN.status().model, phrase: B.phrase }; return o; }
@@ -1231,5 +1233,5 @@ const srv = http.createServer(async (req, res) => {
   res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(res);
 });
 srv.on('error', (e) => { if (e.code === 'EADDRINUSE') { console.log('TG-бот уже запущен на порту ' + PORT); process.exit(0); } throw e; });
-srv.listen(PORT, '127.0.0.1', () => { console.log('TG-бот: http://127.0.0.1:' + PORT); whisperStart(); });
+srv.listen(PORT, '127.0.0.1', () => { console.log('TG-бот: http://127.0.0.1:' + PORT); if (!process.env.TGBOT_NOWHISPER) whisperStart(); }); /* TGBOT_NOWHISPER — копия бота для проверок (своя модель Claude, другой порт) без Whisper */
 module.exports = { answer };

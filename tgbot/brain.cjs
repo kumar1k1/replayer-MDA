@@ -7,6 +7,11 @@ let Anthropic = null;
 try { Anthropic = require('@anthropic-ai/sdk'); Anthropic = Anthropic.default || Anthropic; } catch (e) { Anthropic = null; }
 
 const MODEL = process.env.TGBOT_MODEL || 'claude-opus-5-5';
+/* справочник (tests/gen_brain_ref.cjs → brain_ref.txt): что бот умеет, словарь голоса, правильные фразы — кешируется вместе с подсказкой */
+const REF = (() => { try { return require('fs').readFileSync(require('path').join(__dirname, 'brain_ref.txt'), 'utf8'); } catch (e) { return ''; } })();
+/* расход (27.11.2026): токены и деньги с запуска — для проверок с потолком трат (/api/brainstats); цена за 1 млн токенов: вход, запись в кеш, чтение кеша, выход */
+const PRICE = { 'claude-haiku-5-5': [0.10, 0.125, 0.01, 0.50], 'claude-sonnet-5-5': [2, 2.5, 0.10, 10], 'claude-opus-5-5': [4, 5, 0.20, 20] }[MODEL] || [4, 5, 0.20, 20];
+const USE = { calls: 0, in: 0, cw: 0, cr: 0, out: 0, usd: 0 };
 let client = null, disabledUntil = 0, lastErr = '', keySeen = null;
 // ключ: файл tgbot/data/ключ_claude.txt (папка не в git) — владелец вставляет ключ Блокнотом, бот подхватывает без перезапуска;
 // иначе — переменная ANTHROPIC_API_KEY / `ant auth login`
@@ -25,7 +30,7 @@ const STATS = ['card', 'VPIP', 'PFR', 'VPIP_PFR', '3BET', 'COLD_CALL', 'OVERCALL
   'SQUARE', 'RFI', 'WINRATE', 'WINRATE_POS', 'VS_OPEN', 'BLIND_VS_OPEN', 'VS_3BET', 'SQUEEZE', 'VS_SQUEEZE', 'ISO', 'VS_ALLIN', 'CBET', 'BET_SKIP', 'POSTFLOP', 'UNKNOWN'];
 const SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers', 'parts', 'in_position', 'sqz_role', 'cbet_kind', 'cbet_pot'],
+  required: ['me', 'nick', 'stat', 'position', 'stack_bb', 'stack_from', 'stack_to', 'table', 'by_stack', 'heads_up', 'room', 'stack_groups', 'positions', 'allin', 'action', 'opener', 'vs_matrix', 'limpers', 'callers', 'parts', 'in_position', 'sqz_role', 'cbet_kind', 'cbet_pot', 'clean'],
   properties: {
     me: { type: 'boolean', description: 'спрашивают про себя (мой, мои, у меня, моя статистика)' },
     nick: { type: 'string', description: 'ник игрока, как услышан/написан; пусто — игрок не назван (тогда «его/он» = прошлый игрок)' },
@@ -50,9 +55,11 @@ const SCHEMA = {
     cbet_pot: { type: 'string', enum: ['any', 'hu', 'mw'], description: 'для CBET и BET_SKIP: один на один (хедз-ап) — hu; мультивей / мультипот / трое и больше / на коллеров / «как рейзер в позиции на обоих (всех) игроков» в мультивее — mw; иначе any' },
     sqz_role: { type: 'string', enum: ['any', 'pfr', 'cc', 'cc_opener_fold', 'cc_opener_call'], description: 'для VS_SQUEEZE: «как рейзер / открывший / после опена» — pfr; «как коллер / после колла» — cc; коллер, когда первый рейзер выкинул (сбросил) — cc_opener_fold, заколлировал — cc_opener_call; иначе any' },
     positions: { type: 'array', description: 'колонки — позиции, если назвали несколько или группу позиций; иначе []', items: { type: 'string', enum: ['EP', 'MP', 'HJ', 'CO', 'BTN', 'SB'] } },
+    clean: { type: 'string', description: 'вопрос, переписанный словами бота (как в примерах справочника): ошибки распознавания исправлены, лишние слова и повтор убраны, ВСЕ условия сохранены — спот (мультивей / против BB / хедс-ап), роль (рейзер / коллер), позиция, улицы, размер ставки с его улицей, линия, ход (фолд / колл / 3-бет / рейз), стек, олл-ин, «мой» / ник; ничего не добавляй от себя' },
   },
 };
-const SYSTEM = `Ты — разборщик вопросов бота покерной статистики (турниры, префлоп и пара постфлоп-статов). Пользователь говорит голосом
+const SYSTEM = `Ты — разборщик вопросов бота покерной статистики. Кроме полей заполни clean — вопрос словами бота (смотри справочник ниже).
+Бот — про турниры: префлоп и постфлоп. Пользователь говорит голосом
 или пишет по-русски, часто с ошибками распознавания: «ВВСФ», «дабл ю дабл ю эс эф» = WWSF; «втсд» = WTSD; «вин доллар шоудаун» = W$SD;
 «эр эф ай», «РФ», «эрфай», «опен-рейз первым», «открытие» = RFI; «трибет», «3-бет» = 3BET; «фолд на трибет» = FOLD_3BET;
 «баттон», «батон», «кнопка», «дилер» = BTN; «катофф», «кат офф» = CO; «хайджек» = HJ; «малый блайнд» = SB; «большой блайнд» = BB;
@@ -112,11 +119,12 @@ async function understand(text, prevPlayer, prevQ, mem) {
   try {
     const r = await c.beta.messages.create({
       model: MODEL, max_tokens: 2000,
-      betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
+      ...(/haiku/.test(MODEL) ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }), /* у Haiku запасной модели при отказе нет */
       output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
-      system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }], /* подсказка кешируется — повторные вопросы дешевле */
+      system: [{ type: 'text', text: SYSTEM + (REF ? '\n\n' + REF : ''), cache_control: { type: 'ephemeral' } }], /* подсказка и справочник кешируются — повторные вопросы дешевле */
       messages: [{ role: 'user', content: (prevPlayer ? 'Прошлый игрок в разговоре: ' + prevPlayer + '\n' : '') + memTxt + (prevQ ? 'Прошлый вопрос: ' + prevQ + '\n' : '') + 'Вопрос: ' + text }],
     });
+    { const u = r.usage || {}; USE.calls++; USE.in += u.input_tokens || 0; USE.cw += u.cache_creation_input_tokens || 0; USE.cr += u.cache_read_input_tokens || 0; USE.out += u.output_tokens || 0; USE.usd = (USE.in * PRICE[0] + USE.cw * PRICE[1] + USE.cr * PRICE[2] + USE.out * PRICE[3]) / 1e6; }
     if (r.stop_reason === 'refusal') return null;
     const t = (r.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const o = JSON.parse(t);
@@ -129,5 +137,5 @@ async function understand(text, prevPlayer, prevQ, mem) {
     return null;
   }
 }
-const status = () => ({ sdk: !!Anthropic, model: MODEL, keyInFile: !!fileKey(), ready: !!getClient() && Date.now() >= disabledUntil, lastErr });
+const status = () => ({ sdk: !!Anthropic, model: MODEL, keyInFile: !!fileKey(), ready: !!getClient() && Date.now() >= disabledUntil, lastErr, use: USE });
 module.exports = { understand, status, toPhrase };
