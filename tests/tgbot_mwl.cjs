@@ -23,12 +23,12 @@ const SN = ['флоп', 'тёрн', 'ривер'];
     const sig = (xs) => [xs.length, ...[1, 2, 3].map(o2 => xs.filter(r => r[8 + s] === o2).length)].join(','), mg = [];
     for (const [lo, hi] of SZB) { const xs = R.filter(r => r[5 + s] >= lo && r[5 + s] < hi); if (!xs.length) continue; const p = mg[mg.length - 1]; if (p && p.hi === lo && sig(p.xs) === sig(xs)) { p.hi = hi; p.xs = p.xs.concat(xs); } else mg.push({ lo, hi, xs }); }
     const groups = [...mg.map(g => g.xs), R].filter(g => g.length);
-    chk(T.table.head.join('|') === 'размер|раз|успешность (все сбросили)|колл|рейз на меня', q + ': колонки ' + T.table.head.join('|'));
+    chk(T.table.head.join('|') === 'размер|раз|доля|фолд (успешность)|колл|рейз на меня', q + ': колонки ' + T.table.head.join('|'));
     chk(T.table.rows.length === groups.length, q + ': строк ' + T.table.rows.length + ', ждали ' + groups.length);
     groups.forEach((g, i) => { const row = T.table.rows[i]; if (!row) return; const sd = g.filter(r => r[11]);
       chk(num(row[1].v) === g.length, q + ' · ' + row[0] + ': раз ' + row[1].v + ', ждали ' + g.length);
-      cell(row[2], g.filter(r => r[8 + s] === 1).length, g.length, q + ' · ' + row[0] + ' все сбросили'); cell(row[3], g.filter(r => r[8 + s] === 2).length, g.length, q + ' · ' + row[0] + ' колл'); cell(row[4], g.filter(r => r[8 + s] === 3).length, g.length, q + ' · ' + row[0] + ' рейз');
-      chk(row.length === 5, q + ' · ' + row[0] + ': лишние колонки'); });
+      cell(row[2], g.length, R.length, q + ' · ' + row[0] + ' доля'); cell(row[3], g.filter(r => r[8 + s] === 1).length, g.length, q + ' · ' + row[0] + ' все сбросили'); cell(row[4], g.filter(r => r[8 + s] === 2).length, g.length, q + ' · ' + row[0] + ' колл'); cell(row[5], g.filter(r => r[8 + s] === 3).length, g.length, q + ' · ' + row[0] + ' рейз');
+      chk(row.length === 6, q + ' · ' + row[0] + ': лишние колонки'); });
   }
   /* линии из нескольких улиц и таблица линий в боте пока скрыты (владелец 26.11.2026) — проверяем, что скрыты */
   const LOFF = true;
@@ -57,7 +57,7 @@ const SN = ['флоп', 'тёрн', 'ривер'];
     const groups = [...mg.map(g => g.xs), R].filter(g => g.length);
     if (!T) { chk(!R.length, q + ': нет таблицы'); continue; }
     chk(/успешность рейзов/.test(T.title), q + ': заголовок ' + T.title); chk(T.table.rows.length === groups.length && T.table.rows.every(r => /рейз/.test(r[0])), q + ': строки ' + T.table.rows.map(r => r[0]).join(', '));
-    groups.forEach((g, i) => { const row = T.table.rows[i]; if (row) { chk(num(row[1].v) === g.length, q + ' · ' + row[0] + ': раз ' + row[1].v + ', ждали ' + g.length); cell(row[2], g.filter(r => r[8 + s] === 1).length, g.length, q + ' · ' + row[0] + ' все сбросили'); } });
+    groups.forEach((g, i) => { const row = T.table.rows[i]; if (row) { chk(num(row[1].v) === g.length, q + ' · ' + row[0] + ': раз ' + row[1].v + ', ждали ' + g.length); cell(row[3], g.filter(r => r[8 + s] === 1).length, g.length, q + ' · ' + row[0] + ' все сбросили'); } });
   }
   for (const kd of Object.keys(KIND)) for (const [w, code] of [['чек-рейз', 'XR'], ['бет-фолд', 'BF'], ['чек-колл', 'XC'], ['чек-фолд', 'XF']]) for (let s = 0; s < 3; s++) {
     const q = 'успешность ' + w + 'а на ' + SN[s] + 'е ' + KIND[kd], a = await ask(q), T = (a.blocks || []).find(b => b.table && /линия/.test(b.title));

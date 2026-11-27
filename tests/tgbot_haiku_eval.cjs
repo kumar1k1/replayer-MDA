@@ -15,6 +15,8 @@ const hasNum = (a) => (a.blocks || []).some(b => b.table || b.big != null);
   const seen = new Set();
   for (const l of fs.readFileSync(path.join(__dirname, '../tgbot/data/asks.log'), 'utf8').split('\n')) { if (!l) continue; let o; try { o = JSON.parse(l); } catch (e) { continue; } if (!(o.voice || o.brain) || seen.has(o.q)) continue; seen.add(o.q);
     const lq = String(o.q).toLowerCase().trim(); const refine = /^(а|и|но|ну\s+а|то\s*же|тоже|теперь|эту|этот|это|сейчас\s+(эту|то\s*же))(\s|,|$)/.test(lq) || lq.split(/\s+/).length <= 2; items.push({ src: refine ? 'журнал (уточнение — без прошлого вопроса)' : 'журнал', q: o.q, ref: null, voice: o.voice ? 1 : 0, refine }); }
+  /* «спорные» — только вопросы, где в прошлом прогоне ответ отличался, было предупреждение или замена (tgbot/data/haiku_отчёт_1.json) */
+  if (process.argv[3] === 'спорные') { const prev = JSON.parse(fs.readFileSync(path.join(__dirname, '../tgbot/data/haiku_отчёт_1.json'), 'utf8')), keep = new Set(prev.filter(r => !r.refine && (!r.same || r.guard || r.overruled)).map(r => r.q)); for (let i = items.length - 1; i >= 0; i--) if (!keep.has(items[i].q)) items.splice(i, 1); console.log('спорных: ' + items.length); }
   const res = []; let stopped = '';
   for (const it of items) {
     const st = await get(8792, '/api/status'); const usd = st.brain.use.usd; if (usd >= CAP) { stopped = 'остановлено: потрачено $' + usd.toFixed(3) + ' из $' + CAP; break; }
