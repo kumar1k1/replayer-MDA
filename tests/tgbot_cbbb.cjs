@@ -83,6 +83,19 @@ const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] 
       chk(B.big === want, q + ': бот ' + B.big + ', пересчёт ' + want);
       chk(!sb || /стек/.test(B.title), q + ': стек не понят'); chk(!ai.length || /олл-ин на/.test(B.title), q + ': олл-ин не понят'); chk(!sz.length || /\(.*(флоп|тёрн|ривер)/.test(B.title), q + ': размер не понят — ' + B.title); }
   }
+  /* все сыгранные линии (владелец 27.11.2026): каждая строка — линия с размерами, раздач, вскрытий, W$SD — против пересчёта */
+  { const SZ = (p) => (p < 29 ? '~25%' : p < 40 ? '~33%' : p < 58 ? '~50%' : p < 70 ? '~66%' : p < 88 ? '~75%' : p <= 100.5 ? '~100%' : 'овер');
+    const lab = (r) => [0, 1, 2].map(s => { const a = r[42 + s]; if (!a) return null; return a.split('').map((c, j) => (c === 'B' && j === 0 ? 'B(' + SZ(r[48 + s]) + (r[45 + s] ? ' AI' : '') + ')' : c)).join('-'); }).filter(Boolean).join(' · ');
+    for (const [q, sb] of [['все мои линии против BB', null], ['все сыгранные линии рейзера против большого блайнда', null], ['какие линии я играл в хедс-апе против бб на больших стеках', ['60-99', '100-149', '150+']], ['все мои линии против BB на 20-35 бб', ['20-35']]]) {
+      const a = await ask(q), B = (a.blocks || [])[0]; if (!B || !B.table) { chk(false, q + ': нет списка — ' + (a.blocks || []).map(b => b.title || b.text).join(' | ')); continue; }
+      const R = ALL.filter(r => r[34] === 1 && (!sb || sb.includes(r[0]))), G = {}; for (const r of R) { const k = lab(r); if (k) (G[k] = G[k] || []).push(r); }
+      const W = Object.entries(G).filter(([, xs]) => xs.some(r => r[28]));
+      chk(B.table.rows.length === W.length, q + ': строк ' + B.table.rows.length + ', ждали ' + W.length);
+      let prev = 1e9; for (const row of B.table.rows) { const xs = G[row[0]]; if (!xs) { chk(false, q + ': лишняя линия ' + row[0]); continue; } const sd = xs.filter(r => r[28]); chk(+row[1].v === xs.length && +row[2].v === sd.length && row[3].v === pv(sd.filter(r => r[29]).length, sd.length), q + ' · ' + row[0] + ': бот ' + row.slice(1).map(c => c.v).join('/') + ', пересчёт ' + xs.length + '/' + sd.length + '/' + pv(sd.filter(r => r[29]).length, sd.length)); chk(sd.length <= prev, q + ': порядок'); prev = sd.length; }
+    }
+    /* «ставя все 3 улицы» — не список, а одна линия */
+    { const a = await ask('как часто рейзер выигрывает у большого блайнда банк, ставя все 3 улицы'), B = (a.blocks || [])[0]; chk(B && B.type === 'big' && /линия бет · бет · бет/.test(B.title), 'все 3 улицы: ' + (B && B.title)); }
+  }
   /* мультивей не задет */
   { const a = await ask('мои конбеты в мультивее в позиции как рейзер'), B = (a.blocks || []).find(b => b.table); chk(B && /мультивее/.test(B.title), 'мультивей: ' + (B && B.title)); }
   console.log('проверок: ' + n + ', совпало: ' + (n - bad) + ', ошибок: ' + bad);
