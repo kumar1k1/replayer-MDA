@@ -379,7 +379,8 @@ const TOT_CB = /(тотал|total|тотл)\s*-?\s*((c|си|ц|цэ|кон|ко�
 /* линии рейзера против BB (владелец 27.11.2026): разовый стат — линия по улицам (мой первый ход: бет / чек), размеры моих ставок по улицам, олл-ин;
    ответ — выигрыш на шоудауне по этой линии (W$SD) или выигрыш банка; в таблицу не выводим. Записи ext.rec.bb [42..44] ходы, [45..47] олл-ин, [48..50] размер */
 const TLN_RE = /лини[яиюей]|все\s*(3|три)\s*улиц|(3|три)\s*баррел|на\s*всех\s*(тр[её]х\s*)?улиц|ставя\s*(на\s*)?вс[её]/;
-function isTLN(ql) { return !MW_Q.test(ql) && (HU_BB.test(ql) || HU_W.test(ql)) && TLN_RE.test(ql) && /б[еэ]т|чек|bet|check|улиц|баррел|(^|[^а-яё])(все|всех|мои|сыгранн[а-яё]*|список|какие)(?![а-яё])/.test(ql); }
+const TLN_SEQ = /(б[еэ]т|чек)\s*-\s*(б[еэ]т|чек)\s*-\s*(б[еэ]т|чек)(?![а-яё])/; /* «играю бет-бет-бет» — линия и без слова «линия» (27.11.2026) */
+function isTLN(ql) { return !MW_Q.test(ql) && (HU_BB.test(ql) || HU_W.test(ql)) && (TLN_SEQ.test(ql) || TLN_RE.test(ql)) && /б[еэ]т|чек|bet|check|улиц|баррел|(^|[^а-яё])(все|всех|мои|сыгранн[а-яё]*|список|какие)(?![а-яё])/.test(ql); }
 const TL_SZ = (p) => (p < 29 ? '~25%' : p < 40 ? '~33%' : p < 58 ? '~50%' : p < 70 ? '~66%' : p < 88 ? '~75%' : p <= 100.5 ? '~100%' : 'овер');
 /* линия раздачи кратко: B(~33%) · X · B(овер); на улице несколько ходов — через «-» (B(~33%)-C — поставил, на чек-рейз заколлировал); олл-ин — «AI» */
 const tlnLabel = (r) => [0, 1, 2].map(s => { const a = r[42 + s]; if (!a) return null; return a.split('').map((c, j) => (c === 'B' && j === 0 ? 'B(' + TL_SZ(r[48 + s]) + (r[45 + s] ? ' AI' : '') + ')' : c)).join('-'); }).filter(Boolean).join(' · ');
@@ -397,7 +398,16 @@ function tlnList(P, ql, R, bands) {
   else if (/все\s*(3|три)\s*улиц|(3|три)\s*баррел|на\s*всех\s*(тр[её]х\s*)?улиц|ставя\s*(на\s*)?вс[её]/.test(qw)) L = ['B', 'B', 'B'];
   /* все сыгранные линии (владелец 27.11.2026): «все мои линии против BB» — каждая линия с размерами моих ставок по улицам и выигрыш на шоудауне напротив */
   if (!L || (!m && /(все|всех|какие|список|перечень)\s*(мо[иеё][а-яё]*\s*)?(сыгранн[а-яё]*\s*)?лини|сыгранн[а-яё]*\s*лини|лини[а-яё]*\s*(все|целиком|списком)/.test(qw))) return tlnList(P, ql, R, bands);  if (!L) return [{ type: 'text', text: 'Назовите линию по улицам: «бет-чек-бет», «чек-бет-бет», «бет-бет-чек» или «ставя все три улицы» — и что показать: выигрыш на шоудауне или выигрыш банка.' }];
-  const SF = sizeFilters(ql), FS = [SF.f, SF.t, SF.r];
+  /* размеры ставок в линии (владелец 27.11.2026): «какая самая частая по размеру ставка на ривере, когда играю бет-бет-бет» — корзины размера моей ставки на улице среди раздач этой линии */
+  if (/сайз|разм[еи]р|какой\s*(%|процент)|каким\s*(размер|сайз)|самая\s*част|чаще\s*всего\s*став/.test(ql) && !Object.keys(sizeFilters(ql)).length) {
+    const sw0 = /ривер/.test(qw) ? 2 : /т[её]рн|терн/.test(qw) ? 1 : /флоп/.test(qw) ? 0 : L.lastIndexOf('B');
+    if (sw0 < 0 || L[sw0] !== 'B') return [{ type: 'text', text: 'В этой линии на ' + ['флопе', 'тёрне', 'ривере'][Math.max(0, sw0)] + ' нет моей ставки — назовите улицу, где я ставлю.' }];
+    const X0 = R.filter(r => L.every((a, s) => (r[42 + s] || '')[0] === a) && r[48 + sw0]), BK = ['~25%', '~33%', '~50%', '~66%', '~75%', '~100%', 'овер'], G = {}; for (const r of X0) (G[TL_SZ(r[48 + sw0])] = G[TL_SZ(r[48 + sw0])] || []).push(r);
+    const rows = BK.filter(k => G[k]).map(k => { const xs = G[k], sd = xs.filter(r => r[28]); return [k === 'овер' ? 'овербет (больше банка)' : k + ' банка', { v: String(xs.length), n: 0 }, { v: pctS(xs.length, X0.length), n: X0.length }, sd.length ? { v: pctS(sd.filter(r => r[29]).length, sd.length), n: sd.length } : { v: '—', n: 0 }]; });
+    const top = BK.filter(k => G[k]).sort((a, b) => G[b].length - G[a].length)[0], lt0 = L.map(a => ON[a]).join(' · ');
+    const st0 = bands.length < BANDS.length ? ' · стек ' + grpLabel('', bands) : '';
+    return [{ type: 'table', title: title(P) + ' — размер моей ставки на ' + ['флопе', 'тёрне', 'ривере'][sw0] + ' · линия ' + lt0 + ' · рейзер против BB, хедс-ап' + st0 + (top ? ' — чаще всего ' + (top === 'овер' ? 'овербет' : top + ' банка') + ' (' + pctS(G[top].length, X0.length) + ')' : ''), note: 'раздач с этой линией: ' + X0.length + '; размер — % банка перед моей ставкой на этой улице, корзины: до 29% → ~25, 29–39 → ~33, 40–57 → ~50, 58–69 → ~66, 70–87 → ~75, 88–100 → ~100, больше банка — овербет; W$SD — выиграл на вскрытии после ставки этого размера; я открылся, заколлировал только большой блайнд, я в позиции', table: { head: ['размер', 'раз', 'доля', 'W$SD'], rows, grid: true } }];
+  }  const SF = sizeFilters(ql), FS = [SF.f, SF.t, SF.r];
   /* олл-ин: улица — слово рядом с «олл-ин»; без улицы — последняя улица линии со ставкой */
   const AIQ = [], aiRe = /олл?\s*-?\s*ин[а-яё]*|all\s*-?\s*in|ол+ин[а-яё]*|пуш[а-яё]*/g; let am;
   while ((am = aiRe.exec(ql))) { if (/без\s*$/.test(ql.slice(Math.max(0, am.index - 6), am.index))) continue; const w = ql.slice(Math.max(0, am.index - 30), am.index + am[0].length + 25); const sm = [...w.matchAll(/флоп|т[её]рн|терн|ривер/g)]; let s = -1; if (sm.length) { const mid = am.index - Math.max(0, am.index - 30); let best = 1e9; for (const x of sm) { const d = Math.abs(x.index - mid); if (d < best) { best = d; s = /флоп/.test(x[0]) ? 0 : /ривер/.test(x[0]) ? 2 : 1; } } } if (s < 0) s = L.lastIndexOf('B'); if (s >= 0) AIQ.push(s); }
@@ -414,7 +424,7 @@ function tlnList(P, ql, R, bands) {
   const { bands } = o, bs = new Set(bands), R = ((P.ext.rec && P.ext.rec.bb) || []).filter(r => bs.has(r[0]) && r[34] === 1);
   if (!P.ext.rec || !P.ext.rec.bb) return [{ type: 'text', text: 'Конбеты против большого блайнда пока посчитаны только по вашей базе.' }];
   const pc = (a, b) => (b ? { v: pctS(a, b), n: b } : { v: '—', n: 0 });
-  if (TLN_RE.test(ql)) return tlnBlocks(P, ql, R, bands);  const row = (lab, ok) => { const fl = R.filter(r => r[2]), cb = fl.filter(r => r[3] && ok(r[4])), tu = cb.filter(r => r[7]), rv = tu.filter(r => r[8] && r[10]);
+  if (TLN_RE.test(ql) || TLN_SEQ.test(ql)) return tlnBlocks(P, ql, R, bands);  const row = (lab, ok) => { const fl = R.filter(r => r[2]), cb = fl.filter(r => r[3] && ok(r[4])), tu = cb.filter(r => r[7]), rv = tu.filter(r => r[8] && r[10]);
     return [lab, pc(cb.length, fl.length), pc(tu.filter(r => r[8]).length, tu.length), pc(rv.filter(r => r[11]).length, rv.length)]; };
   const pos = ', в позиции', st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
   const rows = [row('CB', () => true), row('CB до 35% банка', (p) => p < 35), row('CB больше 50% банка', (p) => p > 50), row('CB больше 80% банка', (p) => p > 80), ...[['CB-Fold', 1], ['CB-Call', 2], ['CB-3Bet', 3]].map(([lab, k]) => [lab, ...[[5, 6], [35, 37], [36, 38]].map(([i, ai]) => { const xs = R.filter(r => r[i] >= 1 && r[i] <= 3 && (k !== 3 || !r[ai])); return pc(xs.filter(r => r[i] === k).length, xs.length); })])] /* CB-3Bet — только против чек-рейза не олл-ином (владелец 26.11.2026: есть возможность перерейзить) */
