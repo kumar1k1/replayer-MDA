@@ -119,6 +119,14 @@ const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] 
   { const pvv = (a, b) => pv(a, b); for (const [q, kind, base, oi] of [['мой конбет на тёрне в мультивее в позиции как рейзер', 'mw', r => r[3] && r[8], 32], ['мой конбет на флопе в мультивее без позиции как рейзер', 'mwo', r => r[3], 31], ['мой бет в пропуск на флопе в мультивее в позиции как коллер', 'bsk', r => r[3], 22]]) {
       const a = await ask(q), B = (a.blocks || [])[0], xs = E.rec[kind].filter(base), want = 'фолд ' + pvv(xs.filter(r => r[oi] === 1).length, xs.length) + ' · колл ' + pvv(xs.filter(r => r[oi] === 2).length, xs.length) + ' · рейз ' + pvv(xs.filter(r => r[oi] === 3).length, xs.length) + ' (из ' + xs.length + ')';
       chk(B && String(B.note || '').includes(want), q + ': FCR в подписи ' + (B && String(B.note || '').slice(0, 110)) + ' | ждали ' + want); } }
+  /* сайзинги конбета против BB (скриншот 27.11.2026): таблица по размерам — раз, доля, фолд / колл / рейз BB; подпись без «чек-рейза» у успешности */
+  { const SZB = [[0, 29], [29, 40], [40, 58], [58, 70], [70, 88], [88, 100.5], [100.5, 100000]];
+    for (const [q, s] of [['мой сайзинги цбета по позициям 1 на 1', 0], ['разбивка успешности по сайзингам моего конбета против BB', 0], ['успешность моих ставок по размерам на тёрне против BB', 1], ['сайзинги конбета на ривере против бб', 2]]) {
+      const a = await ask(q), B = (a.blocks || [])[0], X = ALL.filter(r => r[34] === 1 && r[48 + s] > 0), W = [...SZB.map(([lo, hi]) => X.filter(r => r[48 + s] >= lo && r[48 + s] < hi)).filter(g => g.length), X];
+      if (!B || !B.table) { chk(false, q + ': нет таблицы — ' + (a.blocks || []).map(b => b.title || b.text).join(' | ')); continue; }
+      chk(B.table.rows.length === W.length && B.table.head.join('|') === 'размер|раз|доля|фолд (успешность)|колл|рейз на меня', q + ': строк ' + B.table.rows.length + ', колонки ' + B.table.head.join('|'));
+      W.forEach((g, i) => { const row = B.table.rows[i]; chk(row && +row[1].v === g.length && row[2].v === pv(g.length, X.length) && [1, 2, 3].every(k => row[2 + k].v === pv(g.filter(r => r[31 + s] === k).length, g.length)), q + ' · ' + (row && row[0]) + ': бот ' + (row && row.slice(1).map(c => c.v).join('/'))); }); }
+    const a = await ask('как часто я получаю фолд от большого блайнда, когда ставлю конбет больше 50% банка, когда я рейзер против ББ'), B = (a.blocks || [])[0]; chk(B && !/чек-рейз/.test(String(B.note || '').slice(0, 60)) && /^реакция BB/.test(String(B.note || '')), 'успешность: подпись ' + (B && String(B.note || '').slice(0, 80))); }
   /* мультивей не задет */
   { const a = await ask('мои конбеты в мультивее в позиции как рейзер'), B = (a.blocks || []).find(b => b.table); chk(B && /мультивее/.test(B.title), 'мультивей: ' + (B && B.title)); }
   console.log('проверок: ' + n + ', совпало: ' + (n - bad) + ', ошибок: ' + bad);
