@@ -162,7 +162,7 @@ const BANDR = { '<12': [0, 12], '12-19': [12, 20], '20-35': [20, 36], '36-59': [
 const bandsIn = (lo, hi) => BANDS.filter(b => { const [a, z0] = BANDR[b], z = z0 === Infinity ? 200 : z0, L = lo == null ? 0 : lo, H = hi == null ? Infinity : hi; const ov = Math.min(z, H) - Math.max(a, L); return ov > 0 && ov / (z - a) >= 0.5; });
 // Whisper иногда повторяет фразу дважды — убираем повтор
 /* частые ошибки распознавания голоса (26.11.2026): «ривень / ривел / ривэр» → ривер, «размером в под» → в пот, «тэрн» → тёрн */
-const voiceFix = (q) => String(q || '').replace(/(^|[^а-яё])рив[еэ](н|л)[ьяеюи]?(?![а-яё])/gi, '$1ривер').replace(/(^|[^а-яё])рив[еэ]р(а|е|у|ом)?(?![а-яё])/gi, (m, a, b) => a + 'ривер' + (b || '')).replace(/(^|[^а-яё])т[эе]рн/gi, '$1тёрн').replace(/(размер[а-яё]*\s*(в\s*)?)под(?![а-яё])/gi, '$1пот').replace(/(ставк[а-яё]*|б[еэ]т[а-яё]*)\s+в\s+под(?![а-яё])/gi, '$1 в пот')
+const voiceFix = (q) => String(q || '').replace(/(^|[^а-яё])(крутим|крутив|протев|против[ао])(?=\s+(больш[а-яё]*\s*блайнд|бб|bb))/gi, '$1против') /* «крутим большого блайнда» — так Whisper слышит «против» (журнал 27.11.2026) */.replace(/(^|[^а-яё])рив[еэ](н|л)[ьяеюи]?(?![а-яё])/gi, '$1ривер').replace(/(^|[^а-яё])рив[еэ]р(а|е|у|ом)?(?![а-яё])/gi, (m, a, b) => a + 'ривер' + (b || '')).replace(/(^|[^а-яё])т[эе]рн/gi, '$1тёрн').replace(/(размер[а-яё]*\s*(в\s*)?)под(?![а-яё])/gi, '$1пот').replace(/(ставк[а-яё]*|б[еэ]т[а-яё]*)\s+в\s+под(?![а-яё])/gi, '$1 в пот')
   .replace(/шоу?\s*-?\s*д[ао]?у?н[а-яё]*/gi, 'шоудауне').replace(/(^|[^а-яё])мультиве(?![а-яё])/gi, '$1мультивее').replace(/(^|[^а-яё])мойц\s*бет/gi, '$1мой цбет').replace(/бетфолд/gi, 'бет-фолд').replace(/бетколл?/gi, 'бет-колл').replace(/(^|[^а-яё])(ботана|баттана|батона)(?![а-яё])/gi, '$1баттона')
   .replace(/без\s*-?\s*ол\s*-?\s*л?ин[а-яё]*|безол+ын[а-яё]*|без\s*ул+ын[а-яё]*/gi, 'без олл-инов').replace(/(^|[^а-яё])лимбы(?![а-яё])/gi, '$1лимпы').replace(/(^|[^а-яё])на\s*т[еёэ]рни(?![а-яё])|(^|[^а-яё])нат[еёэ]рни(?![а-яё])/gi, ' на тёрне').replace(/(^|[^а-яё])реизер/gi, '$1рейзер')
   .replace(/(на|против)\s+рейс(?![а-яё])/gi, '$1 рейз').replace(/(4\s*-?\s*бет[а-яё]*|четыр[её]х\s*-?\s*бет[а-яё]*)\s+холодн/gi, '$1 в холодн'); /* остальные частые искажения голоса (26.11.2026) */
@@ -270,7 +270,7 @@ const MW_Q = /мульти|мульт[иы]\s*-?\s*пот|мультик|multi/,
 function mwRoute(ql) { if (!MW_Q.test(ql) || !BET_W.test(ql) || /донк/.test(ql)) return null; const r = ROLE_R.test(ql), c = ROLE_C.test(ql.replace(/рейз[а-яё]*\s*(никто\s*)?(не\s*)?заколл[а-яё]*/g, ' ')); if (c && !r) return 'BSK'; if (r && !c) return 'CB'; if (CB_RE.test(ql)) return 'CB'; if (BSK_RE.test(ql)) return 'BSK'; return 'MWB'; }
 /* Total CBET против BB: ход на чек-рейз без слова «конбет» («перерейзиваю чек-рейз на тёрне против бб») — тоже эта таблица (27.11.2026) */
 function isTCB(ql) { return !MW_Q.test(ql) && (HU_BB.test(ql) || HU_W.test(ql)) && (CB_RE.test(ql) || /чек\s*-?\s*рейз|перерейз|(пере|ре)\s*-?\s*рейз/.test(ql)); }
-function statOf(ql) { if (isTLN(ql)) return 'CB'; /* линии рейзера против BB — к таблице конбетов против BB (27.11.2026) */ if (MW_Q.test(ql) && MWL_W.test(ql)) { if (!/лини/.test(ql) && /конбет|цбет|комбет|контбет|c-?bet|(^|[^a-z])cb(?![a-z])|отлож|дил[еэ]й|(\+|плюс)\s*б[еэ]т/.test(ql)) return 'CB'; if (!/лини/.test(ql) && BSK_RE.test(ql)) return 'BSK'; return 'MWL'; } /* «успешность конбета / ставки в пропуск» — их таблица; иначе — линии и успешность всех ставок */ /* линии и успешность ставок в мультивее */ { const mr = mwRoute(ql); if (mr) return mr; } if (/выигр[а-яё]*\s*(на\s*)?(шоу?\s*-?\s*даун|вскрыти)/.test(ql) && !/\d\s*(%|процент)|овербет|подбет|маленьк|половин|трет|размер[а-яё]*\s*(в\s*)?(банк|пот)[а-яё]*|(в|на)\s*(весь\s*)?пот(?![а-яё])|пот\s*-?\s*сайз[а-яё]*/.test(ql) && !mwRoute(ql)) return 'WSD'; /* «выигрыш на шоудауне общий» (26.11.2026) */ if (BSK_RE.test(ql)) return 'BSK'; if (CB_RE.test(ql) || isTCB(ql)) return 'CB'; if (isBVS(ql)) return 'BVS'; if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
+function statOf(ql) { if (isTLN(ql)) return 'CB'; if (MW_Q.test(ql) && TLN_SEQ.test(ql)) return 'MWL'; /* линия в мультивее — пока скрыта, бот так и говорит (27.11.2026) */ /* линии рейзера против BB — к таблице конбетов против BB (27.11.2026) */ if (MW_Q.test(ql) && MWL_W.test(ql)) { if (!/лини/.test(ql) && /конбет|цбет|комбет|контбет|c-?bet|(^|[^a-z])cb(?![a-z])|отлож|дил[еэ]й|(\+|плюс)\s*б[еэ]т/.test(ql)) return 'CB'; if (!/лини/.test(ql) && BSK_RE.test(ql)) return 'BSK'; return 'MWL'; } /* «успешность конбета / ставки в пропуск» — их таблица; иначе — линии и успешность всех ставок */ /* линии и успешность ставок в мультивее */ { const mr = mwRoute(ql); if (mr) return mr; } if (/выигр[а-яё]*\s*(на\s*)?(шоу?\s*-?\s*даун|вскрыти)/.test(ql) && !/\d\s*(%|процент)|овербет|подбет|маленьк|половин|трет|размер[а-яё]*\s*(в\s*)?(банк|пот)[а-яё]*|(в|на)\s*(весь\s*)?пот(?![а-яё])|пот\s*-?\s*сайз[а-яё]*/.test(ql) && !mwRoute(ql)) return 'WSD'; /* «выигрыш на шоудауне общий» (26.11.2026) */ if (BSK_RE.test(ql)) return 'BSK'; if (CB_RE.test(ql) || isTCB(ql)) return 'CB'; if (isBVS(ql)) return 'BVS'; if (FSQ_RE.test(ql)) return 'FSQ'; if (SQ_RE.test(ql)) return 'SQZ'; if (/фолд[а-яё]*\s*(на|против)\s*(3|три|тр[её]х)\s*-?\s*бет|fold\s*to\s*3/.test(ql)) return 'F3'; if (S3_RE.test(ql)) return 'S3'; if (F4_RE.test(ql)) return 'F4'; /* 5-бет не делаем (владелец, 24.11.2026) */ if (CC3_RE.test(ql) || COLD4_RE.test(ql)) return 'CC3'; if (B4_RE.test(ql)) return 'B4'; if (B3I_RE.test(ql)) return 'B3I'; if (NO_STAT.test(ql)) return null; for (const [id, re] of STATS) if (re.test(ql)) return id; return null; }
 const TBL_W = /таблиц|матриц|разбив|разбивк|сетк|раскладк|сводк|разв[её]рн|подробн|детальн|целиком|полност|по\s*всем\s*(позиц|улиц|стек)/; /* как ещё просят таблицу (26.11.2026): матрица, разбивка, сетка, сводка, раскладка, подробно, развёрнуто, целиком */
 const WANT_TABLE = /таблиц|по\s*позици|по\s*ст[еэ]к|ст[еэ]кам|разбив|таблиц|матриц|разбив|разбивк|сетк|раскладк|сводк|разв[её]рн|подробн|детальн|целиком|полност|по\s*всем\s*(позиц|улиц|стек)/;
 const STAT_RU = { VPIP: 'VPIP', PFR: 'PFR', VPIPPFR: 'VPIP / PFR', '3B': '3-бет NAI', F3: 'Фолд на 3-бет', LIMP: 'Лимп (не SB)', WTSD: 'WTSD', WSD: 'W$SD', WWSF: 'WWSF', BR: 'Bet River', FRB: 'Fold to Bet River' };
@@ -399,7 +399,7 @@ function tlnList(P, ql, R, bands) {
   /* все сыгранные линии (владелец 27.11.2026): «все мои линии против BB» — каждая линия с размерами моих ставок по улицам и выигрыш на шоудауне напротив */
   if (!L || (!m && /(все|всех|какие|список|перечень)\s*(мо[иеё][а-яё]*\s*)?(сыгранн[а-яё]*\s*)?лини|сыгранн[а-яё]*\s*лини|лини[а-яё]*\s*(все|целиком|списком)/.test(qw))) return tlnList(P, ql, R, bands);  if (!L) return [{ type: 'text', text: 'Назовите линию по улицам: «бет-чек-бет», «чек-бет-бет», «бет-бет-чек» или «ставя все три улицы» — и что показать: выигрыш на шоудауне или выигрыш банка.' }];
   /* размеры ставок в линии (владелец 27.11.2026): «какая самая частая по размеру ставка на ривере, когда играю бет-бет-бет» — корзины размера моей ставки на улице среди раздач этой линии */
-  if (/сайз|разм[еи]р|какой\s*(%|процент)|каким\s*(размер|сайз)|самая\s*част|чаще\s*всего\s*став/.test(ql) && !Object.keys(sizeFilters(ql)).length) {
+  if (/сайз|разм[еи]р|какой\s*(%|процент)|каким\s*(размер|сайз)|(сам[аыо][яейх]|наиболее)\s*част|чаще\s*всего\s*став|частых\s*(моих\s*)?ставок|список\s*[а-яё\s]*ставок/.test(ql) && !Object.keys(sizeFilters(ql)).length) {
     const sw0 = /ривер/.test(qw) ? 2 : /т[её]рн|терн/.test(qw) ? 1 : /флоп/.test(qw) ? 0 : L.lastIndexOf('B');
     if (sw0 < 0 || L[sw0] !== 'B') return [{ type: 'text', text: 'В этой линии на ' + ['флопе', 'тёрне', 'ривере'][Math.max(0, sw0)] + ' нет моей ставки — назовите улицу, где я ставлю.' }];
     const X0 = R.filter(r => L.every((a, s) => (r[42 + s] || '')[0] === a) && r[48 + sw0]), BK = ['~25%', '~33%', '~50%', '~66%', '~75%', '~100%', 'овер'], G = {}; for (const r of X0) (G[TL_SZ(r[48 + sw0])] = G[TL_SZ(r[48 + sw0])] || []).push(r);
@@ -426,7 +426,7 @@ function tlnList(P, ql, R, bands) {
   const pc = (a, b) => (b ? { v: pctS(a, b), n: b } : { v: '—', n: 0 });
   if (TLN_RE.test(ql) || TLN_SEQ.test(ql)) return tlnBlocks(P, ql, R, bands);  const row = (lab, ok) => { const fl = R.filter(r => r[2]), cb = fl.filter(r => r[3] && ok(r[4])), tu = cb.filter(r => r[7]), rv = tu.filter(r => r[8] && r[10]);
     return [lab, pc(cb.length, fl.length), pc(tu.filter(r => r[8]).length, tu.length), pc(rv.filter(r => r[11]).length, rv.length)]; };
-  const pos = ', в позиции', st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
+  const pos = /без\s*позиц|вне\s*позиц|не\s*в\s*позиц|без\s*поз[ыу](?![а-яё])/.test(ql) ? ', в позиции (без позиции — с моего SB — не считаем)' : ', в позиции', st = bands.length < BANDS.length ? '; стек ' + grpLabel('', bands) : '';
   const rows = [row('CB', () => true), row('CB до 35% банка', (p) => p < 35), row('CB больше 50% банка', (p) => p > 50), row('CB больше 80% банка', (p) => p > 80), ...[['CB-Fold', 1], ['CB-Call', 2], ['CB-3Bet', 3]].map(([lab, k]) => [lab, ...[[5, 6], [35, 37], [36, 38]].map(([i, ai]) => { const xs = R.filter(r => r[i] >= 1 && r[i] <= 3 && (k !== 3 || !r[ai])); return pc(xs.filter(r => r[i] === k).length, xs.length); })])] /* CB-3Bet — только против чек-рейза не олл-ином (владелец 26.11.2026: есть возможность перерейзить) */
   /* CB · XX · B (владелец 26.11.2026): конбет на флопе заколлирован, тёрн прочекан обоими, на ривере до меня чек — ставлю [39..41] */
   { const o = R.filter(r => r[39]); rows.push(['CB · XX · B', '', '', pc(o.filter(r => r[40]).length, o.length)]); } /* ответ на чек-рейз после моей ставки на улице: фолд / колл / перерейз или олл-ин (владелец 26.11.2026) */;
@@ -585,7 +585,7 @@ function mwlBlocks(P, ql, o) {
 
 
   /* линии из нескольких улиц и таблица линий пока скрыты (владелец 26.11.2026): считаются в ext.ml, покажем по-новому позже */
-  if (LINES_OFF && ((namedLine && namedLine.length >= 2) || (!namedLine && (/лини/.test(ql) && !/успешн|успех|эффективн|сработ/.test(ql) || /по\s*лини/.test(ql))))) return [{ type: 'text', text: LINES_OFF_TXT }];
+  if (LINES_OFF && (TLN_SEQ.test(ql) || (namedLine && namedLine.length >= 2) || (!namedLine && (/лини/.test(ql) && !/успешн|успех|эффективн|сработ/.test(ql) || /по\s*лини/.test(ql))))) return [{ type: 'text', text: LINES_OFF_TXT }];
   if (namedLine) {
     const one = namedLine.length === 1, s1 = one ? (streets.length === 1 ? streets[0] : 0) : -1; /* одна связка ходов («чек-рейз») — на названной улице, иначе на флопе */
     const mine = one ? R.filter(r => (r[2 + s1] || '').startsWith(namedLine[0])) : R.filter(r => namedLine.every((a, i) => (r[2 + i] || '').startsWith(a)));
@@ -1109,9 +1109,23 @@ function refineMerge(prev, q) {
     return x.replace(/\s+/g, ' ').trim();
   });
 }
-async function ask(q0, ctx, key, alts, voice, prevQ, mem) { const ql0 = String(q0 || '').toLowerCase();
+/* сверка понимания (владелец 27.11.2026, tgbot/guard.cjs): условия вопроса должны быть в ответе; Claude потерял условие — берём свой разбор слов, если он точнее; не помогло — пишем «проверьте» */
+const GUARD = require('./guard.cjs'); let FAKE = '';
+async function ask(q0, ctx, key, alts, voice, prevQ, mem) {
+  let o = await ask1(q0, ctx, key, alts, voice, prevQ, mem);
+  if (key || !o || !o.blocks) return o;
+  let miss = GUARD.missing(q0, o);
+  if (miss.length && o.brain && !o.refined) { /* Claude понял не так — пробуем свой разбор */
+    const sp = splitParts(q0), parts = sp || expandVariants(q0), own = parts ? multiAnswer(parts, ctx, null, isOwn(String(q0).toLowerCase()), !sp) : answer(q0, ctx, null);
+    const m2 = own && own.blocks ? GUARD.missing(q0, own) : miss;
+    if (m2.length < miss.length && !notFound(own)) { own.brain = { model: o.brain.model, phrase: o.brain.phrase, overruled: 1 }; own.heard = own.heard || q0; o = own; miss = m2; }
+  }
+  if (miss.length) { o.guard = miss; o.blocks = [{ type: 'text', title: 'Проверьте, так ли я понял', text: 'В вопросе есть: ' + miss.map(x => '«' + x + '»').join(', ') + ' — а в ответе этого не видно. Возможно, я понял вопрос не так: переформулируйте или уточните.' }, ...o.blocks]; }
+  return o;
+}
+async function ask1(q0, ctx, key, alts, voice, prevQ, mem) { const ql0 = String(q0 || '').toLowerCase();
   if (!key && prevQ && isRefine(q0, prevQ)) { const m = refineMerge(prevQ, q0); if (m) { const own = isOwn(String(prevQ).toLowerCase()), o = m.length > 1 ? multiAnswer(m, ctx, voice && ctx ? { own, src: m.join(' ') } : null, own, true) : answer(m[0], ctx, null, voice && ctx ? { own, src: m[0] } : null); o.heard = m.join(' · '); o.refined = 1; return clarify(o, m[0], key); } }
-  if (!key && (NOBRAIN || !BRAIN.status().ready)) { const sp = splitParts(q0), parts = sp || expandVariants(q0); if (parts) { const src = ql0, own = isOwn(src); return multiAnswer(parts, ctx, voice && ctx ? { own, src } : null, own, !sp); } } if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ, mem), q0, key); }// ---------- несколько просьб в одном вопросе (владелец, 24.11.2026): все ответы подряд в одном сообщении ----------
+  if (!key && !FAKE && (NOBRAIN || !BRAIN.status().ready)) { const sp = splitParts(q0), parts = sp || expandVariants(q0); if (parts) { const src = ql0, own = isOwn(src); return multiAnswer(parts, ctx, voice && ctx ? { own, src } : null, own, !sp); } } if (prevQ && !REFINE.test(ql0) && (statOf(ql0) || intentOf(ql0) !== 'card')) prevQ = ''; return clarify(await ask0(q0, ctx, key, alts, voice, prevQ, mem), q0, key); }// ---------- несколько просьб в одном вопросе (владелец, 24.11.2026): все ответы подряд в одном сообщении ----------
 /* часть — самостоятельная просьба: в ней сам назван стат (не только позиция / стек / уточнение) */
 const partOwn = (sg) => { const l = wordsToNum(normRFI(String(sg))).toLowerCase(); return !!statOf(l) && !/^\s*(с|из|на|от|по|без|только|в)\s/.test(l); };
 const partId = (p) => { const l = wordsToNum(normRFI(String(p))).toLowerCase(); return statOf(l) || (intentOf(l) !== 'card' ? intentOf(l) : null); };
@@ -1171,7 +1185,7 @@ async function ask0(q0, ctx, key, alts, voice, prevQ, mem) {
   }
   // мозг (Claude): понимает вопрос любыми словами → точная фраза; цифры — из базы. Нет ключа — свой разбор слов.
   const prev = ctx ? (qKey.get(ctx) || {}).nick : null;
-  const B = fixPhrase(q0, await BRAIN.understand(q0, prev, prevQ, mem));
+  const B = fixPhrase(q0, FAKE ? { phrase: FAKE, parsed: null } : await BRAIN.understand(q0, prev, prevQ, mem)); /* FAKE — только для проверки: «как будто Claude понял так» (tests/tgbot_logcheck.cjs), бесплатно */
   const cands = [];
   if (B && B.parsed && Array.isArray(B.parsed.parts) && B.parsed.parts.length > 1) { const o = multiAnswer(B.parsed.parts, ctx, null, isOwn(String(q0).toLowerCase())); o.brain = { model: BRAIN.status().model, phrase: o.heard }; return o; }
   if (B && B.phrase && expandVariants(B.phrase)) { const o = multiAnswer(expandVariants(B.phrase), ctx, null, isOwn(String(q0).toLowerCase()), true); o.brain = { model: BRAIN.status().model, phrase: B.phrase }; return o; }
@@ -1201,8 +1215,8 @@ const srv = http.createServer(async (req, res) => {
     const t0 = Date.now(); let out;
     const q0 = u.searchParams.get('q'), ctx = u.searchParams.get('ctx'), key = u.searchParams.get('key');
     let alts = []; try { alts = JSON.parse(u.searchParams.get('alts') || '[]').filter(x => typeof x === 'string').slice(0, 12); } catch (e) { alts = []; }
-    try { NOBRAIN = !!u.searchParams.get('nobrain'); let mem = []; try { mem = JSON.parse(u.searchParams.get('mem') || '[]').filter(x => x && typeof x === 'object').slice(-3); } catch (e) { mem = []; } out = await ask(dedupPhrase(fuzzyFix(voiceFix(q0))), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || '', mem); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; }
-    try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, brain: out.brain || null, heard: out.heard, intent: out.intent, player: out.player || null }) + '\n'); } catch (e) {}
+    try { NOBRAIN = !!u.searchParams.get('nobrain'); FAKE = NOBRAIN ? String(u.searchParams.get('fake') || '') : ''; let mem = []; try { mem = JSON.parse(u.searchParams.get('mem') || '[]').filter(x => x && typeof x === 'object').slice(-3); } catch (e) { mem = []; } out = await ask(dedupPhrase(fuzzyFix(voiceFix(q0))), ctx, key, alts, !!u.searchParams.get('voice'), u.searchParams.get('prev') || '', mem); } catch (e) { out = { blocks: [{ type: 'text', text: 'Ошибка: ' + e.message }] }; } finally { NOBRAIN = false; FAKE = ''; }
+    try { fs.appendFileSync(path.join(__dirname, 'data', 'asks.log'), JSON.stringify({ t: new Date().toISOString(), voice: !!u.searchParams.get('voice'), q: q0, alts, brain: out.brain || null, heard: out.heard, intent: out.intent, player: out.player || null, guard: out.guard || undefined, overruled: (out.brain && out.brain.overruled) || undefined }) + '\n'); /* guard — сверка нашла условие вопроса, которого нет в ответе */ } catch (e) {}
     out.ms = Date.now() - t0;
     return J(out);
   }  if (u.pathname === '/api/suggest') {

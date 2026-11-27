@@ -18,7 +18,7 @@ const POS = [['', 1], [' в позиции', 1], [' без позиции', 1]] 
     const q = q0 + pw + sw, a = await ask(q), B = (a.blocks || []).find(b => b.table);
     if (!B) { chk(false, q + ': нет таблицы — ' + (a.blocks || []).map(b => b.title || b.text).join(' | ')); continue; }
     chk(/Total CBET: я рейзер против большого блайнда, хедс-ап банк/.test(B.title), q + ': заголовок ' + B.title);
-    chk(/, в позиции( · стек .*)?$/.test(B.title) && !/SB/.test(B.title), q + ': позиция в заголовке ' + B.title);
+    chk(/, в позиции( \(без позиции — с моего SB — не считаем\))?( · стек .*)?$/.test(B.title), q + ': позиция в заголовке ' + B.title);
     /* стек — бот сам переводит слова в банды; пересчёт берёт те же банды из подписи «стек …» нельзя — берём все записи при пустом стеке */
     if (!sw) { const R = ALL.filter(r => r[34] === 1), W = want(R).concat(wantR(R)); { const o = R.filter(r => r[39]), row = B.table.rows.find(x => x[0] === 'CB · XX · B'); chk(row && row[3].v === pv(o.filter(r => r[40]).length, o.length) && row[3].n === o.length, q + ' · CB · XX · B: бот ' + (row && row[3].v) + ', пересчёт ' + pv(o.filter(r => r[40]).length, o.length)); }
       W.forEach((w, i) => { const row = B.table.rows[i]; chk(row && row[0] === w[0], q + ': строка ' + (row && row[0]) + ', ждали ' + w[0]);
